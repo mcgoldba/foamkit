@@ -1,3 +1,21 @@
+## v0.1.0 (2026-10-03)
+
+### BREAKING CHANGE
+
+- `import pyfoamd` becomes `import foamkit`.
+
+### Fix
+
+- make a clean install importable and stop import-time side effects
+
+### Refactor
+
+- rename package from pyfoamd to foamkit
+
+## v0.0.10 (2024-02-11)
+
+## v0.0.9 (2024-02-10)
+
 ## v0.0.8 (2023-10-04)
 
 ### Fix

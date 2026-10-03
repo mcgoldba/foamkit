@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "foamkit"
-version = "0.0.10"
+version = "0.1.0"
 description = "A Pythonic interface to OpenFOAM: read, edit and script cases from Python."
 authors = [{name = "Marc Goldbach", email = "mgoldbach@myyahoo.com"}]
 readme = "README.md"
