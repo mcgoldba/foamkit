@@ -1,10 +1,10 @@
 import sys
 import argparse, textwrap
 from argparse import RawTextHelpFormatter
-import pkg_resources  # part of setuptools
+from importlib.metadata import version as _distVersion
 #import resource
 import os
-from pyfoamd import getPyFoamdConfig, setLoggerLevel
+from pyfoamd import getPyFoamdConfig, setLoggerLevel, enableRichTracebacks
 import pyfoamd.functions as pf
 from pathlib import Path
 
@@ -15,7 +15,6 @@ from pyfoamd.commandline import CommandLine
 from rich import print
 import logging
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('pf')
 # from rich.logging import RichHandler
 
@@ -37,7 +36,12 @@ def main():
     PyFoamd:  Pythonic manipulation of OpenFOAM dictionaries.
     """
 
-    version = pkg_resources.require("pyfoamd")[0].version
+    #- Application entry point: it is fine (and expected) to configure
+    #- logging and tracebacks here, but never at import time in the library.
+    logging.basicConfig(level=logging.INFO)
+    enableRichTracebacks()
+
+    version = _distVersion("pyfoamd")
 
     intro = "\n"+main.__doc__.strip()+"\nversion "+version + \
             " on Python "+str(sys.version_info.major)+"."+\

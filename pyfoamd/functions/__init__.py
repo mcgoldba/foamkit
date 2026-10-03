@@ -1,11 +1,5 @@
 import sys
 
-print(sys.version)
-
-#- Check the python version:
-if sys.version_info < (3,7):
-    sys.exit('Sorry, Python < 3.7 is not supported.')
-
 from pyfoamd.types import ofDictFile, ofDict, ofList, ofInt, ofFloat, \
     ofStr, ofBool, ofDimensionedScalar, ofVector, ofDimensionedVector, TAB_STR
 

@@ -8,16 +8,24 @@ import logging
 
 from rich import print
 
-from rich.traceback import install
-install()
-
 logger = logging.getLogger('pf')
+# Library convention: stay silent unless the application configures logging.
+logger.addHandler(logging.NullHandler())
 
-try:
-    FOAM_VERSION = os.environ['WM_PROJECT_VERSION']
-except:
-    FOAM_VERSION = ""
-    print("OpenFOAM not found!")
+FOAM_VERSION = os.environ.get('WM_PROJECT_VERSION', "")
+if not FOAM_VERSION:
+    # Not an error: reading, editing and writing cases does not need OpenFOAM.
+    logger.debug("OpenFOAM environment not found (WM_PROJECT_VERSION is unset).")
+
+def enableRichTracebacks():
+    """
+    Opt in to rich-formatted tracebacks.
+
+    This replaces `sys.excepthook` for the whole process, so it is never done
+    on import.  The command line interface calls it; scripts may call it too.
+    """
+    from rich.traceback import install
+    install()
 
 def getPyFoamdConfig(param):
     def getParam(param, configPath):

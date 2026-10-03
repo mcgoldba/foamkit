@@ -2,7 +2,6 @@ from pyfoamd.functions import isCase
 from pyfoamd import userMsg, getPyFoamdConfig
 from pathlib import Path
 import shutil
-from distutils.dir_util import copy_tree
 import logging
 import tempfile
 import subprocess

@@ -45,7 +45,7 @@ OF_HEADER = ["/*--------------------------------*- C++ -*-----------------------
 "   \\\\    /   O peration     |",
 "    \\\\  /    A nd           |",
 "     \\\\/     M anipulation  |",
-"\*---------------------------------------------------------------------------*/",
+"\\*---------------------------------------------------------------------------*/",
 ""]
 #- Build the string to be used as a tab
 TAB_STR = ""
@@ -4030,7 +4030,7 @@ class DictFileParser:
                 if lineList[0].strip() == '};' or lineList[0] == ');':
                     #- ending list or dict
                     return None
-                match = re.match('\$(.*);', lineList[0].strip())
+                match = re.match(r'\$(.*);', lineList[0].strip())
                 if match is not None:
                     # Found variable reference
                     name_ = match.group(1)
@@ -4858,7 +4858,7 @@ class DictFileParser:
 
         #Check for list with specified number of entries.  e.g. 
         #2((0 0) (500 1))
-        if re.match('[0-9]+\(.+', value):
+        if re.match(r'[0-9]+\(.+', value):
             return ofSplitList,
         if isinstance(value, _ofTypeBase):
             return type(value), value
@@ -5304,7 +5304,7 @@ class DictFileParser:
                     userMsg("Unhandled Pattern:  Could not find end of "\
                             "function entry", "ERROR")
                 line_= self.lines[self.i]
-                foundClosing = re.search(f"(?<!\#)\{closingChar}",line_) if \
+                foundClosing = re.search(rf"(?<!\#)\{closingChar}",line_) if \
                     closingChar == '}' else (closingChar in line_)
                 # line_= self.lines[self.i]
             #- Add last line
