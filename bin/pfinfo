@@ -5,4 +5,4 @@
 set -euo pipefail
 #set -e pipefail
 
-cat .params/project.json || exit_on_error "PyFoamd data not found." 
+cat .params/project.json || exit_on_error "FoamKit data not found." 

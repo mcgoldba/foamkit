@@ -8,16 +8,16 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/pyfoamd
+      url: https://pypi.org/p/foamkit
     steps:
     # retrieve your distributions here
     - name: Checkout source
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
-    - name: Set up Python 3.8
-      uses: actions/setup-python@v1
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
       with:
-        python-version: 3.8
+        python-version: '3.11'
 
     - name: Install build dependencies
       run: python -m pip install build wheel
@@ -27,7 +27,7 @@ jobs:
       run: python -m build --sdist --wheel
     
     - name: Publish package distributions to PyPI
-      if: github.repository == 'mcgoldba/pyfoamd' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+      if: github.repository == 'mcgoldba/foamkit' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__

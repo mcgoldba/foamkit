@@ -1,4 +1,4 @@
-pyFoamd
+FoamKit
 -------
 
 Pythonic modification of OpenFOAM dictionaries and case files.
@@ -20,7 +20,7 @@ Installation
 
 ```bash
 #terminal
-python -m pip install pyfoamd
+python -m pip install foamkit
 ```
 
 Basic Usage
@@ -68,7 +68,7 @@ Run the Allrun script
 Scripting
 ---------
 
-PyFoamd can also be imported into a python script to allow for manipultion of OpenFOAM cases.  This is useful, for example, when performing parameteric studies to run multiple simulations with varibale parameters (e.g. different turbulence models):
+FoamKit can also be imported into a python script to allow for manipultion of OpenFOAM cases.  This is useful, for example, when performing parameteric studies to run multiple simulations with varibale parameters (e.g. different turbulence models):
 
 ```bash
 #terminal
@@ -82,8 +82,8 @@ touch runStudy.py
 
 runStudy.py
 ```python
-import pyfoamd.functions as pf
-import pyfoamd.types as pt
+import foamkit.functions as pf
+import foamkit.types as pt
 import pamdas as pd
 
 turbulenceModels = [kEpsilon, realizableKE, kOmega, kOmegaSST]
@@ -100,14 +100,14 @@ def updateCase(case, values):
 
     Parameters
     ----------
-    case [pyfoamd.ofCase]:
+    case [foamkit.ofCase]:
         The OpenFOAM case which is to be updated.
     values [list]:
         Sample point as a list of dictionary values to be updated for the current simulation
 
     Return
     ------
-    case [pyfoamd.ofCase]:
+    case [foamkit.ofCase]:
         The updated OpenFOAM case.
         
     """

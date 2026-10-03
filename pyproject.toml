@@ -3,9 +3,9 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyfoamd"
+name = "foamkit"
 version = "0.0.10"
-description = "Pythonic manipulation of OpenFOAM dictionaries and case files."
+description = "A Pythonic interface to OpenFOAM: read, edit and script cases from Python."
 authors = [{name = "Marc Goldbach", email = "mgoldbach@myyahoo.com"}]
 readme = "README.md"
 requires-python = ">=3.9"
@@ -27,16 +27,17 @@ dependencies = [
 ]
 
 [project.urls]
-Home = "https://github.com/mcgoldba/pyFoamd"
+Home = "https://github.com/mcgoldba/foamkit"
 
 [project.scripts]
-pf = "pyfoamd.__main__:main"
+pf = "foamkit.__main__:main"
+foamkit = "foamkit.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["pyfoamd*"]
+include = ["foamkit*"]
 
 [tool.setuptools.package-data]
-pyfoamd = ["config.ini"]
+foamkit = ["config.ini"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
