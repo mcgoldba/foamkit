@@ -1,7 +1,0 @@
-bash
-bin
-build
-dist
-pyfoamd
-scripts
-templates

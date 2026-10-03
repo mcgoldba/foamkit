@@ -140,3 +140,9 @@ dmypy.json
 cython_debug/
 
 config.ini
+# ...except the packaged defaults
+!pyfoamd/config.ini
+
+# Editor settings
+.vscode/
+.idea/
