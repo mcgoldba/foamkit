@@ -1,0 +1,23 @@
+# Final "pyfoamd" release: a thin compatibility package that depends on foamkit.
+# Build and upload from this directory (separately from the main package):
+#     cd shim && python -m build && twine upload dist/*
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyfoamd"
+version = "0.0.11"
+description = "Renamed to foamkit. This package only forwards `import pyfoamd` to foamkit."
+authors = [{name = "Marc Goldbach", email = "mgoldbach@myyahoo.com"}]
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+classifiers = ["Development Status :: 7 - Inactive"]
+dependencies = ["foamkit"]
+
+[project.urls]
+Home = "https://github.com/mcgoldba/foamkit"
+
+[tool.setuptools.packages.find]
+include = ["pyfoamd*"]

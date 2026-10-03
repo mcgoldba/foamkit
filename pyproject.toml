@@ -1,26 +1,43 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "pyfoamd"
+name = "foamkit"
+version = "0.0.10"
+description = "A Pythonic interface to OpenFOAM: read, edit and script cases from Python."
 authors = [{name = "Marc Goldbach", email = "mgoldbach@myyahoo.com"}]
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 license = {file = "LICENSE"}
+keywords = ["openfoam", "cfd", "simulation", "python"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Programming Language :: Python :: 3",
+]
 dependencies = [
-        'pint',
-        'pandas',
-        'rich',
-        'ipython'
-        ]
-version = "0.0.10"
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "pint",
+    "rich",
+    "ipython",
+]
 
 [project.urls]
-Home = "https://github.com/mcgoldba/pyFoamd"
+Home = "https://github.com/mcgoldba/foamkit"
 
 [project.scripts]
-pf = "pyfoamd.__main__:main"
+pf = "foamkit.__main__:main"
+foamkit = "foamkit.__main__:main"
 
-[tool.setuptools.packages]
-find = {}
+[tool.setuptools.packages.find]
+include = ["foamkit*"]
 
+[tool.setuptools.package-data]
+foamkit = ["config.ini"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -28,5 +45,3 @@ tag_format = "v$version"
 version_scheme = "semver"
 version_provider = "pep621"
 update_changelog_on_bump = true
-[build-system]
-requires = ["setuptools", "wheel"]

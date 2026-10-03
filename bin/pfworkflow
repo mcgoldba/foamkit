@@ -16,7 +16,7 @@ exec >> Log 2>&1
 # exec | 2> /dev/stderr
 #exec || (>&2 echo "Command returned an error!"; logHeader "END ON ERROR")
 
-# Find the scripts to call.  Try to locate in case directory, otherwise use default pyFoamd files
+# Find the scripts to call.  Try to locate in case directory, otherwise use default FoamKit files
 for script in Allrun Allmesh AllmeshCf postProcess reconstructMesh
 do
     if [ -f "$script" ]; then
