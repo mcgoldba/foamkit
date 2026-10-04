@@ -1,7 +1,11 @@
-FoamKit
--------
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mcgoldba/foamkit/main/docs/assets/foamkit-logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/mcgoldba/foamkit/main/docs/assets/foamkit-logo-light.svg" alt="FoamKit - A Pythonic interface to OpenFOAM" width="420">
+  </picture>
+</p>
 
-Pythonic modification of OpenFOAM dictionaries and case files.
+**FoamKit** is a Pythonic interface to OpenFOAM: modify OpenFOAM dictionaries and case files from Python.
 
 Features
 --------
