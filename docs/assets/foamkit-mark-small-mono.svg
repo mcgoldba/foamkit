@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="FoamKit mark">
+
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M18 8 C11 8 14 22 14 28 C14 31 10 32 4 32 C10 32 14 33 14 36 C14 42 11 56 18 56" stroke="#0F3F66" stroke-width="6"/>
+<path d="M46 8 C53 8 50 22 50 28 C50 31 54 32 60 32 C54 32 50 33 50 36 C50 42 53 56 46 56" stroke="#0F3F66" stroke-width="6"/>
+<path d="M22 20 C28 20 31 14 36 14 C41 14 42 19 44 20" stroke="#0F3F66" stroke-width="4.5"/>
+<path d="M22 47 C28 47 31 51 36 51 C41 51 42 48 44 48" stroke="#0F3F66" stroke-width="4.5"/>
+</g>
+<circle cx="29" cy="34" r="7" fill="#0F3F66"/>
+<circle cx="39" cy="28.5" r="5" fill="#0F3F66" fill-opacity="0.7"/>
+<circle cx="38" cy="41" r="4" fill="#0F3F66"/>
+</svg>
