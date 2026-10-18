@@ -13,6 +13,8 @@ dependencies:
   - rich
   - ipython
   - pytest
+  - ruff>=0.17.1,<0.18
+  - mypy>=1.19,<1.21
   - pip
   - pip:
       - -e .
