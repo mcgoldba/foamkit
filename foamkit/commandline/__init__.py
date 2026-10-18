@@ -13,7 +13,7 @@ import foamkit.types as pt
 import logging
 logger = logging.getLogger('foamkit')
 
-#- Environment variable used to pass `pf edit -path` to the IPython startup file
+#- Environment variable used to pass `fk edit -path` to the IPython startup file
 EDIT_PATH_ENV = 'FOAMKIT_EDIT_PATH'
 
 
@@ -30,12 +30,12 @@ def _strToBool(value):
 
 class CommandLine:
     def __init__ (self, addArgs, configFilepath=None):
-        #- `pf setConfig` writes to the per-user config, which takes
+        #- `fk setConfig` writes to the per-user config, which takes
         #  precedence over the config shipped with the package (writing into
         #  the installed package would need write access and is lost on
         #  upgrade).
         self.configFilepath = Path(configFilepath) if configFilepath else USER_CONFIG
-        self.prog = 'pf'
+        self.prog = 'fk'
         self.addArgs = addArgs
 
     def _parser(self, command, **kwargs):

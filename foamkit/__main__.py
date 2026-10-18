@@ -5,6 +5,7 @@ from foamkit import getFoamKitConfig, setLoggerLevel, enableRichTracebacks
 
 from foamkit.commandline import CommandLine
 
+from pathlib import Path
 from rich import print
 import logging
 
@@ -34,7 +35,11 @@ def main():
 
     print("[bold grey35]"+intro)
 
-    parser = argparse.ArgumentParser(prog = 'pf')
+    if Path(sys.argv[0]).stem == 'pf':
+        print("[bold orange]WARNING:[/bold orange] The 'pf' command is "
+              "deprecated and will be removed; use 'fk' instead.\n")
+
+    parser = argparse.ArgumentParser(prog = 'fk')
 
     #- parse args manually to find command args: everything after the command
     #  is passed to the command's own parser.

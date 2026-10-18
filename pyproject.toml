@@ -33,6 +33,8 @@ test = ["pytest"]
 Home = "https://github.com/mcgoldba/foamkit"
 
 [project.scripts]
+fk = "foamkit.__main__:main"
+#- Deprecated alias for `fk` (the command was renamed)
 pf = "foamkit.__main__:main"
 foamkit = "foamkit.__main__:main"
 

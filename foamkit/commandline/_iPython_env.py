@@ -5,12 +5,12 @@ import foamkit.functions as pf
 import foamkit.types as pt
 from foamkit.commandline import EDIT_PATH_ENV
 
-#- `pf edit -path <case>` passes the case path through the environment
+#- `fk edit -path <case>` passes the case path through the environment
 case = pf.load(os.environ.get(EDIT_PATH_ENV))
 
 class FoamKitPrompt(Prompts):
     def in_prompt_tokens(self, cli=None):
-        return [(Token.Prompt, 'pf edit>>')]
+        return [(Token.Prompt, 'fk edit>>')]
 
     def out_prompt_tokens(self):
         return []

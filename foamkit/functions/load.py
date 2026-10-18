@@ -69,8 +69,8 @@ def load(path=None, _backup=False):
                     else "INFO")
 
     if not path.is_file():
-        userMsg("No cached case data found.  Run 'pf init'"\
-            " before 'pf edit'.", "WARNING")
+        userMsg("No cached case data found.  Run 'fk init'"\
+            " before 'fk edit'.", "WARNING")
         return None
 
     with open(path, 'r') as fp:

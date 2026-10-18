@@ -35,7 +35,7 @@ def test_dict_file_to_string(path):
 def test_repeated_writes_converge(path, tmp_path):
     """
     Written files can be read back, and repeated read/write cycles reach a
-    fixed point, so `pf write` never degrades a file over time.  The first
+    fixed point, so `fk write` never degrades a file over time.  The first
     two rewrites may still normalize formatting (e.g. a one-line list such as
     `libs ("lib.so");` becoming a multi-line list).
     """
