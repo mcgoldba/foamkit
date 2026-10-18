@@ -4,7 +4,9 @@ import pytest
 import foamkit.functions as pf
 from conftest import FIXTURES
 
-REAL = (FIXTURES / "pitzDaily" / "system" / "controlDict").read_bytes()
+#- Normalized to LF, as the variants below add their own line endings
+REAL = (FIXTURES / "pitzDaily" / "system" / "controlDict").read_bytes() \
+    .replace(b"\r\n", b"\n")
 LINES = REAL.split(b"\n")
 
 
