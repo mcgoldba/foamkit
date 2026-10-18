@@ -8,7 +8,7 @@ import logging
 log = logging.getLogger("foamkit")
 
 #TODO:  Should this replace the inputParameters file?
-def readConfig(key=None, file="foamkit.json", caseDir=Path.cwd()):
+def readConfig(key=None, file="foamkit.json", caseDir=None):
     """
     Reads a value to the specified configuration file, or returns the 
     configuration file as a python dictionary.
@@ -25,6 +25,9 @@ def readConfig(key=None, file="foamkit.json", caseDir=Path.cwd()):
         `foamkit.json` does not exist.
 
     """
+
+    if caseDir is None:
+        caseDir = Path.cwd()
 
     if file[-5:] != ".json":
         file = file+".json"

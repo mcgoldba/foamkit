@@ -1,40 +1,24 @@
-from foamkit.types import _ofTypeBase, ofComment, ofHeader
+from foamkit.types import ofDictFile
 import copy
 
 def clean(ofDict, keys=None):
     """
-    Clears all entries of ofDict or ofDictFile. 
+    Return a copy of an ofDict or ofDictFile with all entries removed, except
+    the header, the FoamFile dictionary and '// * * * *' separator comments
+    (see `ofDictFile.clear`).  The argument is not modified.
 
     Parameters
     ----------
 
-    directory : str
-        The case directory in which to search for a valid mesh.
+    ofDict : ofDict or ofDictFile
+        The dictionary to clean.
+
+    keys : unused
 
     """
-
-    #TODO:  Can this be implemented as a method the ofDict and ofDictFile classes?
-
     ofDict_ = copy.deepcopy(ofDict)
 
-    rmKeys = []
-
-    for key, item in ofDict.items():
-        if isinstance(item, _ofTypeBase):
-            if isinstance(item, ofComment):
-                if not item.value.startswith('// * * * *'):
-                    rmKeys.append(key)
-                continue
-            if not (isinstance(item, ofHeader) 
-                or item._name=='FoamFile'):
-                rmKeys.append(key)
-
-    print(ofDict.__dict__)
-    print(ofDict.items())
-    print(f'rmKeys: {rmKeys}')
-
-    for key in rmKeys:
+    for key in ofDictFile._clearableKeys(ofDict_):
         del ofDict_.__dict__[key]
-        #ofDict.pop(key)
 
     return ofDict_

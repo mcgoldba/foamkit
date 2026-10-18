@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 from pathlib import Path
 import pandas as pd
 import re
@@ -10,7 +9,7 @@ import logging
 logger = logging.getLogger('foamkit')
 
 def plot(relDataFile=None, monitor=None, filter=None, logScale=False, 
-    workingDir=Path.cwd(), yrange = None, returnPlot= False):
+    workingDir=None, yrange = None, returnPlot= False):
     """
     Plot data from a log file.  
 
@@ -48,6 +47,13 @@ def plot(relDataFile=None, monitor=None, filter=None, logScale=False,
     # logger.debug(f"columns: {df.columns}")
     # df.columns = header[1:]
 
+    #- matplotlib is slow to import; only load it when plotting.
+    import matplotlib.pyplot as plt
+    from foamkit.functions.monitor import PLOT_STYLE
+
+    if workingDir is None:
+        workingDir = Path.cwd()
+
     if monitor is None:
         if relDataFile is None:
             userMsg("Must provide one of the arguments 'relDataFile' or \
@@ -65,9 +71,9 @@ def plot(relDataFile=None, monitor=None, filter=None, logScale=False,
     data = monitor.data.to_numpy().T
     names = monitor.data.columns
 
-    logger.debug(f"names: {names}")
-    logger.debug(f"data: {data}")
-    logger.debug(f"xData: {xData}")
+    logger.debug("names: %s", names)
+    logger.debug("data: %s", data)
+    logger.debug("xData: %s", xData)
 
     if filter is not None:
         filteredNames = []
@@ -85,21 +91,22 @@ def plot(relDataFile=None, monitor=None, filter=None, logScale=False,
                 {filter}", "ERROR")
 
 
-    for lineData, name in zip(data, names):
-        logger.debug(f"lineData: {lineData}")
-        logger.info(f"Adding {name} data to plot")
-        plt.plot(xData, lineData, label = name)
-    
-    plt.xlabel(monitor.data.index.name)
-    plt.ylabel('Value')
-    plt.title(monitor._name)
-    plt.legend()
-    if logScale:
-        plt.yscale('log')
-    if yrange is not None:
-        plt.ylim(yrange)
+    with plt.style.context(PLOT_STYLE):
+        for lineData, name in zip(data, names):
+            logger.debug("lineData: %s", lineData)
+            logger.info(f"Adding {name} data to plot")
+            plt.plot(xData, lineData, label = name)
+        
+        plt.xlabel(monitor.data.index.name)
+        plt.ylabel('Value')
+        plt.title(monitor._name)
+        plt.legend()
+        if logScale:
+            plt.yscale('log')
+        if yrange is not None:
+            plt.ylim(yrange)
 
-    if returnPlot:
-        return plt
-    else:
-        plt.show()
+        if returnPlot:
+            return plt
+        else:
+            plt.show()

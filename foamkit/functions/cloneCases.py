@@ -28,21 +28,18 @@ def cloneCases(srcPath, destPath, sshSrc=None, sshDest=None, includeTriSurface=F
     #- TODO:  Also copy the studySamplePoints.txt file, and .params directory
 
 
+    srcPath = Path(srcPath)
+    destPath = Path(destPath)
+
     cases = listCases(srcPath)
 
-    # if not Path(destPath).is_dir():
-    #     Path(destPath).mkdir()
-    # else:
-    #     userMsg('Destintion directory is existing.', 'ERROR')
-    #     sys.exit()
-
-
     for casePath in cases:
-        logger.debug(f"Cloning case directory: {casePath}")
+        logger.debug("Cloning case directory: %s", casePath)
 
-        (destPath / casePath).mkdir(parents=True)
+        if not sshDest:
+            (destPath / casePath).mkdir(parents=True)
 
-        logger.debug(f"clone src path: {srcPath / casePath}")
+        logger.debug("clone src path: %s", srcPath / casePath)
 
         cloneCase(srcPath / casePath, 
             destPath / casePath,
@@ -50,9 +47,15 @@ def cloneCases(srcPath, destPath, sshSrc=None, sshDest=None, includeTriSurface=F
             sshDest=sshDest,
             includeTriSurface=includeTriSurface)
 
+    if sshDest:
+        #- The '.params' and 'studySamplePoints.txt' files below are only
+        #  copied for local destinations.
+        return
+
     #- Copy the .params directory
-#     subprocess.check_call(f"cp -r {srcPath.rstrip('/')}/.params/ {destPath)}")
-    shutil.copytree(f"{srcPath.rstrip('/')}/.params/", f"{destPath.rstrip('/')}/.params/", dirs_exist_ok=True)
+    if (srcPath / '.params').is_dir():
+        shutil.copytree(srcPath / '.params', destPath / '.params',
+                        dirs_exist_ok=True)
 
 
     #- copy all 'studySamplePoint.txt' files

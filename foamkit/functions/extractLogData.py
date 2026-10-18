@@ -7,7 +7,7 @@ import logging
 log = logging.getLogger("foamkit")
 
 def extractLogData(logFile, searchString, marker=['{','}'],
-regex=False, logFileLabels = False, path=str(Path.cwd())):
+regex=False, logFileLabels = False, path=None):
     """
     Extract data from a log file.  Function parses each line of a log file and
     searches for strings that match the `searchString` pattern.
@@ -43,13 +43,17 @@ regex=False, logFileLabels = False, path=str(Path.cwd())):
 
 
     """
-    cases = listCases(path=path)
+    if path is None:
+        path = str(Path.cwd())
+
+    #- Absolute paths: relative ones are relative to `path`, not the cwd
+    cases = listCases(path=path, absolutePath=True)
     foundItems = []
-    logfileLabels = []
+    logFilepaths = []
     for case in cases:
         logFilepath = Path(case) / logFile
         if logFilepath.is_file():
-            logFileText = open(logFilepath, "r").read()
+            logFileText = logFilepath.read_text()
             if regex is False:
                 #ignore any characters between markers
                 searchString_ = searchString.split(marker[0])
@@ -72,9 +76,9 @@ regex=False, logFileLabels = False, path=str(Path.cwd())):
             foundItems.append(found_.group(1))
 
             if logFileLabels:
-                logFileLabels.append(logFilepath)
+                logFilepaths.append(logFilepath)
 
     if logFileLabels:
-        return foundItems, logFileLabels
+        return foundItems, logFilepaths
     else:
         return foundItems

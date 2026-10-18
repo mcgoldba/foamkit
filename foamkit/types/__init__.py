@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import sys
 import string #- to check for whitespace
+import textwrap
 import re
 import pandas as pd
 import copyreg
@@ -198,13 +199,16 @@ class ofWord(_ofUnnamedTypeBase):
             raise ValueError("String cannot be converted to a word.")
 
     def toString(self, ofRep=False, indent=True) -> str:
-        if indent:
+        if ofRep:
+            #- A lone keyword (e.g. `grad(U);` in a 'cache' dict) has no
+            #  value column to align to; padding it would write
+            #  `grad(U)     ;`, which reads back as a keyword with an empty
+            #  value.
+            str_ = str(self.value.strip()) + ";"
+        elif indent:
             str_ =  printNameStr(self.value.strip())
         else:
             str_ = str(self.value.strip())
-
-        if ofRep:
-            str_ += "; "
         
         if self._comment is not None:
             str_ += " //"+str(self._comment)
@@ -469,45 +473,18 @@ class _ofFolderBase(_ofFolderItemBase):
     _type: type = 'ofFolder'
 
     def __deepcopy__(self, memo=None):
-        copy_ = FolderParser(self._path).initOFFolder()
-        # copy_.__dict__ = copy.deepcopy(self.__dict__)
+        if memo is None:
+            memo = {}
 
-        # ref: https://stackoverflow.com/a/15774013/10592330 
-        # memo[id(copy_)] = copy_
-        for k,v in self.__dict__.items():
-            print(f"{TAB_STR_DEBUG}start ofFolder deepcopy: {k}, {type(v)}")
-            # try: 
+        copy_ = FolderParser(None, self._path).initOFFolder()
+        # ref: https://stackoverflow.com/a/15774013/10592330
+        memo[id(self)] = copy_
+
+        for k, v in self.__dict__.items():
             if isinstance(v, types.MappingProxyType):
-                print(f"{TAB_STR_DEBUG}Found mappingproxy object {k}.")
                 setattr(copy_, k, v)
-            # elif isinstance(v, _ofTypeBase) and hasattr(super(type(v), v), '__setattr__'):
-            #     print(f"Found ofType with setattr: {type(v)}.")
-            #     super(type(v), v).__setattr__(k, copy.deepcopy(v, memo))  
             else:
-                print(f"{TAB_STR_DEBUG}Setting {k} to {v} in deepcopy.")
                 setattr(copy_, k, copy.deepcopy(v, memo))
-            # except Exception as e:
-            #     print(f"Error deep copying attribute {k}: {e}.\nFalling back to shallow copy.")
-            #     setattr(copy_, k, v)  # Fallback to shallow copy
-     
-    # def __deepcopy__(self, memo=None):
-    #     if memo is None:
-    #         memo = {}
-
-    #     copy_ = FolderParser(None, self._path).initOFFolder()
-    #     memo[id(self)] = copy_
-
-    #     for k, v in self.__dict__.items():
-    #         try: 
-    #             if isinstance(v, types.MappingProxyType):
-    #                 # Handle mappingproxy objects separately
-    #                 setattr(copy_, k, v)
-    #             else:
-    #                 setattr(copy_, k, copy.deepcopy(v, memo))
-    #         except Exception as e:
-    #             print(f"Error copying attribute {k}: {e}")
-    #             setattr(copy_, k, v)  # Fallback to shallow copy
-        
 
         return copy_
 
@@ -526,7 +503,7 @@ class _ofFolderBase(_ofFolderItemBase):
 
     def __setattr__(self, key, value):
         if key == '_name':
-            logger.debug(f"{TAB_STR_DEBUG}Setting ofFolder attribute: {key}: {type(value)}")
+            logger.debug("%sSetting ofFolder attribute: %s: %s", TAB_STR_DEBUG, key, type(value))
         if isinstance(value, _ofFolderItemBase):
             # print(f"value._type: {value._type}")
             if hasattr(value, "_name") and value._name is None:  # ofFolders do not have a "_name" attribute
@@ -576,15 +553,15 @@ copyreg.pickle(_ofFolderBase, pickleOfFolder)
 
 class FolderParser:  # Class is required because 'default_factory' argument 
                      # 'makeOFFolder' must be zero argument
-    def __init__(self, casePath, path=Path.cwd()):
+    def __init__(self, casePath, path=None):
         self.casePath = casePath
-        self.path = path
+        self.path = Path.cwd() if path is None else path
 
     def makeOFFolder(self):
 
         # logging.getLogger('foamkit').setLevel(logging.DEBUG)
 
-        logger.debug(f"Parsing folder: {self.path}")
+        logger.debug("Parsing folder: %s", self.path)
 
         # #- Path relative to the case directory
         # caseRelDir = self.path.relative_to(*self.path.parts[:2])
@@ -707,17 +684,24 @@ class _ofCaseBase(_ofTypeBase):
     constant : _ofFolderBase = field(init=False)
     system : _ofFolderBase = field(init=False)
 
+    #- Class attribute (not a dataclass field, so never serialized).  Cases
+    #  built by `CaseParser.initOFCase()` set it to False: their contents are
+    #  about to be replaced (from JSON, a deepcopy, ...), so parsing
+    #  'constant' and 'system' from disk would be wasted work.
+    _parseFolders = True
+
     def __post_init__(self):
-        #self._path = Path(self._location) / self._name
-        # logger.debug(f"ofCase post init path: {self._path}")
         if not isinstance(self._path, Path):
             self._path = Path(self._path).resolve()
         if not _isCase(self._path):
             userMsg(f"Specified path is not an OpenFOAM case:\n{self._path}")
-        #self._location = str(self._path.parent.resolve())
         self._name = str(self._path.name)
-        self.constant = FolderParser(self._path, 'constant').makeOFFolder()
-        self.system = FolderParser(self._path, 'system').makeOFFolder()
+        if self._parseFolders:
+            self.constant = FolderParser(self._path, 'constant').makeOFFolder()
+            self.system = FolderParser(self._path, 'system').makeOFFolder()
+        else:
+            self.constant = FolderParser(self._path, 'constant').initOFFolder()
+            self.system = FolderParser(self._path, 'system').initOFFolder()
 
 
     @property
@@ -738,28 +722,18 @@ class _ofCaseBase(_ofTypeBase):
     #     return str(self._path)
 
     def __deepcopy__(self, memo):
-        global TAB_STR_DEBUG
+        #- The skeleton case does not parse the disk; every attribute
+        #  (including 'constant' and 'system') is copied from `self` below.
         copy_ = CaseParser(self._path).initOFCase()
 
-        # ref: https://stackoverflow.com/a/15774013/10592330 
-        # memo[id(copy_)] = copy_
+        # ref: https://stackoverflow.com/a/15774013/10592330
+        memo[id(self)] = copy_
         for k,v in self.__dict__.items():
-            # try: 
             if isinstance(v, types.MappingProxyType):
                 # Handle mappingproxy objects separately
                 setattr(copy_, k, v)
-            elif isinstance(v, (_ofTypeBase, _ofFolderBase)):
-                setattr(copy_, k, copy.deepcopy(v, memo))
             else:
                 setattr(copy_, k, copy.deepcopy(v, memo))
-        # except Exception as e:
-            #     log.warning(f"Error deep copying attribute {k}: {e}.\nFalling back to shallow copy.")
-            #     setattr(copy_, k, v)  # Fallback to shallow copy
- 
-        # logger.debug(f"dictCopy:\n{dictCopy}")
-
-        # copy_.__dict__.update(dictCopy)
-        # copy_.__dict__ = self.__dict__
 
         return copy_
 
@@ -817,7 +791,7 @@ class _ofCaseBase(_ofTypeBase):
         # Define inner loop to distinush between the user command case.toDict(),
         # and the recursive function returning a `None` object.
         def _toDict(obj):
-            logger.debug(f"Parsing obj: {type(obj)}")
+            logger.debug("Parsing obj: %s", type(obj))
             if hasattr(obj, '__dict__'):
                 logger.debug(obj.__dict__)
 
@@ -836,7 +810,7 @@ class _ofCaseBase(_ofTypeBase):
             #     return dict((key, _toDict(val)) for 
             #                     key, val in obj.attrDict().items())
             elif isinstance(obj, _ofTypeBase):
-                logger.debug(f"attrDict: {obj.attrDict()}")
+                logger.debug("attrDict: %s", obj.attrDict())
                 return dict((key, _toDict(val)) for 
                                 key, val in obj.attrDict().items())
                 # return _toDict(obj.attrDict())
@@ -891,16 +865,14 @@ class _ofCaseBase(_ofTypeBase):
         if str(filepath)[-5:] != '.json':
             filepath = Path(str(filepath)+'.json')
 
-        # logger.debug(f"case: {self}")
 
         case_ = self.toDict(self)
 
         # logger.debug(f"case_: {case_}")
 
        
-        if not Path(filepath).parent.is_dir():
-            os.mkdir(Path(filepath).parent)
-        
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+
         with open(filepath, 'w')  as fp:
             json.dump(case_, fp, skipkeys=False, indent=TAB_SIZE, 
                         sort_keys=False)
@@ -978,7 +950,9 @@ class _ofCaseBase(_ofTypeBase):
         script_ = str(Path(self._path)/ cmd)
         userMsg(f"Running Allrun script from {self._path}.")
         try:
-            subprocess.check_call(script_, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            #- `run` drains both pipes while waiting; `check_call` with PIPE
+            #  deadlocks once the script fills the OS pipe buffer.
+            subprocess.run(script_, capture_output=True, check=True)
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed with return code: {e.returncode}")
             if e.output:
@@ -993,7 +967,9 @@ def pickleOfCase(f):
 copyreg.pickle(_ofCaseBase, pickleOfCase)
 
 class CaseParser:
-    def __init__(self, path=Path.cwd()):
+    def __init__(self, path=None):
+        if path is None:
+            path = Path.cwd()
         if not isinstance(path, Path):
             self.path = Path(path)
         else:
@@ -1001,7 +977,7 @@ class CaseParser:
   
     def makeOFCase(self):
 
-        debug = True if getFoamKitConfig('debug') == 'True' else False
+        debug = bool(getFoamKitConfig('debug'))
 
         setLoggerLevel("DEBUG" if debug else "INFO")
 
@@ -1078,9 +1054,12 @@ class CaseParser:
         return dc_(_path=self.path)
 
     def initOFCase(self):
-
-        return make_dataclass('ofCase', [], 
-                                bases=(_ofCaseBase, ))(_path=self.path)
+        """
+        Initialize an ofCase instance without parsing the case directory.
+        'constant' and 'system' are empty ofFolders.
+        """
+        return make_dataclass('ofCase', [], bases=(_ofCaseBase, ),
+                              namespace={'_parseFolders': False})(_path=self.path)
 
 # @dataclass
 # class _ofDictFileBase:
@@ -1658,19 +1637,15 @@ class ofTable(ofList):
         if (all([isinstance(l, list) for l in list_])
             and all([len(list_[0]) == len(l) for l in list_[1:]])):
             
-            table_ = pd.DataFrame()
-
             if len(list_) > 1:
+                #- Build the frame in one call (concatenating row by row is
+                #  quadratic in the number of rows).
                 if isinstance(list_[0][1], list): # if '(0.0 (1 2 3))' format
-                    for item in list_:
-                        df_ = pd.DataFrame(item[1], index=[item[0]])
-                        table_ = pd.concat([table_, df_])
+                    rows = [item[1] for item in list_]
                 else:  # '(0.0 1 2 3)' format
-                    for item in list_:
-                        df_ = pd.DataFrame(item[1:], index=[item[0]])
-                        table_ = pd.concat([table_, df_])
-            
-                self._value = table_
+                    rows = [item[1:] for item in list_]
+                self._value = pd.DataFrame(rows,
+                                           index=[item[0] for item in list_])
 
             else:
                 raise Exception("Invalid list formatting for table.")                
@@ -1689,6 +1664,10 @@ class ofTable(ofList):
                 value_ = self.value
             if isinstance(value_, pd.DataFrame):
                 for row in value_.itertuples():
+                    if len(row) > 2:
+                        #- Vector/tensor values: '(x (v1 v2 v3))'
+                        list_.append([row[0], list(row[1:])])
+                    else:
                         list_.append(list(row))
         
         return list_
@@ -1698,22 +1677,6 @@ class ofTable(ofList):
         str_ = printNameStr(self.name)+' table '+\
             ofSplitList(self.toList()).toString(ofRep=ofRep)
         return str_
-        for v in self.value:
-            if isinstance(v, ofDict):
-                dStr2 = v.toString().split(" ")
-                for i in range(len(dStr2)):
-                    dStr2[i] = TAB_STR+dStr2[i]+" "
-                    dStr += dStr2[i]
-            elif hasattr(v, 'toString') and callable(getattr(v, 'toString')):
-                dStr += v.toString()
-            else:
-                dStr += str(v)+" "
-        dStr+= ");"
-
-        if ofRep:
-            dStr = dStr.rstrip(';')
-
-        return dStr
     # def toString(self) -> str:
     #     return self.valueStr
     #def toString(self) -> str:
@@ -1870,9 +1833,8 @@ class ofMultilineStatement(_ofNamedTypeBase):
                     dStr += printNameStr('') 
                     dStr += v.toString(ofRep=False).strip()+"\n"
                 else:
-                    logger.error("Could not find 'toString' method for type "\
-                    f"{type(v)}")
-                    sys.exit()
+                    userMsg("Could not find 'toString' method for type "\
+                    f"{type(v)}", "ERROR")
             dStr = dStr.rstrip('\n')
         if ofRep:
             dStr+= ";\n"
@@ -1909,7 +1871,10 @@ class ofDict(dict, _ofTypeBase):
 
     # ref: https://stackoverflow.com/questions/2352181/how-to-use-a-dot-to-access-members-of-dictionary
     __getattr__ = dict.get
-    __delattr__ = dict.__setitem__
+
+    def __delattr__(self, key):
+        #- Entries are stored as attributes (see `__setattr__`)
+        del self.__dict__[key]
 
 
     
@@ -1971,8 +1936,7 @@ class ofDict(dict, _ofTypeBase):
 
         def _parseList(obj):
             if not isinstance(obj, list):
-                logger.error("Recieved non list type as value.")
-                sys.exit()
+                userMsg("Recieved non list type as value.", "ERROR")
                 # type_, value_ = DictFileParser._parseValue(v)
                 # return type_(value)
             else:
@@ -2147,6 +2111,10 @@ class ofDict(dict, _ofTypeBase):
                     # dStr = dStr.rstrip()
                     # dStr+=';'
                     dStr += '\n'
+                elif isinstance(v, _ofVerbatimCode):
+                    #- Multi-line: indent every line, not only the first
+                    for v_ in v.toString(ofRep=ofRep).rstrip('\n').split('\n'):
+                        dStr+= (TAB_STR+v_ if v_ else '')+'\n'
                 elif hasattr(v, 'toString') and callable(getattr(v, 'toString')):
                     # dStr += printNameStr(TAB_STR+k)+v.toString()
                     dStr += TAB_STR+v.toString(ofRep=ofRep)
@@ -2339,20 +2307,28 @@ class ofDictFile(ofDict, _ofFolderItemBase):
         Removes all entries from dictionary file while retaining 
         header information. 
         """
+        for key in self._clearableKeys():
+            del self.__dict__[key]
+
+    def _clearableKeys(self):
+        """
+        Keys of the entries removed by `clear()`: everything except the
+        header, the FoamFile dictionary and '// * * * *' separator comments.
+        Entries are stored as attributes, so `self.__dict__` is searched (the
+        underlying `dict` storage is unused).
+        """
         rmKeys = []
-
-        for key, item in self.items():
-            if isinstance(item, _ofTypeBase):
-                if isinstance(item, ofComment):
-                    if not item.value.startswith('// * * * *'):
-                        rmKeys.append(key)
-                    continue
-                if not (isinstance(item, ofHeader) 
-                    or item._name=='FoamFile'):
+        for key, item in self.__dict__.items():
+            if key in self._CLASS_VARS or not isinstance(item, _ofTypeBase):
+                continue
+            if isinstance(item, ofComment):
+                if not str(item.value).lstrip('/').strip().startswith('* * * *'):
                     rmKeys.append(key)
-
-        for key in rmKeys:
-            del self[key]
+                continue
+            if not (isinstance(item, ofHeader)
+                or getattr(item, '_name', None) == 'FoamFile'):
+                rmKeys.append(key)
+        return rmKeys
 
 
 
@@ -2778,7 +2754,7 @@ class _ofFunctionEntry(_ofUnnamedTypeBase):
 
     @vBracketType.setter
     def vBracketType(self, v: int) -> None:
-        self._feType = v
+        self._vBracketType = v
 
     def toString(self, ofRep=False) -> str:
         pStr = f'#{printNameStr(self.feType)}'
@@ -2857,6 +2833,8 @@ class ofEval(_ofFunctionEntry, _ofNamedTypeBase):
     def toString(self, ofRep=False) -> str:
         pStr = f'{printNameStr(self.name)}' if self.name is not None else ''
         pStr += f'#{self.feType}'
+        if self.vBracketType == 0:
+            pStr += " "  #- `#eval "..."`: the string is a separate token
         pStr += BRACKET_CHARS['verbatim'][self.vBracketType][0]+" "
         pStr+= self.value
         pStr += " "+BRACKET_CHARS['verbatim'][self.vBracketType][1]
@@ -2970,7 +2948,7 @@ class _ofVerbatimCode(_ofUnnamedTypeBase):
 
     @property
     def vcType(self) -> str:
-        return self._feType
+        return self._vcType
 
     @vcType.setter
     def vcType(self, v: str) -> None:
@@ -2983,23 +2961,25 @@ class _ofVerbatimCode(_ofUnnamedTypeBase):
 
     @vBracketType.setter
     def vBracketType(self, v: int) -> None:
-        self._feType = 2
+        self._vBracketType = 2
         userMsg("Bracket type cannot be changed for verbatim code.", "WARNING")
 
     def toString(self, ofRep=False) -> str:
-        pStr = f'{printNameStr(self.vcType)}\n'
-        pStr += printNameStr(BRACKET_CHARS['verbatim'][self.vBracketType][0])
-        pStr += self.value
-        pStr += printNameStr(TAB_STR+BRACKET_CHARS['verbatim'][self.vBracketType][1])
+        """
+        Multi-line string: the keyword, the opening bracket, the code indented
+        by one level, and the closing bracket.  Containing dictionaries
+        indent every line (see `ofDict.toString`).
+        """
+        opening, closing = BRACKET_CHARS['verbatim'][self.vBracketType]
+        lines = [self.vcType, opening]
+        lines += [TAB_STR+line if line.strip() else ''
+                  for line in str(self.value).split('\n')]
+        lines.append(closing + (';' if ofRep else ''))
 
-
-        if ofRep:
-            pStr+=';'
-        
         if self._comment is not None:
-            pStr+= f" {str(self._comment)}"
+            lines[-1] += f" {str(self._comment)}"
 
-        return pStr+'\n'
+        return '\n'.join(lines)+'\n'
 
 
 @dataclass
@@ -3100,6 +3080,40 @@ def createVerbatimCodeRegistry(func):
         createVerbatimCodeRegistry(dc)
 createVerbatimCodeRegistry(_ofVerbatimCode)
 
+class _RowBuffer:
+    """
+    Growable table of monitor rows.
+
+    Replaces repeated `np.append` (which copies the whole array for every
+    row, i.e. O(n^2) to read a file) with list appends.  Exposes the `shape`
+    attribute that `_ofMonitorBase._parseLine` inspects.
+    """
+    def __init__(self, rows=None):
+        self.rows = [list(r) for r in rows] if rows is not None else []
+        self.width = len(self.rows[0]) if self.rows else 0
+
+    @property
+    def shape(self):
+        return (len(self.rows), self.width)
+
+    def append(self, row):
+        if self.rows and len(row) != self.width:
+            raise ValueError("all the input array dimensions except for the "
+                "concatenation axis must match exactly")
+        if not self.rows:
+            self.width = len(row)
+        self.rows.append(list(row))
+
+    def padTo(self, width):
+        """Pad existing rows with zeros (as `np.pad` did) to `width` values."""
+        for row in self.rows:
+            row.extend([0] * (width - len(row)))
+        self.width = width
+
+    def toArray(self):
+        return np.array(self.rows)
+
+
 @dataclass
 class _ofMonitorBase:
     _dataPath: Path
@@ -3107,7 +3121,7 @@ class _ofMonitorBase:
     _index: int = field(init=False, default=0)
     _startTime : str = field(init=False, default=0)
     _name : str = None
-    
+
     @property
     def data(self):
         return self._data
@@ -3120,58 +3134,46 @@ class _ofMonitorBase:
     def dataPath(self):
         return self._dataPath
 
-    # @dataPath.setter
-    # def dataPath(self, path):
-    def __post_init__(self):
-
-        # logging.getLogger('foamkit').setLevel(logging.DEBUG)
-
-        path = self._dataPath
-
-        # logger.debug(f"datapath: {path}")
-
-        if Path(path).is_file():
-            self._dataPath = Path(path)
+    def _checkDataPath(self):
+        """Validate `_dataPath` and store it as a `Path`.  Returns it."""
+        path = Path(self._dataPath)
+        if path.is_file():
+            self._dataPath = path
         else:
             userMsg(f"Invalid probe file specified:\n{path}", "ERROR")
+        return path
+
+    def __post_init__(self):
+
+        path = self._checkDataPath()
         #- TODO:  Check that the field is actually in the object registry
-        self._name = Path(path).parent.parent.name
+        self._name = path.parent.parent.name
 
-        time_ = Path(path).parent.name
-
+        time_ = path.parent.name
         try:
-            int(time_)
-            self.startTime = time_
+            float(time_)
         except ValueError:
             pass
         else:
-            try:
-                float(time_)
-                self.startTime= time_
-            except ValueError:
-                userMsg(f"Invalid startTime found for monitor: " \
-                +{self._dataPath}, "WARNING")
+            self.startTime = time_
 
-        if not hasattr(self, "_data") or self.data is None:
-            with open(self.dataPath) as file:
-                i = 0
-                self._locations = []
-                if self._columns is None:
-                    #- Parse commented lines
-                    while True:
-                        line = file.readline()
-                        if not line.startswith("#"):
-                            break
-                        prevLine = line
-                    self._columns = prevLine.lstrip('#').split('\t')
-                    self._columns = [v.strip() for v in self._columns]
-                
-                # logger.debug(f"columns: {self._columns}")
-                self._readData(file)
-        else:
-            with open(self.dataPath) as file:
-                self._readData(file)
-    
+        with open(self.dataPath) as file:
+            self._locations = []
+            if self._columns is None:
+                #- Parse commented lines; the column labels are on the last
+                #  one.  Rewind so the first data line is not consumed.
+                while True:
+                    pos = file.tell()
+                    line = file.readline()
+                    if not line.startswith("#"):
+                        file.seek(pos)
+                        break
+                    prevLine = line
+                self._columns = prevLine.lstrip('#').split('\t')
+                self._columns = [v.strip() for v in self._columns]
+
+            self._readData(file)
+
     def _readData(self, file):
         """Read data after header"""
         parsedColumnLabels = False
@@ -3185,31 +3187,25 @@ class _ofMonitorBase:
                 break
             if line.startswith('#'):
                 continue
-    
-            # logger.debug(f"parsedColumnLabels: {parsedColumnLabels}")            
 
             data_, parsedColumnLabels, columns = \
-                self._parseLine(line, linei, data_, 
+                self._parseLine(line, linei, data_,
                     parsedColumnLabels, parsedLabels)
 
+        #- Remember where reading stopped so `update()` only parses new lines
+        self._offset = file.tell()
+        self._linei = linei - 1
         self._storeData(data_, columns)
-        # self._data = pd.DataFrame(data=data_[:,1:], index=data_[:,0],
-        #                             columns=columns[1:])
-        # self._data = self._data.convert_dtypes()
-        # self._data.index.name = columns[0]                         
-        # # logger.debug(f"probes: {columns}")
-        # # self._data.columns = probes
-        # self._nSamples = self._data.shape[0]
 
-    def _parseLine(self, line, linei, data_, parsedColumnLabels=True, 
+    def _parseLine(self, line, linei, data_, parsedColumnLabels=True,
     parsedLabels=None):
-
-        # logging.getLogger('foamkit').setLevel(logging.DEBUG)
+        """
+        Parse one data line and append it to `data_` (a `_RowBuffer`, created
+        if `None`).  Returns `(data_, parsedColumnLabels, columns)`.
+        """
 
         if parsedLabels is None:
             parsedLabels = self._columns
-
-        # logger.debug(f"parsedLabels: {parsedLabels}")
 
         values = re.split(r'\s{2,}|\t', line.strip())
         values = [v.strip() for v in values]
@@ -3218,13 +3214,10 @@ class _ofMonitorBase:
         ofValues = [float(values[0])]
         ofTypes = [float]
 
-        for i, value in enumerate(values[1:]):
+        for value in values[1:]:
             ofType, ofValue = DictFileParser._parseValue(value)
-                        
             ofValues.append(ofValue)
             ofTypes.append(ofType)
-        
-        # logger.debug(f"ofValues:\n{ofValues}")
 
         def countValues(list_, n=0):
             for value in list_:
@@ -3232,161 +3225,115 @@ class _ofMonitorBase:
                     n+= countValues(value)
                 else:
                     n+= 1
-            # logger.debug(f"returning {n}...")
             return n
         nValues = countValues(ofValues)
-        # values_ = np.array(ofValues, dtype=object).flatten()
-        # logger.debug(f"values_: {values_}")
-        # nValues = values_.shape[0]
 
         # if found additional data values in middle of file, parse
         # header again
         if data_ is not None:
-            # logger.debug(f"nValues > data_.shape[1]: {nValues} > {data_.shape[1]}")
-            # logger.debug(f"parsedLabels: {parsedLabels}")
             if nValues > data_.shape[1]:
                 parsedLabels = [self._columns[0]]
                 parsedColumnLabels = False
-                # logger.debug(f'parsedColumnLabels set to {parsedColumnLabels}')
-
 
         for i, (ofValue, ofType) in enumerate(zip(ofValues[1:], ofTypes[1:])):
 
             if isinstance(ofValue, list):
-                for v in ofValue:
-                    parsedValues.append(v)
+                parsedValues.extend(ofValue)
 
                 if not parsedColumnLabels:
-                    # logger.debug(f"ofType: {ofType}")
-                    if ofType == ofVector:
-                        # logger.debug("Found ofVector...")
-                        #- Found vector
-                        parsedLabels.append(self._columns[i+1]+" X")
-                        parsedLabels.append(self._columns[i+1]+" Y")
-                        parsedLabels.append(self._columns[i+1]+" Z")
-                    elif ofType == ofSymmTensor:
-                        parsedLabels.append(self._columns[i+1]+" XX")
-                        parsedLabels.append(self._columns[i+1]+" XY")
-                        parsedLabels.append(self._columns[i+1]+" XZ")
-                        parsedLabels.append(self._columns[i+1]+" YY")
-                        parsedLabels.append(self._columns[i+1]+" YZ")
-                        parsedLabels.append(self._columns[i+1]+" ZZ")
-                    elif ofType == ofTensor:
-                        parsedLabels.append(self._columns[i+1]+" XX")
-                        parsedLabels.append(self._columns[i+1]+" XY")
-                        parsedLabels.append(self._columns[i+1]+" XZ")
-                        parsedLabels.append(self._columns[i+1]+" YX")
-                        parsedLabels.append(self._columns[i+1]+" YY")
-                        parsedLabels.append(self._columns[i+1]+" YZ")
-                        parsedLabels.append(self._columns[i+1]+" ZX")
-                        parsedLabels.append(self._columns[i+1]+" ZY")
-                        parsedLabels.append(self._columns[i+1]+" ZZ")
+                    label = self._columns[i+1]
+                    if ofType in _COMPONENT_SUFFIXES:
+                        parsedLabels.extend(f"{label} {c}"
+                                            for c in _COMPONENT_SUFFIXES[ofType])
                     elif ofType == ofSphericalTensor:
-                        parsedLabels.append(self._columns[i+1])
+                        parsedLabels.append(label)
                     else:
                         logger.warning("Could not locate appropriate ofType")
-                        parsedLabels.append(self._columns[i+1])
+                        parsedLabels.append(label)
                     #TODO: Check that the appropriate ofType was found
             else:
                 parsedValues.append(ofValue)
                 if not parsedColumnLabels:
                     parsedLabels.append(self._columns[i+1])
-        
-        # logger.debug("len(parsedValues) == len(parsedLabels): "
-            # f"{len(parsedValues)} == {len(parsedLabels)}")
+
         if len(parsedValues) == len(parsedLabels):
-            if not parsedColumnLabels:
-                columns = parsedLabels
-                parsedColumnLabels = True
-                # logger.debug(f'parsedColumnLabels set to {parsedColumnLabels}')
-            else:
-                columns = parsedLabels
+            columns = parsedLabels
+            parsedColumnLabels = True
         elif len(parsedLabels) < len(parsedValues):
             columns = self._columns
         else:
-            logger.warning(f"Skipping row {linei} with missing data.")
+            logger.warning("Skipping row %s with missing data.", linei)
             return data_, parsedColumnLabels, parsedLabels# skip rows with missing values
-            
-        # If data_ exists make sure it is the correct shape (in the case of 
-        # missing data for the first data points)
-        if data_ is not None:
-            if len(parsedValues) > data_.shape[1]:
-                # found additional data values in middle of file
-                #If data exists, pad existing values
-                # logger.debug(f"data_ size: {data_.shape}")
-                #TODO:  Doesnt handle case of missing value only in middle 
-                # columns
-                data_ = np.array([np.pad(v, (0, len(parsedValues)-
-                                    data_.shape[1])) for v in data_])
-                # logger.debug(f"data_ size after pad: {data_.shape}")
-
 
         if data_ is None:
-            data_ = np.array([parsedValues])
-        else:
-            # logger.debug(f"data_ shape: {data_.shape}")
-            # logger.debug(f"parsedValues shape: {np.array([parsedValues]).shape}")
-            # logger.debug(f"parsedValues: {[parsedValues]}")
-            data_ = np.append(data_, [parsedValues], axis=0)
+            data_ = _RowBuffer()
+        elif len(parsedValues) > data_.shape[1]:
+            # found additional data values in middle of file
+            #If data exists, pad existing values
+            #TODO:  Doesnt handle case of missing value only in middle
+            # columns
+            data_.padTo(len(parsedValues))
 
-        # parsedColumnLabels = True
-        # logger.debug(f'parsedColumnLabels set to {parsedColumnLabels}')
+        data_.append(parsedValues)
 
         return data_, parsedColumnLabels, columns
 
-    
     def update(self):
         """
-        Append only the unread lines to the existing data
+        Append only the lines written since the last read to the existing
+        data.  A partially written last line (no trailing newline yet) is left
+        for the next update.
         """
 
-        #TODO:  Accomodate list values for ofVector, ofTensor, etc.
+        columns = [self.data.index.name] + list(self.data.columns)
+        parsedColumnLabels = True
+        data_ = self._buffer
+        linei = self._linei
+        nParsed = 0
 
-        #TODO:  How do you check for new columns in case of vector or other list 
-        # values?  Always read the entire file until this can be fixed.
-
-        index_ = self.data.index.to_numpy(dtype=float).reshape( (-1,1) )
-
-        data_ = np.hstack((index_, self.data.to_numpy()))
-
-        i = self.nSamples - 1
         with open(self.dataPath) as file:
-            parsedColumnLabels = True
-            columns = [self.data.index.name]
-            for v in self.data.columns:
-                columns.append(v)
-            # logger.debug(f"columns: {columns}")
-            lines = file.readlines()
+            file.seek(self._offset)
             while True:
-                if i >= len(lines):
-                    break # Found end of file
-                line = lines[i]
+                pos = file.tell()
+                line = file.readline()
                 if not line:
                     break
+                if not line.endswith('\n'):
+                    file.seek(pos)
+                    break
+                linei += 1
                 if line.startswith('#'):
                     continue
                 data_, parsedColumnLabels, columns = \
-                        self._parseLine(line, i, data_, parsedColumnLabels, 
+                        self._parseLine(line, linei, data_, parsedColumnLabels,
                         columns)
-                # lineDf = pd.DataFrame(data_, index=i, 
-                #     columns=columns)
-                i+=1
-            # self._data = pd.DataFrame(data=data_[:,1:], index=data_[:,0],
-            #                         columns=columns[1:])
-            # self._data.convert_dtypes()
-            # self._data.index.name = columns[0]                         
-            # self._nSamples = self._data.shape[0]
-        self._storeData(data_, columns)
+                nParsed += 1
+            self._offset = file.tell()
+        self._linei = linei
+
+        if nParsed:
+            self._storeData(data_, columns)
 
     def _storeData(self, data_, columns):
-        self._data = pd.DataFrame(data=data_[:,1:], index=data_[:,0],
+        self._buffer = data_
+        array_ = data_.toArray()
+        self._data = pd.DataFrame(data=array_[:,1:], index=array_[:,0],
                                     columns=columns[1:])
-        # self._data = self._data.convert_dtypes()
-        self._data.index.name = columns[0]                         
+        self._data.index.name = columns[0]
         self._nSamples = self._data.shape[0]
 
+
+#- Column label suffixes for monitor values that are lists of components
+_COMPONENT_SUFFIXES = {
+    ofVector: ("X", "Y", "Z"),
+    ofSymmTensor: ("XX", "XY", "XZ", "YY", "YZ", "ZZ"),
+    ofTensor: ("XX", "XY", "XZ", "YX", "YY", "YZ", "ZX", "ZY", "ZZ"),
+}
+
 class MonitorParser:
-    def __init__(self, path=Path.cwd()):
+    def __init__(self, path=None):
+        if path is None:
+            path = Path.cwd()
         if not isinstance(path, Path):
             self.path = Path(path)
         else:
@@ -3447,7 +3394,9 @@ class MonitorParser:
 # cumbersome for saving data. 
 
 class MonitorCollectionParser:
-    def __init__(self, path=Path.cwd()):
+    def __init__(self, path=None):
+        if path is None:
+            path = Path.cwd()
         if not isinstance(path, Path):
             self.path = Path(path)
         else:
@@ -3502,45 +3451,28 @@ class ofProbe(_ofMonitorBase):
     # @dataPath.setter
     # def dataPath(self, path):
     #TODO:  Call baseclass __post_init__ function instead of copying code
-    def __post_init__(self): 
+    def __post_init__(self):
 
-        # logging.getLogger('foamkit').setLevel(logging.DEBUG)
-
-        path = self._dataPath
-
-        # logger.debug(f"datapath: {path}")
-
-        if Path(path).is_file():
-            self._dataPath = Path(path)
-        else:
-            userMsg(f"Invalid probe file specified:\n{path}", "ERROR")
+        path = self._checkDataPath()
         #- TODO:  Check that the field is actually in the object registry
-        self._field = Path(path).name
+        self._field = path.name
 
-        if not hasattr(self, "_data") or self.data is None:
-            #- Parse commented lines
-            with open(self.dataPath) as file:
-                i = 0
-                self._locations = []
-                self._columns = ['Time']
-                while True:
-                    line = file.readline()
-                    # logger.debug(f"line: {line}")
-                    if not line.startswith("# Probe"):
-                        break
-                    self._columns.append(f"Probe {i}")
-                    self._locations.append(
-                        ofVector([float(v) for v in 
-                            line.split('(')[1].split(')')[0].split()]))
-                    i+=1
-                # logger.debug(f"columns: {self._columns}")
-                #- read data after header
-                self._readData(file)
-
-        else:
-            #self._appendData()
-            with open(self.dataPath) as file:
-                self._readData(file)
+        #- Parse commented lines
+        with open(self.dataPath) as file:
+            i = 0
+            self._locations = []
+            self._columns = ['Time']
+            while True:
+                line = file.readline()
+                if not line.startswith("# Probe"):
+                    break
+                self._columns.append(f"Probe {i}")
+                self._locations.append(
+                    ofVector([float(v) for v in
+                        line.split('(')[1].split(')')[0].split()]))
+                i+=1
+            #- read data after header
+            self._readData(file)
 
         #         parsedColumnLabels = False
         #         parsedLabels = [self._columns[0]]
@@ -3707,7 +3639,7 @@ class ofStudy:
                             # for DataFrame conversion
     samples : np.ndarray
     updateFunction : Callable
-    path: Path = Path.cwd()
+    path: Path = field(default_factory=Path.cwd)
     runCommand : str = './Allrun'
 
     def __post_init__(self):
@@ -3929,26 +3861,34 @@ class DictFileParser:
             self.i+=1
             self.dictFile._foamFile = self._parseListOrDict('FoamFile')
 
+        #- Guard against parser bugs that stop consuming input.  Each
+        #  `_parseLine` call must advance the line index or consume an extra
+        #  line; the attempt cap scales with the file instead of being fixed.
+        maxAttempts = 10 * len(self.lines) + 1000
         attempts = 0
         while True:
-            attempts += 1
-            if attempts > 5000:
-                logger.error("Error reading dictionary file.  Maximum "\
-                    "number of lines exceeded:\n"+str(self.filepath))
-                sys.exit()
             if self.i >= len(self.lines):
                 break
-            
-            # logger.debug(f"Parsing line {self.i+1} of file {self.filepath}")
-            
+            attempts += 1
+            state = (self.i, tuple(self.extraLine))
+            if attempts > maxAttempts:
+                userMsg("Error reading dictionary file.  Parser made no "
+                    f"progress near line {self.i+1} of:\n{self.filepath}",
+                    "ERROR")
+
             value = self._parseLine()
+
+            if (self.i, tuple(self.extraLine)) == state:
+                userMsg("Error reading dictionary file.  Parser made no "
+                    f"progress at line {self.i+1} of:\n{self.filepath}",
+                    "ERROR")
 
             # logger.debug(f"** FINAL VALUE: {value}")
 
             # logger.debug(f"dictFile name = {self.dictFile._name} ")
 
             if value is not None:
-                logger.debug(f"adding value: {value}")
+                logger.debug("adding value: %s", value)
             #     self.entryList.append(value)
                 if (isinstance(value, _ofTypeBase) 
                     and not isinstance(value, ofComment)
@@ -3969,12 +3909,16 @@ class DictFileParser:
                     self.dictFile.update({name_: value})
                     self.nComments += 1
                 elif isinstance(value, _ofFunctionEntry):
-                    name_ = value.feType+str(self.nFeTypes[value.feType])
-                    self.dictFile.update({name_: value})
-                    self.nFeTypes[value.feType]+= 1
+                    if getattr(value, 'name', None) is not None:
+                        #- Named entry (e.g. `halfX #eval{...};`): keep the
+                        #  keyword, otherwise it is renamed on write.
+                        self.dictFile.update({value.name: value})
+                    else:
+                        name_ = value.feType+str(self.nFeTypes[value.feType])
+                        self.dictFile.update({name_: value})
+                        self.nFeTypes[value.feType]+= 1
                 else:
-                    logger.error(f"Invalid value type: {type(value)}.")
-                    sys.exit()
+                    userMsg(f"Invalid value type: {type(value)}.", "ERROR")
 
             # [status, lineStatus] = _readDictEntry(status, ofType, lines, i)
 
@@ -3989,7 +3933,7 @@ class DictFileParser:
 
     def _parseLine(self):
     
-        logger.debug(f"Parsing line {self.i+1}.")
+        logger.debug("Parsing line %s.", self.i+1)
         # logger.debug(f"\tself.extraLine: {self.extraLine}")
 
         # logger.debug(f"\tline[{self.i+1}]: {self.lines[self.i].rstrip()}")
@@ -4006,7 +3950,7 @@ class DictFileParser:
             lineList = self._getLinesList(self.extraLine[0])
             parsingExtraLine = True
 
-        logger.debug(f"filepath: {self.filepath}; lineList: {lineList}")
+        logger.debug("filepath: %s; lineList: %s", self.filepath, lineList)
 
         try:
             parsedComment = self._parseComments()
@@ -4018,7 +3962,7 @@ class DictFileParser:
             elif lineList[0][0] == '#':
                 if len(lineList) == 2 and 'include' in lineList[0]:
                     value = self._parseIncludes(lineList[0], lineList[1])
-                    logger.debug(f"includeValue: {value}")
+                    logger.debug("includeValue: %s", value)
                 else:
                     value = self._parseVerbatimEntry(lineList=lineList)
                 return value
@@ -4113,9 +4057,8 @@ class DictFileParser:
             # Found list or dict
             return self._parseListOrDict(lineList[0], line=lineList[1])
         else:
-            logger.error(f"Cannot handle single line entry '{lineList}' on line "\
-                f"{self.i+1} of {self.filepath}.")
-            sys.exit()
+            userMsg(f"Cannot handle single line entry '{lineList}' on line "\
+                f"{self.i+1} of {self.filepath}.", "ERROR")
 
 
     def _parseSingleLineEntry(self, key, value):
@@ -4130,9 +4073,11 @@ class DictFileParser:
 
         # logger.debug(f"key: {key}, value: {value}")
 
-        type_, value_ = self._parseValue(value)
+        if value.strip() == '':
+            #- A lone keyword written with padding, e.g. `grad(U)     ;`
+            return ofWord(key, _comment=self._getComment())
 
-        # logger.debug(f"{type_} signature: {signature(type_)}")
+        type_, value_ = self._parseValue(value)
 
         if hasattr(type_, 'name'):
             return type_(key, value_, _comment=self._getComment())
@@ -4165,7 +4110,7 @@ class DictFileParser:
 
         #linesList = self._getLinesList(self.lines[self.i])
 
-        logger.debug(f"Parsing list {name}.")
+        logger.debug("Parsing list %s.", name)
 
         if name is not None:
             name = name.strip()
@@ -4177,8 +4122,8 @@ class DictFileParser:
             # lineList = self.lines[self.i].strip().split()
             lineList = self._getLinesList(self.lines[self.i])
 
-        logger.debug(f"name: {name}")
-        logger.debug(f"lineList: {lineList}")
+        logger.debug("name: %s", name)
+        logger.debug("lineList: %s", lineList)
 
         if (name in list(OF_FUNCTION_ENTRIES.keys())+list(OF_VERBATIM_CODE_ENTRIES.keys()) 
             and lineList[0] in [c[0] for c in BRACKET_CHARS['verbatim']]):
@@ -4361,8 +4306,7 @@ class DictFileParser:
                 line=line.strip()[1:]
             if ';' in line:
                 if self.i != i_end:
-                    logger.error("Unhandled pattern found!")
-                    sys.exit()
+                    userMsg("Unhandled pattern found!", "ERROR")
                 #- store extra characters as a new line to be parsed later
                 self._addExtraLine(''.join(line.split(';')[1:]))
                 #- ignore last );
@@ -4560,9 +4504,8 @@ class DictFileParser:
 
         #- Check that the appropraite BRACKET_CHAR is actually in string
         if openingChar not in string:
-            logger.error(f"String does not contain {type} opening char "\
-                f"'{openingChar}.")
-            sys.exit()
+            userMsg(f"String does not contain {type} opening char "\
+                f"'{openingChar}.", "ERROR")
 
         # #- Remove first opening char and any preceding text
         # string = openingChar.join(string.split(openingChar)[1:])
@@ -4744,7 +4687,7 @@ class DictFileParser:
         """
         Extract value as the appropriate include type
         """
-        logger.debug(f"parsing key '{key}', and value '{value}'.")
+        logger.debug("parsing key '%s', and value '%s'.", key, value)
 
         if key == '#includeEtc':
             return ofIncludeEtc(value)
@@ -4783,9 +4726,18 @@ class DictFileParser:
             list_ = self._parseListValues(" ".join(lineList))
             return ofTable(name=name, value = list_) 
         else: # parse lines
-            line = self.lines[self.i]
-            list_ = self._parseList(name)
-            return ofTable(name=name, value = list_.value)
+            #- The list usually opens on the line after `<name> table`.  Join
+            #  the (comment-stripped) lines and reuse the single line parser.
+            while '(' not in self.lines[self.i]:
+                self.i += 1
+                if self.i >= len(self.lines):
+                    userMsg(f"Could not find the start of table '{name}' in "
+                        f"{self.filepath}.", "ERROR")
+            i_end = self._findDictOrListEndLine('list')
+            content = " ".join(l.split('//')[0].strip()
+                               for l in self.lines[self.i:i_end+1])
+            self.i = i_end
+            return self._parseTable(name, string=f"{name} table {content}")
 
     def _parseUniformField(self, name, string = None):
         """
@@ -4991,14 +4943,14 @@ class DictFileParser:
         #- Check if commented line
         comment = self._parseComments()
         if comment:
-            logger.debug(f"Found comment on line {self.i}")
+            logger.debug("Found comment on line %s", self.i)
             return None
 
         #- Check if the line contains a dimensioned type
         dimType = self._parseDimensionedType()
         # logger.debug(f"dimType: {dimType}")
         if dimType is not None:
-            logger.debug(f"Found dimension on line {self.i}")
+            logger.debug("Found dimension on line %s", self.i)
             return dimType
         
         #- Check if value is a dimension
@@ -5006,7 +4958,7 @@ class DictFileParser:
         dimValue = self._parseDimensionValue()
         # logger.debug(f"dimValue: {dimValue}")
         if dimValue is not None:
-            logger.debug(f"Found dimensioned vlaue on line {self.i}")
+            logger.debug("Found dimensioned vlaue on line %s", self.i)
             return dimValue
 
         #- Check if value is a bounging box
@@ -5014,7 +4966,7 @@ class DictFileParser:
         boxValue = self._parseBoundBoxValue()
         # logger.debug(f"dimValue: {dimValue}")
         if boxValue is not None:
-            logger.debug(f"Found bound box on line {self.i}")
+            logger.debug("Found bound box on line %s", self.i)
             return boxValue
 
         #- check if the line value terminates in an open list or dict
@@ -5226,7 +5178,7 @@ class DictFileParser:
         if lineList is None:
             lineList = self._getLinesList(self.lines[self.i])
 
-        logger.debug(f"lineList: {lineList}")
+        logger.debug("lineList: %s", lineList)
 
         if (lineList[0].strip()[0] != '#' 
             and lineList[0] not in OF_VERBATIM_CODE_ENTRIES.keys()):
@@ -5238,16 +5190,27 @@ class DictFileParser:
         #- Determine which type of bracket character is used ('{', '"' or '#{')
         bi = 0 if len(lineList) == 1 else 1
         bCharType = None
+        #- True if the opening bracket is part of the value tokens (e.g.
+        #  `#eval "..."` or `#eval { ... }`), rather than attached to the
+        #  directive (`#eval{ ... }`).
+        bracketInValue = False
         if vType[-1] == '{':
             bCharType = 1
             vType=vType[:-1] #- remove the '{' from the name
-        # elif vType == 'codeExecute':
+        elif vType[-1] == '"':
+            bCharType = 0
+            vType=vType[:-1] #- remove the '"' from the name
         elif vType in OF_VERBATIM_CODE_ENTRIES.keys():
             bCharType = 2
         elif lineList[bi][0] == '"':
             bCharType = 0
-        elif lineList[bi][:1] == '#{':
+            bracketInValue = True
+        elif lineList[bi][:2] == '#{':
             bCharType = 2
+            bracketInValue = True
+        elif lineList[bi][0] == '{':
+            bCharType = 1
+            bracketInValue = True
         else:
             #- Search the next lines
             while bCharType is None:            
@@ -5255,37 +5218,41 @@ class DictFileParser:
                 # lineList = lineList = self._getLinesList(self.lines[self.i])
                 lineList = self._getLinesList(self.lines[self.i])
                 if len(lineList) > 0:
-                    logger.debug(f"lineList[0][0]: {lineList[0][0]}")
+                    logger.debug("lineList[0][0]: %s", lineList[0][0])
                     if lineList[0][0] == '{':
                         bCharType = 1
                     elif lineList[0][0] == '"':
                         bCharType = 0
-                    elif lineList[0][:1] == '#{':
+                    elif lineList[0][:2] == '#{':
                         bCharType = 2
                     else:
-                        logger.error(f"Could not find functionEntry bracket type.")
-                        sys.exit()
+                        userMsg(f"Could not find functionEntry bracket type.", "ERROR")
 
         openingChar = BRACKET_CHARS['verbatim'][bCharType][0]
         closingChar = BRACKET_CHARS['verbatim'][bCharType][1]
+
+        isVerbatimCode = vType not in OF_FUNCTION_ENTRIES.keys()
 
         #- Check if single line entry
         valueList = ' '.join(lineList[1:]).split(';')
         #TODO:   Does this capture anything after the ';'?
         if closingChar in ''.join(lineList[1:])[1:]:
-            value = valueList[0].rstrip(closingChar).strip()
-            logger.debug(f"valueList: {valueList}")
+            value = valueList[0].strip()
+            if bracketInValue and value.startswith(openingChar):
+                value = value[len(openingChar):]
+            value = value.rstrip(closingChar).strip()
+            logger.debug("valueList: %s", valueList)
             if len(valueList) > 1:
                 self._addExtraLine(' '.join(valueList[1:]))
         else:
             value = ' '.join(valueList)+"\n"
             value = value.lstrip(openingChar)
             self.i += 1
-            logger.debug(f"closingChar: {closingChar}")
+            logger.debug("closingChar: %s", closingChar)
             line_= self.lines[self.i]
             foundClosing = False
             while not foundClosing:
-                logger.debug(f"line_: {line_}")
+                logger.debug("line_: %s", line_)
                 # prevChar=None
                 # for c in range(len(line_)):
                 #     if line_[c] == closingChar:
@@ -5298,7 +5265,9 @@ class DictFileParser:
                 #     value += line_[c]
                 #     prevChar = line_[c]
                 # value += "\n"
-                value += line_+"\n"
+                #- (`line_` already ends with a newline; the extra one is
+                #  kept for function entries, whose output depends on it.)
+                value += line_ if isVerbatimCode else line_+"\n"
                 self.i += 1
                 if self.i > len(self.lines):
                     userMsg("Unhandled Pattern:  Could not find end of "\
@@ -5328,8 +5297,8 @@ class DictFileParser:
                     comment = extraLine.lstrip('//')
 
 
-        logger.debug(f"OF_FUNCTION_ENTRIES: {OF_FUNCTION_ENTRIES.keys()}")
-        logger.debug(f"vType: {vType}")
+        logger.debug("OF_FUNCTION_ENTRIES: %s", OF_FUNCTION_ENTRIES.keys())
+        logger.debug("vType: %s", vType)
 
         if vType in OF_FUNCTION_ENTRIES.keys():
             rv = OF_FUNCTION_ENTRIES[vType](
@@ -5337,10 +5306,13 @@ class DictFileParser:
                 )
             rv.vBracketType = bCharType
         else:
+            #- Store the code without the file's indentation; the writer
+            #  re-indents it for its nesting level, so the block is unchanged
+            #  by a read/write round trip.
             rv = OF_VERBATIM_CODE_ENTRIES[vType](
-                value,_comment=comment
+                textwrap.dedent(value).strip('\n'),_comment=comment
                 )
-        
+
         return rv
 
 
@@ -5669,17 +5641,20 @@ class DictFileParser:
 
         line = self.lines[self.i]
 
-        logger.debug(f"Parsing bound box: '{line}'")
+        logger.debug("Parsing bound box: '%s'", line)
 
         lineList = self._getLinesList(line)
 
-        logger.debug(f"lineList: {lineList}")
+        logger.debug("lineList: %s", lineList)
         
         try:
             ofWord(lineList[0])
         except:
             logger.debug("Failed.  First entry not a valid key.")
             return None  # first item is not valid key
+
+        if len(lineList) > 1 and lineList[1] == 'table':
+            return None  # e.g. 'U table ((0 (0 0 0)) (1 (1 0 0)));'
 
         # #- determine if value has 6 numeric entries
         # n = 0
@@ -5713,11 +5688,11 @@ class DictFileParser:
         #             return None
         #         bounds[-1].append(v_)
         
-        logger.debug(f"match string: {' '.join(lineList[1:])}")
+        logger.debug("match string: %s", ' '.join(lineList[1:]))
 
         matches = re.findall(r"(?<=\()[\s\d.-]+(?=\))", " ".join(lineList[1:]))
 
-        logger.debug(f"matches: {matches}")
+        logger.debug("matches: %s", matches)
 
         if len(matches) != 2:
             #- Value does not contain two lists
@@ -5784,12 +5759,8 @@ class DictFileParser:
         #             return i+1
 
         #-  Parse to end of first commented block, and always parse the FoamFile
-        #TODO: Can this be made more efficient, i.e. without two `with open(..)`
-        #       statements.
-        with open(self.filepath) as f:
-            for i, line in enumerate(f.readlines()):
-                if '*/' in line:
-                    return i+1
+        for i, line in enumerate(self.lines):
+            if '*/' in line:
+                return i+1
 
-        logger.error('Invalid OpenFOAM file specified: '+str(self.filepath))
-        sys.exit()
+        userMsg('Invalid OpenFOAM file specified: '+str(self.filepath), 'ERROR')

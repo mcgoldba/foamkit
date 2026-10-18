@@ -26,6 +26,9 @@ dependencies = [
     "ipython",
 ]
 
+[project.optional-dependencies]
+test = ["pytest"]
+
 [project.urls]
 Home = "https://github.com/mcgoldba/foamkit"
 
@@ -38,6 +41,9 @@ include = ["foamkit*"]
 
 [tool.setuptools.package-data]
 foamkit = ["config.ini"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"

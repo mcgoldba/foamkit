@@ -17,7 +17,7 @@ import logging
 
 #     return latestTime
 
-def getLatestTime(searchDir=Path.cwd()):
+def getLatestTime(searchDir=None):
     """
     Returns the latest time directory of an OpenFOAM case or directory.  If
     directory is an OpenFOAM, this function searches reconstructed and decomposed directories.
@@ -34,6 +34,9 @@ def getLatestTime(searchDir=Path.cwd()):
     """
 
     logger = logging.getLogger('foamkit')
+
+    if searchDir is None:
+        searchDir = Path.cwd()
     
 
     caseType = None
@@ -70,6 +73,6 @@ def getLatestTime(searchDir=Path.cwd()):
         else: 
             caseType = 'reconstructed'
     
-    logger.debug(f"latestTime: {latestTime}")
+    logger.debug("latestTime: %s", latestTime)
 
     return latestTime, caseType

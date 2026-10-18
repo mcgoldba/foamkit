@@ -1,15 +1,12 @@
-import os
-import sys
-import re
+from foamkit.functions.isDecomposed import isDecomposed
 
-def isReconstructed(self):
-        reconstructedTime = getLatestTime(self.caseDir)
-        reconstructed = True
-        items = os.listDir(self.caseDir)
-        if any([re.search('processor0', item) and
-                os.path.isdor(item) and
-                float(getLatestTime(item)) >= float(reconstructedTime)
-                for item in items ]):
-            reconstructed = False
+def isReconstructed(caseDir=None):
+    """
+    Return True unless the decomposed ('processor0') data is at least as
+    recent as the reconstructed data (see `isDecomposed`).
 
-        return reconstructed
+    Parameters:
+        caseDir [str or Path]:  The case directory (default: the current
+            directory).
+    """
+    return not isDecomposed(caseDir)

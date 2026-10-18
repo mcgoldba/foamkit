@@ -1,34 +1,18 @@
 import sys
 import argparse, textwrap
-from argparse import RawTextHelpFormatter
 from importlib.metadata import version as _distVersion
-#import resource
-import os
 from foamkit import getFoamKitConfig, setLoggerLevel, enableRichTracebacks
-import foamkit.functions as pf
-from pathlib import Path
 
 from foamkit.commandline import CommandLine
-
-# from foamkit.config import DEBUG, DICT_FILESIZE_LIMIT
 
 from rich import print
 import logging
 
 logger = logging.getLogger('foamkit')
-# from rich.logging import RichHandler
 
-# FORMAT = "%(message)s"
-# logging.basicConfig(
-#        level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
-# )
-
-# logger= logging.getLogger("foamkit")
-
-# from rich.traceback import install
-# install()
-
-# from .richinclude import richLogger
+#- Commands, mapped to the `CommandLine` method that runs them
+COMMANDS = ('init', 'edit', 'setConfig', 'write', 'plot', 'monitor',
+            'cloneCase', 'cloneCases')
 
 #- main() function
 def main():
@@ -50,54 +34,13 @@ def main():
 
     print("[bold grey35]"+intro)
 
-    #- Increase memory allocation and recusion depth
-    # resource.setrlimit(resource.RLIMIT_STACK, 
-    #     (getFoamKitConfig('stack_size'),resource.RLIM_INFINITY))
-    # sys.setrecursionlimit(10**6)
+    parser = argparse.ArgumentParser(prog = 'pf')
 
-    # #- Manually capture the "help" arguments and process last
-    # help = None
-    # args = sys.argv
-    # for i in range(len(sys.argv)):
-    #     if any([sys.argv[i] == h for h in ['-h', '--help']]) is True:
-    #         help = i
-    #         args = sys.argv[:i]
-    #         break
-
-    #- Argument parser
-    parser = argparse.ArgumentParser(
-        prog = 'pf',
-        # description=main.__doc__
-        # formatter_class=argparse.RawTextHelpFormatter,
-    )
-
-    #subparsers = parser.add_subparsers()
-
-    commands = {
-        'init': None, #- `None` values to be updated after extracting `addArgs`
-        'edit': None,   
-        'setConfig': None,
-        'write': None,
-        'plot': None,
-        'monitor': None,
-        'cloneCase': None,
-        'cloneCases': None
-    }
-
-    # commandsStr = ''
-    # i=0
-    # while i<len(commands.keys()):
-    #     commandsStr += list(commands.keys())[i]+', '
-    #     if len(commandsStr.split('\n')[-1]) > 70:
-    #         commandsStr+= '\n'
-    #     i+=1
-    #
-    # commandsStr = commandsStr.rstrip(', ')
-
-    #- parse args manually to find command args
+    #- parse args manually to find command args: everything after the command
+    #  is passed to the command's own parser.
     args=sys.argv
     i = 0
-    while any([c == args[i] for c in commands]) is False:
+    while args[i] not in COMMANDS:
         i += 1
         if i >=len(args):
             parser.print_help()
@@ -106,54 +49,14 @@ def main():
     opt_args = args[1:i]
     addArgs = args[i:]
 
-    # #- Manually parse the optional arguments
-    # debug = False
-    # for i in range(len(opt_args)):
-    #     if opt_args[i] == '--debug':
-    #         debug = True
-    #         i+=1
-
-    #     elif any([opt_args[i] == command for command in commands.keys()]):
-    #         break
-
-    #- Update commands that require `addArgs`
-    cl = CommandLine(addArgs[1:],  Path(__file__).parent / 'config.ini')
-    commands['init'] = cl.init
-    commands['edit'] = cl.edit
-    commands['setConfig'] = cl.setConfig
-    commands['write'] = cl.write
-    commands['plot'] = cl.plot
-    commands['monitor'] = cl.monitor
-    commands['cloneCase'] = cl.cloneCase
-    commands['cloneCases'] = cl.cloneCases
-
-    commandsStr = ''
-
-    for command in commands.keys():
-        commandsStr+= '{0:<30}'.format(command+":")
-        if commands[command].__doc__:
-            commandsStr+= commands[command].__doc__+'\n\n'
-        else:
-            commandsStr+= '\n\n'
-
+    cl = CommandLine(addArgs[1:])
+    commands = {command: getattr(cl, command) for command in COMMANDS}
 
     parser.add_argument(
         'command',
-        # metavar='command',
-        # help=textwrap.dedent("The command to be executed.  Valid commands are:\n\n"+commandsStr),
         help=textwrap.dedent("The command to be executed."),
         choices=commands.keys()
     )
-
-    #- Global [<options>] arguments
-
-    # parser.add_argument('--debug',
-    #                     help="Print out additional debug information",
-    #                     action='store_true'
-    #                    )
-
-
-
 
     args = parser.parse_args(opt_args+[addArgs[0]])
 
@@ -161,25 +64,11 @@ def main():
 
     setLoggerLevel("DEBUG" if debug else "INFO")
 
-    logger.debug(f"debug: {debug}")
+    logger.debug("debug: %s", debug)
+    logger.debug("main args: %s", opt_args+[addArgs[0]])
+    logger.debug("main addArgs: %s", addArgs)
 
-    #logger.setLevel("DEBUG" if debug else "INFO")
-
-    logger.debug('main args:'+str(opt_args+[addArgs[0]]))
-    logger.debug('main addArgs:'+str(addArgs))
-
-    # commandList = list(commands.keys())
-
-
-    # cl = CommandLine(addArgs[1:])
-
-    # CL_FUNCTION_MAP = {
-    #     commandList[0]: cl.init,
-    # }
-
-    # cl_func = CL_FUNCTION_MAP[addArgs[0]]
-    cl_func = commands[addArgs[0]]
-    cl_func()
+    commands[addArgs[0]]()
 
     print("")
 

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import sys
 import re
@@ -5,7 +6,9 @@ import re
 from .isCase import isCase
 
 
-def listCases(path=Path.cwd(), absolutePath=False):
+def listCases(path=None, absolutePath=False):
+    if path is None:
+        path = Path.cwd()
     #convert string inputs to Path()
     if isinstance(path, str):
         path = Path(path)
@@ -14,7 +17,7 @@ def listCases(path=Path.cwd(), absolutePath=False):
         if absolutePath:
             return [path]
         else:
-            return [path.relative_to(Path.cwd())]
+            return [Path(os.path.relpath(path, Path.cwd()))]
 
     cases = []
 

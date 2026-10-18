@@ -14,8 +14,8 @@ logger = logging.getLogger("foamkit")
 
 class JSONFoamKitEncoder(json.JSONEncoder):
     def default(self, obj):
-        logger.debug(f"JSON Parsing object: {type(obj)}")
-        logger.debug(f"JSON Parsing obj.__dict__: {obj.__dict__}")
+        logger.debug("JSON Parsing object: %s", type(obj))
+        logger.debug("JSON Parsing obj.__dict__: %s", getattr(obj, '__dict__', None))
         if isinstance(obj, pd.DataFrame):
             return obj.reset_index().to_dict(orient='records')
         # elif isinstance(obj, ofDict):
@@ -49,12 +49,12 @@ def writeParams(params, filepath='inputParameters', sort=True):
 
     # logger.setLevel(logging.DEBUG)
 
-    logger.debug(f"params: {params}")
+    logger.debug("params: %s", params)
 
     #Create temporary object
     params_ = deepcopy(params)
 
-    logger.debug(f"params_: {params_}")
+    logger.debug("params_: %s", params_)
 
     if not Path(filepath).parent.is_dir():
         os.mkdir(Path(filepath).parent)

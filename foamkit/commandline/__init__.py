@@ -1,54 +1,91 @@
 import foamkit.functions as pf
-import warnings
 import IPython
-from IPython.terminal.prompts import Prompts, Token
 from code import InteractiveConsole
-import atexit
 import os
 import argparse
 from configparser import ConfigParser
-from foamkit import userMsg
+from foamkit import userMsg, USER_CONFIG
 from pathlib import Path
 from traitlets.config import Config # for IPython config
-# import config
-import sys
 
 import foamkit.types as pt
 
 import logging
 logger = logging.getLogger('foamkit')
 
-class FoamKitConsole(InteractiveConsole):
-    def __init__(*args, **kwargs):
-        InteractiveConsole.__init__(*args, **kwargs)
+#- Environment variable used to pass `pf edit -path` to the IPython startup file
+EDIT_PATH_ENV = 'FOAMKIT_EDIT_PATH'
+
+
+def _strToBool(value):
+    """argparse type for boolean option values (e.g. `-ipython False`)."""
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ('1', 'yes', 'true', 'on'):
+        return True
+    if value.lower() in ('0', 'no', 'false', 'off'):
+        return False
+    raise argparse.ArgumentTypeError(f"Expected a boolean value, got '{value}'.")
+
 
 class CommandLine:
-    def __init__ (self, addArgs, configFilepath):
-        self.configFilepath = configFilepath
-        self.config = ConfigParser()
-        self.config.read(configFilepath)
+    def __init__ (self, addArgs, configFilepath=None):
+        #- `pf setConfig` writes to the per-user config, which takes
+        #  precedence over the config shipped with the package (writing into
+        #  the installed package would need write access and is lost on
+        #  upgrade).
+        self.configFilepath = Path(configFilepath) if configFilepath else USER_CONFIG
         self.prog = 'pf'
         self.addArgs = addArgs
+
+    def _parser(self, command, **kwargs):
+        self.prog += ' '+command
+        return argparse.ArgumentParser(prog=self.prog, **kwargs)
+
+    @staticmethod
+    def _addPathArg(parser):
+        parser.add_argument('-path',type=str, nargs='?',
+                            help='The path of the OpenFOAM case to parse.')
+
+    @staticmethod
+    def _addCloneArgs(parser):
+        parser.add_argument('src', type=str,
+                            help='The case to clone.')
+
+        parser.add_argument('dest', type=str,
+                            help='The loction to clone the case to.')
+
+        parser.add_argument('-sshSrc',type=str, nargs='?',
+                            default = None,
+                            help="If copying from a remote location, the string "
+                            "of login details for the remote host in ssh format "
+                            "(e.g. 'marc@my.remote.com')")
+
+        parser.add_argument('-sshDest',type=str, nargs='?',
+                    default = None,
+                    help="If copying to a remote location, the string "
+                    "of login details for the remote host in ssh format "
+                    "(e.g. 'marc@my.remote.com')")
+
+        parser.add_argument('-includeTriSurface',
+            action='store_true',
+            help="Copy files located in the '<case>/constant/triSurface' directory."
+            )
 
     def init(self):
         """
         Read an OpenFOAM case and store as a Python dictionary.
         """
-        self.prog+= ' init'
-
-        parser = argparse.ArgumentParser(prog=self.prog)
-
-        parser.add_argument('-path',type=str, nargs='?',
-                            help='The path of the OpenFOAM case to parse.')
-
+        parser = self._parser('init')
+        self._addPathArg(parser)
         args = parser.parse_args(self.addArgs)
-        
+
         if args.path is None:
             case = pf.init()
         else:
             case = pf.init(path=args.path)
 
-        logger.debug(f"case: {case}")
+        logger.debug("case: %s", case)
 
         #- store the case data as json file:
         if case is not None:
@@ -67,36 +104,23 @@ class CommandLine:
             `case = pf.load()`
 
         """
+        parser = self._parser('edit')
 
-        #TODO:  Is this method loading a case multiple times?
+        parser.add_argument('-ipython', type=_strToBool, nargs='?', const=True,
+                            default=True,
+                            help='If `True`, starts an IPython console instead '
+                                'of a Python console.')
 
-        self.prog+= ' edit'
-
-        parser = argparse.ArgumentParser(prog=self.prog)
-
-        parser.add_argument('-ipython',type=bool, nargs=1, default=True,
-                            help='If `True`, starts an IPython console instead \
-                                of a Python console.')
-
-        parser.add_argument('-path',type=str, nargs='?',
-                            help='The path of the OpenFOAM case to parse.')
+        self._addPathArg(parser)
 
         args = parser.parse_args(self.addArgs)
-
-        # import foamkit.functions as pf
-        # import foamkit.types as pt
-        # try:
-        #     case = pf.load()
-        # except FileNotFoundError:
-        #     userMsg("No cached case data found.  Run 'pf init'"\
-        #     " before 'pf edit'.", "WARNING")
-        #     case = None
-
-        case = pf.load()
 
         #TODO:  Automatically save case before exiting or maybe automatically
         #          save case everytime the ofCase is modified?
         if args.ipython:
+            #- The case is loaded (once) by the IPython startup file.
+            if args.path is not None:
+                os.environ[EDIT_PATH_ENV] = str(args.path)
 
             c = Config()
             c.TerminalInteractiveShell.confirm_exit = False
@@ -105,120 +129,89 @@ class CommandLine:
                 str(Path(__file__).parent /  '_iPython_env.py')
             ]
 
-            # IPython.embed(header="", config=c, prompt=FoamKitPrompt)
             IPython.start_ipython(argv=[], config=c)
-
-            logger.debug(f"case: {case}")
-            # if case is not None:
-            #     # pf.writeParams(case, '_case.json')
-            #     # pf.writeCase(case)
-            #     case.save()
-        else:  # Use a customized version of the standard Python console
-            
-            def atExitCommands():
-                try:
-                    print("Saving case to FoamKit cache (i.e. as a JSON object)")
-                    print(locals())
-                    locals()['case'].save()
-                finally:
-                    sys.exit()
-            
-            # atexit.register(atExitCommands)
-
-            exit = atExitCommands
-
-            #exit = atExitCommands
-
-
-
-            # namespace = {'case':case}
-            console = FoamKitConsole(locals=dict(globals(), **locals()))
+        else:  # Use the standard Python console
+            case = pf.load() if args.path is None else pf.load(path=args.path)
+            console = InteractiveConsole(
+                locals=dict(globals(), pf=pf, pt=pt, case=case))
             console.interact()
-
-            atexit.unregister(atExitCommands)
-
 
     def setConfig(self):
         """
         Set details of the FoamKit configuration, specified in 'config.ini'
         """
-        self.prog+= ' setConfig'
-
-        parser = argparse.ArgumentParser(prog=self.prog)
+        parser = self._parser('setConfig')
 
         parser.add_argument('key',type=str, nargs=1,
                             help='The configuration variable to be set.')
-    
+
         parser.add_argument('value', nargs=1,
                         help='The value to which the variable is to be set.')
 
         args = parser.parse_args(self.addArgs)
 
-        if 'user' in self.config.keys():
-            self.config['user'].update({args.key[0]: args.value[0]})
+        config = ConfigParser()
+        config.read(self.configFilepath)
+
+        if 'user' in config.keys():
+            config['user'].update({args.key[0]: args.value[0]})
         else:
-            self.config['user'] = {args.key[0]: args.value[0]}
+            config['user'] = {args.key[0]: args.value[0]}
 
+        self.configFilepath.parent.mkdir(parents=True, exist_ok=True)
         with open(self.configFilepath, 'w') as configFile:
-            self.config.write(configFile)
+            config.write(configFile)
 
-        userMsg(f"Setting '{args.key[0]}' config option" 
-            f" to '{args.value[0]}'.", "INFO")
-    
+        userMsg(f"Setting '{args.key[0]}' config option"
+            f" to '{args.value[0]}' in {self.configFilepath}.", "INFO")
+
     def write(self):
         """
-        Save the case, and overwrite the existing OpenFOAM dictionary case with 
-        values in the `ofCase`.  Saves existing case structure in cache for 
+        Save the case, and overwrite the existing OpenFOAM dictionary case with
+        values in the `ofCase`.  Saves existing case structure in cache for
         backup.
         """
-        self.prog+= ' write'
-
-        parser = argparse.ArgumentParser(prog=self.prog)
-
-
-
-        parser.add_argument('-path',type=str, nargs='?',
-                            help='The path of the OpenFOAM case to parse.')
-
+        parser = self._parser('write')
+        self._addPathArg(parser)
         args = parser.parse_args(self.addArgs)
 
-        if args.path is None: 
+        if args.path is None:
             case = pf.load()
         else:
             logger.debug("Parsing with args.")
             case = pf.load(path=args.path)
-        
+
         case.write()
 
     def plot(self):
-        self.prog+= ' plot'
+        """
+        Plot probe or function object data from the 'postProcessing' directory.
+        """
+        parser = self._parser('plot')
 
-        parser = argparse.ArgumentParser(prog=self.prog)
-
-        parser.add_argument('values', type=str, nargs='+', 
+        parser.add_argument('values', type=str, nargs='+',
                             default=['U', 'p', 'residuals'],
                             help='Log files to monitor')
 
-        parser.add_argument('-casePath',type=str, nargs='1',
+        parser.add_argument('-casePath',type=str, nargs='?',
                             default = Path.cwd(),
                             help='The path of the OpenFOAM case to parse.')
-
 
         args = parser.parse_args(self.addArgs)
 
         for value in args.values:
             try:
-                monitor = pf.getProbe(value, workingDir=args.workingDir)
+                monitor = pf.getProbe(value, workingDir=args.casePath)
             except FileNotFoundError:
-                monitor = pf.getMonitor(value, workingDir=args.workingDir)
+                monitor = pf.getMonitor(value, workingDir=args.casePath)
 
             pf.plot(monitor=monitor)
 
-
     def monitor(self):
-        self.prog+= ' monitor'
-
-        parser = argparse.ArgumentParser(prog=self.prog)
+        """
+        Plot a probe or function object monitor, updating as data is written.
+        """
+        parser = self._parser('monitor')
 
         parser.add_argument('value', type=str, nargs=1, default='residual',
                             help='log file to monitor')
@@ -245,78 +238,31 @@ class CommandLine:
         args = parser.parse_args(self.addArgs)
 
         if args.yrange is not None and len(args.yrange) != 2:
-            userMsg("`yrange` argument must be length two.")
+            userMsg("`yrange` argument must be length two.", "ERROR")
 
-        pf.monitor(value=args.value[0], workingDir=args.casePath, 
-                    filter=args.filter, yrange=args.yrange, 
+        pf.monitor(value=args.value[0], workingDir=args.casePath,
+                    filter=args.filter, yrange=args.yrange,
                     logScale = args.log, time = args.time)
 
     def cloneCase(self):
-        self.prog+=' cloneCase'
-
-        parser = argparse.ArgumentParser(prog=self.prog)
-
-        parser.add_argument('src', type=str,
-                            help='The case to clone.')
-
-        parser.add_argument('dest', type=str,
-                            help='The loction to clone the case to.')
-
-        parser.add_argument('-sshSrc',type=str, nargs='?',
-                            default = None,
-                            help="If copying from a remote location, the string "
-                            "of login details for the remote host in ssh format "
-                            "(e.g. 'marc@my.remote.com')")
-        
-        parser.add_argument('-sshDest',type=str, nargs='?',
-                    default = None,
-                    help="If copying to a remote location, the string "
-                    "of login details for the remote host in ssh format "
-                    "(e.g. 'marc@my.remote.com')")
-        
-        parser.add_argument('-includeTriSurface',
-            action='store_true',
-            help="Copy files located in the '<case>/constant/triSurface' directory."                    
-            )
-
+        """
+        Clone the setup files of an OpenFOAM case (no mesh or results).
+        """
+        parser = self._parser('cloneCase')
+        self._addCloneArgs(parser)
         args = parser.parse_args(self.addArgs)
 
-        pf.cloneCase(args.src, args.dest, sshSrc=args.sshSrc, 
+        pf.cloneCase(args.src, args.dest, sshSrc=args.sshSrc,
             sshDest=args.sshDest, includeTriSurface=args.includeTriSurface)
-    
+
     def cloneCases(self):
-        self.prog += ' cloneCases'
-
-        parser = argparse.ArgumentParser(
-            prog=self.prog,
-            description="Clone all cases found in the srcPath to destPath"
-            )
-
-        parser.add_argument('src', type=str,
-                            help='The case to clone.')
-
-        parser.add_argument('dest', type=str,
-                            help='The loction to clone the case to.')
-
-        parser.add_argument('-sshSrc',type=str, nargs='?',
-                            default = None,
-                            help="If copying from a remote location, the string "
-                            "of login details for the remote host in ssh format "
-                            "(e.g. 'marc@my.remote.com')")
-        
-        parser.add_argument('-sshDest',type=str, nargs='?',
-                    default = None,
-                    help="If copying to a remote location, the string "
-                    "of login details for the remote host in ssh format "
-                    "(e.g. 'marc@my.remote.com')")
-
-        parser.add_argument('-includeTriSurface',
-            action='store_true',
-            help="Copy files located in the '<case>/constant/triSurface' directory."                    
-            )
-
+        """
+        Clone all cases found in the srcPath to destPath.
+        """
+        parser = self._parser('cloneCases',
+            description="Clone all cases found in the srcPath to destPath")
+        self._addCloneArgs(parser)
         args = parser.parse_args(self.addArgs)
 
-        pf.cloneCases(args.src, args.dest, sshSrc=args.sshSrc, 
+        pf.cloneCases(args.src, args.dest, sshSrc=args.sshSrc,
             sshDest=args.sshDest, includeTriSurface=args.includeTriSurface)
-

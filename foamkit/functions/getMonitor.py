@@ -1,6 +1,6 @@
 from pathlib import Path
-import numpy as np
 import foamkit.types as pt
+from foamkit.functions._paths import latestTimeName
 from foamkit import userMsg
 
 import logging
@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger('foamkit')
 
 def getMonitor(name=None, startTime='latestTime', dataFileName=None,
-     logPath=None, workingDir=Path.cwd()):
+     logPath=None, workingDir=None):
     """
     Get an ofMonitor object from a log file written to the 'postProcessing/'
     directory.
@@ -36,49 +36,36 @@ def getMonitor(name=None, startTime='latestTime', dataFileName=None,
 
     """
 
-    # logging.getLogger('foamkit').setLevel(logging.DEBUG)
+    if workingDir is None:
+        workingDir = Path.cwd()
 
-    if startTime == 'all':
-        allTimes = True
-    else:
-        allTimes = False
+    #TODO: 'all' should collect data from every start time; currently it is
+    #       treated as 'latestTime'.
 
     if logPath is None:
         if startTime == 'latestTime' or startTime == 'all':
-            timePath = Path(workingDir) / 'postProcessing' / name
-            startTime = 0
-            for time in timePath.iterdir():
-                try:
-                    time_ = float(time.name)
-                    if time_ > float(startTime):
-                        startTime = time.name
-                except ValueError:
-                    pass            
-            startTime = str(startTime)
-        logPathParent = (Path(workingDir) / 'postProcessing' / name 
+            startTime = latestTimeName(Path(workingDir) / 'postProcessing' / name)
+        logPathParent = (Path(workingDir) / 'postProcessing' / name
         / str(startTime))
 
-    if dataFileName is None:
-        #TODO:  This just takes the first log file in the list.  Is there a 
-        # better way?
-        logFileNames = []
-        for path in logPathParent.iterdir():
-            if path.is_file():
-                logFileNames.append(path.name)
-        if len(logFileNames) > 1:
-            userMsg("Found multiple log files, defualting to last item in list: " \
-                +str(logFileNames), "WARNING"
-            )
-        elif len(logFileNames) == 0:
-            userMsg("Could not find any log file in directory {logPathParent}",
-            "ERROR")
-        logPath = logPathParent / logFileNames[-1]
-    else:
-        logPath = logPathParent / dataFileName
+        if dataFileName is None:
+            #TODO:  This just takes the last log file in the list.  Is there a
+            # better way?
+            logFileNames = sorted(path.name for path in logPathParent.iterdir()
+                                  if path.is_file())
+            if len(logFileNames) > 1:
+                userMsg("Found multiple log files, defualting to last item in list: " \
+                    +str(logFileNames), "WARNING"
+                )
+            elif len(logFileNames) == 0:
+                userMsg(f"Could not find any log file in directory {logPathParent}",
+                "ERROR")
+            logPath = logPathParent / logFileNames[-1]
+        else:
+            logPath = logPathParent / dataFileName
 
-    logger.debug(f"logPath: {logPath}")
+    logger.debug("logPath: %s", logPath)
 
     monitor = pt.MonitorParser(logPath).makeOFMonitor()
-    # data = np.loadtxt(logPath, delimiter="\s+")
 
     return monitor

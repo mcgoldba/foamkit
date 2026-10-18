@@ -1,125 +1,89 @@
-import os
 import logging
 from pathlib import Path
 from foamkit import getFoamKitConfig
 
-#from foamkit.richLogger import logger
 logger = logging.getLogger('foamkit')
+
+#- Bytes that may appear in a text file; ref: https://stackoverflow.com/a/7392391
+_TEXT_CHARS = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)) - {0x7f})
+
+_BANNER_START = \
+    '/*--------------------------------*- C++ -*----------------------------------'
+_BANNER_LINES = ('=========', '\\\\      /  F ield', '\\\\    /   O peration',
+                 '\\\\  /    A nd', '\\\\/     M anipulation')
+
 
 def _isDictFile(file):
     """
     Checks if the argument file is an OpenFOAM dictionary file.  It is assumed
-    that all OpenFOAM dictionary files start with a block comment header of the 
+    that all OpenFOAM dictionary files start with a block comment header of the
     form:
 
-/*--------------------------------*- C++ -*----------------------------------*\
+/*--------------------------------*- C++ -*----------------------------------*\\
   =========                 |
-  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Version:  6
-     \\/     M anipulation  |
+  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\\\    /   O peration     | Website:  https://openfoam.org
+    \\\\  /    A nd           | Version:  6
+     \\\\/     M anipulation  |
 -------------------------------------------------------------------------------
 Description
     {Description of file contents}...
 
-\\*---------------------------------------------------------------------------*/
-    
-    Previous impementation:
+\\\\*---------------------------------------------------------------------------*/
 
-    It is assumed that all OpenFOAM dictionary files start with the first 
-    uncommented line as 'FoamFile\n'
+    Files larger than the `dict_filesize_limit` config value, binary files and
+    files that are not valid UTF-8 are rejected.  The search for the header
+    uses whole-string operations rather than a Python loop over the lines, as
+    this check runs for every file in a case.
 
     Parameters:
         file (str or Path):  The path of the file to test.
     """
+    file = Path(file)
 
+    logger.debug("Checking file: %s", file)
 
-    # - Convert to string in case of Path object
-    file = str(file)
+    if file.is_dir():
+        return False
 
-    logger.debug(f"Checking file: {file}")
+    #- Skip large files
+    if file.stat().st_size > int(getFoamKitConfig('dict_filesize_limit')):
+        return False
+
+    data = file.read_bytes()
+
+    #- check for binary
+    if data[:1024].translate(None, _TEXT_CHARS):
+        return False
+
+    try:
+        text = data.decode('utf8')
+    except UnicodeDecodeError:
+        return False
+    #- Universal newlines, as when reading the file in text mode
+    if '\r' in text:
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
 
     isDictFile = False
 
-    #- Skip directories
-    if Path(file).is_dir():
-        return False
-
-    filesizeLimit = int(getFoamKitConfig('dict_filesize_limit'))
-
-    #- Skip large files
-    if Path(file).stat().st_size > filesizeLimit:
-        return isDictFile
-
-
-    #- check for binary
-    #  ref: https://stackoverflow.com/a/7392391
-    textchars = bytearray({7,8,9,10,12,13,27} | set(range(0x20, 0x100)) - {0x7f})
-    is_binary_string = lambda bytes: bool(bytes.translate(None, textchars))
-    if is_binary_string(open(file, 'rb').read(1024)):
-        return isDictFile    
-
-    with open(file, encoding='utf8') as f:
-        try:
-            lines = f.readlines()
-        except UnicodeDecodeError:
-            return isDictFile
-
-        #- Find start of first commented block
-        i_start=-1
-        for i, line in enumerate(lines):
-            i_start += 1
-            if line.startswith('/*'):
-                break
-
-        if i_start+7 < len(lines):
-            commentedBlock = lines[i:i+7]
-
-            if (commentedBlock[0].startswith(
-'/*--------------------------------*- C++ -*----------------------------------')
-            # and commentedBlock[1].startswith(
-            #     '  =========                 |')
-            # and commentedBlock[2].startswith(
-            #     '  \\\\      /  F ield         |')
-            # and commentedBlock[3].startswith(
-            #     '   \\\\    /   O peration     |')
-            # and commentedBlock[4].startswith(
-            #     '    \\\\  /    A nd           |')
-            # and commentedBlock[5].startswith(
-            #     '     \\\\/     M anipulation  |')
-            and '=========' in commentedBlock[1]
-            and '\\\\      /  F ield' in commentedBlock[2]
-            and '\\\\    /   O peration' in commentedBlock[3]
-            and '\\\\  /    A nd' in commentedBlock[4]
-            and '\\\\/     M anipulation' in commentedBlock[5]
-            ):
-                isDictFile = True
-
-
-        #- Previous implementation
-
-        # blockComment = False
-        # # -Check for line or block comments
-        # for line in lines:
-        #     if blockComment:
-        #         if line.rstrip()[-2:] == '*/':
-        #             blockComment = False
-        #         continue
-
-        #     testStr = line.lstrip()[:2]
-        #     if testStr == '//':
-        #         continue
-        #     elif testStr == '/*':
-        #         blockComment = True
-        #         continue
-        #     else:
-        #         if line.startswith('FoamFile'):
-        #             isDictFile = True
-        #         break
+    #- The banner starts at the first line beginning with '/*' and must be
+    #  followed by at least seven more lines.  (`str.find` is much faster
+    #  than a multiline regex on large files.)
+    if text.startswith('/*'):
+        start = 0
+    else:
+        start = text.find('\n/*')
+        start = start + 1 if start >= 0 else None
+    if start is not None:
+        block = text[start:].split('\n', 7)
+        if (len(block) == 8 and block[7] != ''
+                and block[0].startswith(_BANNER_START)
+                and all(s in l for s, l in zip(_BANNER_LINES, block[1:6]))):
+            isDictFile = True
 
     if isDictFile:
-        logger.debug(f"'{file}' is an OpenFOAM dictionary file.")
+        logger.debug("'%s' is an OpenFOAM dictionary file.", file)
     else:
-        logger.debug(f"'{file}' is not an OpenFOAM dictionary file.")
+        logger.debug("'%s' is not an OpenFOAM dictionary file.", file)
 
     return isDictFile
