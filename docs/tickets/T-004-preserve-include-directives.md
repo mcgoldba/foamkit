@@ -28,3 +28,8 @@ Reading and writing a dictionary that contains `#sinclude "x"` or `#includeIfPre
 ## Risks
 - If a new type for these directives is exposed (for example `ofSInclude`), it is public API. Prefer a `keyword` attribute on `ofInclude` over new classes.
 - The test fixture's syntax must be valid on both distributions. Check that `#includeIfPresent` is still accepted by Foundation 11+ before relying on it in docs.
+
+## Completion notes (implementer)
+- `ofInclude` gained a `keyword` property (default `#include`, validated against the module constant `INCLUDE_KEYWORD_RE` = `#[A-Za-z_][A-Za-z0-9_.\-]*`, ASCII only; shared by the parser dispatch guard and the setter); `#sinclude`, `#includeIfPresent` and unknown `#include*` keywords are kept. No new classes.
+- Criterion 4 is not met and left as `xfail` in `tests/test_directives.py`: `#includeFunc streamlines(U)` is written back as `#includeFunc "streamlines(U)"`, and `#includeFunc streamlines(U, name=s)` fails to parse (`Could not find functionEntry bracket type`). Fixing it changes `#includeFunc` output/parsing and needs a follow-up ticket.
+- Review follow-ups: malformed or non-ASCII directives (`#include$x`, `#includeétc`) now raise `FoamKitError` via a check in `_parseVerbatimEntry` (any unknown `#directive` gives `FoamKitError`, not `KeyError`). Setting `keyword` on `ofIncludeEtc`/`ofIncludeFunc` raises `AttributeError`. `:` and `+` were not added to the keyword class (not needed).

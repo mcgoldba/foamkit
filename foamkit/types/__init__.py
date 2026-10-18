@@ -2771,13 +2771,38 @@ class _ofFunctionEntry(_ofUnnamedTypeBase):
 
         return pStr+'\n'
 
+#- Directive keyword: '#' then an ASCII letter or '_', then ASCII letters,
+#- digits, '_', '.' or '-'.
+INCLUDE_KEYWORD_RE = re.compile(r'#[A-Za-z_][A-Za-z0-9_.\-]*')
+
+
 @dataclass
 class ofInclude(_ofFunctionEntry):
+    """
+    An `#include`-style directive.  `keyword` holds the directive as written
+    (e.g. `#sinclude`, `#includeIfPresent`); it defaults to `#include`.  The
+    subclasses `ofIncludeEtc` and `ofIncludeFunc` have a fixed keyword, and
+    setting `keyword` on them raises `AttributeError`.
+    """
+    _keyword: "str | None" = None
 
+    @property
+    def keyword(self) -> str:
+        """The directive keyword including the leading '#'."""
+        return f'#{self.feType}'
+
+    @keyword.setter
+    def keyword(self, v: str) -> None:
+        if type(self) is not ofInclude:
+            raise AttributeError(
+                f"The keyword of {type(self).__name__} is fixed.")
+        if not isinstance(v, str) or INCLUDE_KEYWORD_RE.fullmatch(v) is None:
+            raise ValueError(f"Invalid include keyword '{v}'.")
+        self._keyword = v
 
     @_ofFunctionEntry.feType.getter
     def feType(self):
-        return 'include'
+        return 'include' if self._keyword is None else self._keyword[1:]
     @_ofFunctionEntry.vBracketType.getter
     def vBracketType(self):
         return 0
@@ -3914,9 +3939,10 @@ class DictFileParser:
                         #  keyword, otherwise it is renamed on write.
                         self.dictFile.update({value.name: value})
                     else:
-                        name_ = value.feType+str(self.nFeTypes[value.feType])
+                        name_ = value.feType+str(self.nFeTypes.get(value.feType, 0))
                         self.dictFile.update({name_: value})
-                        self.nFeTypes[value.feType]+= 1
+                        self.nFeTypes[value.feType] = self.nFeTypes.get(
+                            value.feType, 0)+1
                 else:
                     userMsg(f"Invalid value type: {type(value)}.", "ERROR")
 
@@ -3960,7 +3986,8 @@ class DictFileParser:
                 # Line is blank
                 return None
             elif lineList[0][0] == '#':
-                if len(lineList) == 2 and 'include' in lineList[0]:
+                if (len(lineList) == 2 and 'include' in lineList[0]
+                        and INCLUDE_KEYWORD_RE.fullmatch(lineList[0])):
                     value = self._parseIncludes(lineList[0], lineList[1])
                     logger.debug("includeValue: %s", value)
                 else:
@@ -4694,7 +4721,10 @@ class DictFileParser:
         elif key == '#includeFunc':
             return ofIncludeFunc(value)
         else:
-            return ofInclude(value)
+            incl = ofInclude(value)
+            if key != '#include':
+                incl.keyword = key  #- keep #sinclude, #includeIfPresent, etc.
+            return incl
 
     def _parseTable(self, name, string = None):
         """
@@ -5306,6 +5336,9 @@ class DictFileParser:
                 )
             rv.vBracketType = bCharType
         else:
+            if vType not in OF_VERBATIM_CODE_ENTRIES:
+                userMsg(f"Unknown directive '#{vType}' on line {self.i+1} of "
+                        f"file {self.filepath}.", "ERROR")
             #- Store the code without the file's indentation; the writer
             #  re-indents it for its nesting level, so the block is unchanged
             #  by a read/write round trip.
