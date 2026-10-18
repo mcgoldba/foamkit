@@ -1,0 +1,18 @@
+# Development environment for foamkit.
+#   mamba env create -f environment.yml
+#   mamba activate foamkit
+name: foamkit
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - pandas
+  - matplotlib
+  - pint
+  - rich
+  - ipython
+  - pytest
+  - pip
+  - pip:
+      - -e .
