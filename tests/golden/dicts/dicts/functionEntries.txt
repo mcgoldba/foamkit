@@ -1,0 +1,53 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  9
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0; 
+    format      ascii; 
+    class       dictionary; 
+    object      functionEntries; 
+}
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include    "initialConditions"
+
+
+nx          10; 
+
+halfX       #eval{ $nx / 2 };
+
+twiceX      #eval " 2 * $nx ";
+
+tripleX     #eval{ $nx * 3 };
+
+area        0.5; 
+
+velocity    $U0;
+
+functions
+{
+    coded1
+    {
+        type        coded; 
+        libs        ( "libutilityFunctionObjects.so");
+        
+    
+        name        reportTime; 
+        codeExecute
+        #{
+            Info<< "time = " << mesh().time().value() << endl;
+        #};
+    }
+    
+    
+}
+
+
+// ************************************************************************* //
+

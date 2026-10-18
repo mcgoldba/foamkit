@@ -13,11 +13,12 @@ pip install foamkit
 ```
 
 ```python
-import foamkit.functions as pf   # was: import pyfoamd.functions as pf
+import foamkit.functions as fk  # was: import pyfoamd.functions as pf
 import foamkit.types as pt       # was: import pyfoamd.types as pt
 ```
 
-The command line tool is unchanged (`pf`), and is also available as `foamkit`.
+The command line tool is now `fk` (also available as `foamkit`); `pf` still
+works but is deprecated.
 The user config directory `~/.pyfoamd` is still read; new settings belong in
 `~/.foamkit`.
 

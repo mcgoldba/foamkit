@@ -26,10 +26,15 @@ dependencies = [
     "ipython",
 ]
 
+[project.optional-dependencies]
+test = ["pytest"]
+
 [project.urls]
 Home = "https://github.com/mcgoldba/foamkit"
 
 [project.scripts]
+fk = "foamkit.__main__:main"
+#- Deprecated alias for `fk` (the command was renamed)
 pf = "foamkit.__main__:main"
 foamkit = "foamkit.__main__:main"
 
@@ -38,6 +43,9 @@ include = ["foamkit*"]
 
 [tool.setuptools.package-data]
 foamkit = ["config.ini"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"

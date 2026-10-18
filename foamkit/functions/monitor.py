@@ -1,14 +1,8 @@
-import subprocess
-import sys
-import os
 from pathlib import Path
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 import numpy as np
 import pandas as pd
 import logging
 import re
-import copy
 from foamkit import userMsg
 import foamkit.types as pt
 from foamkit.functions.getProbe import getProbe
@@ -16,85 +10,55 @@ from foamkit.functions.getMonitor import getMonitor
 
 logger = logging.getLogger("foamkit")
 
-plt.style.use('ggplot')
+#- Style applied to monitor and plot windows (scoped to those figures, rather
+#  than set globally for every plot in the session on import).
+PLOT_STYLE = 'ggplot'
 
-def monitor(value='U', time='latestTime', supplement=None, 
-    workingDir=Path.cwd(), title=None, filter=None, yrange = None,
+def monitor(value='U', time='latestTime', supplement=None,
+    workingDir=None, title=None, filter=None, yrange = None,
     logScale=False, all=False):
+    """
+    Plot a probe or function object monitor, refreshing every second with the
+    data appended since the previous refresh.
+    """
+    #- matplotlib is slow to import; only load it when plotting.
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation
+
+    if workingDir is None:
+        workingDir = Path.cwd()
 
     if title is None:
         title = Path(workingDir).name
 
     try:
-        monitor = getMonitor(name=value, startTime=time, 
+        monitor = getMonitor(name=value, startTime=time,
                     workingDir=workingDir)
     except FileNotFoundError:
         monitor = getProbe(value, time, workingDir)
 
     if filter is not None:
-        columns_ = [monitor.data.columns[i] for i, item in 
+        columns_ = [monitor.data.columns[i] for i, item in
         enumerate(monitor.data.columns) if re.search(filter, item)]
     else:
         columns_ = monitor.data.columns
 
-    # x = monitor.data.index.to_numpy(dtype=float)
-    # y = monitor.data.iloc[:,filteredColumnIdx].to_numpy(dtype=float)
-
-
-    # fig, ax = plt.subplots(figsize=(4,3))
-    # # line, = ax.plot(x,y)
-    # lines = ax.plot(data=monitor.data)
-    # if yrange is not None:
-    #     ax.set_ylim(yrange)
-    # if logScale:
-    #     ax.set_yscale('log')
-
-
-    # def updatePlot(_, monitor, filterIdx, lines):
     def updatePlot(i):
-        #TODO:  This function should update existing monitors with new value,
-        # rather than rereading the whole monitor file every loop.
-        # logger.info("Updating monitor data...")
+        #- Only the lines written since the last refresh are parsed.
         monitor.update()
         x = pd.to_numeric(monitor.data.index).to_numpy().reshape((-1, 1))
-        # try:
-        #     x = [int(v) for v in x]
-        # except:
-        #     x = [float(v) for v in x]
 
         Y = monitor.data[columns_].apply(pd.to_numeric).to_numpy()
 
-        logger.debug(f"Y: {Y}")
+        logger.debug("Y: %s", Y)
 
-        if any(not np.isnan(v) for v in Y.flatten()) is False:
+        if np.isnan(Y).all():
             userMsg("No data found for plot!", "WARNING")
             return
 
-        # lines_ = []
-
-        # for line, y in zip(lines, Y):
-
-        # fig.set_data(x,y)
-
-
-        # logger.info("Redrawing...")
-
         plt.cla()
-        # df_ = monitor.data.iloc[:,filteredColumnIdx].apply(pd.to_numeric)
-        # fig = df_.plot()
         for i, label in enumerate(columns_):
             plt.plot(x,Y[:,i], label=label)
-
-
-
-        # plt.xlabel(monitor.data.index.name)
-        # plt.ylabel('Value')
-        # plt.title(monitor._name)
-        # plt.legend()
-        # if logScale:
-        #     plt.yscale('log')
-        # if yrange is not None:
-        #     plt.ylim(yrange)
 
         plt.xlabel(monitor.data.index.name)
         plt.ylabel('Value')
@@ -108,10 +72,10 @@ def monitor(value='U', time='latestTime', supplement=None,
         if yrange is not None:
             plt.ylim(yrange)
 
-    ani = FuncAnimation(plt.gcf(), updatePlot, 
-        #fargs=(monitor, filteredColumnIdx, lines),
-        interval=1000)
+    with plt.style.context(PLOT_STYLE):
+        ani = FuncAnimation(plt.gcf(), updatePlot, interval=1000,
+                            cache_frame_data=False)
 
-    plt.tight_layout() 
+        plt.tight_layout()
 
-    plt.show()
+        plt.show()

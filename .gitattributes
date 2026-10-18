@@ -1,0 +1,4 @@
+# OpenFOAM fixture files and golden outputs are LF on every platform (tests
+# build CRLF/CR variants from them explicitly).
+tests/fixtures/** text eol=lf
+tests/golden/** text eol=lf

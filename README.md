@@ -12,7 +12,7 @@ Features
 
 * Load OpenFOAM cases as Python objects
 * Read and edit OpenFOAM dictionary entries
-* Manipulated OpenFOAM cases from command line using the integrated iPython console
+* Manipulate OpenFOAM cases from command line using the integrated iPython console
 * Manipulate OpenFOAM cases from a Python script file.
 * Support for most OpenFOAM naitive types including:
     * dictonary entries, lists, scalars, vectors, tensors, dimensioned types, tables, coded objects, and more
@@ -35,13 +35,13 @@ Copy a template case and load as a python object
 #terminal
 cp $FOAM_TUTORIALS/incompressible/simpleFoam/pitzDaily .
 cd pitzDaily
-pf init
+fk init
 ```
 
 View case variables
 ```bash
 #terminal
-pf edit
+fk edit
 ```
 
 ```python

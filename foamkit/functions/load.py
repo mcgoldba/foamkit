@@ -8,6 +8,7 @@ import json
 from pydoc import locate #ref: https://stackoverflow.com/a/29831586/10592330
 import sys
 from foamkit.functions import isCase
+from foamkit.functions._paths import withJsonSuffix
 import pandas as pd
 
 import logging
@@ -16,7 +17,7 @@ logger = logging.getLogger('foamkit')
 
 # from foamkit.config import DEBUG
 
-def load(path=Path.cwd() / '.params' / '_case.json', _backup=False):
+def load(path=None, _backup=False):
     """
     Read in an OpenFOAM case saved as a JSON object
 
@@ -25,6 +26,8 @@ def load(path=Path.cwd() / '.params' / '_case.json', _backup=False):
             which data is to read.
     """
 
+    if path is None:
+        path = Path.cwd() / '.params' / '_case.json'
     if not isinstance(path, Path):
         path = Path(path)
 
@@ -32,8 +35,8 @@ def load(path=Path.cwd() / '.params' / '_case.json', _backup=False):
         if isCase(path):
             logger.debug("Specified load path is an OpenFOAM case.")
             path = path / '.params' / '_case.json'
-        elif str(path)[-5:] != '.json':
-            path = Path(str(path)+'.json')
+        else:
+            path = withJsonSuffix(path)
         # if str(path)[-5:] == '.json':
         #    path = Path(str(path)[:-5])
 
@@ -66,15 +69,15 @@ def load(path=Path.cwd() / '.params' / '_case.json', _backup=False):
                     else "INFO")
 
     if not path.is_file():
-        userMsg("No cached case data found.  Run 'pf init'"\
-            " before 'pf edit'.", "WARNING")
+        userMsg("No cached case data found.  Run 'fk init'"\
+            " before 'fk edit'.", "WARNING")
         return None
 
     with open(path, 'r') as fp:
         # caseDict = json.load(fp, object_hook=toOfType)
         caseDict = json.load(fp)
 
-    logger.debug(f"caseDict: {caseDict}")
+    logger.debug("caseDict: %s", caseDict)
 
 
 
@@ -94,12 +97,12 @@ def load(path=Path.cwd() / '.params' / '_case.json', _backup=False):
             tabStr = ''
         else:
             tabStr += '    '
-        logger.debug(f"{tabStr}Starting 'parseCaseDict' iteration")
-        logger.debug(f"{tabStr}obj: {obj}")
-        logger.debug(f"{tabStr}Parsing type {type(obj)}.")
+        logger.debug("%sStarting 'parseCaseDict' iteration", tabStr)
+        logger.debug("%sobj: %s", tabStr, obj)
+        logger.debug("%sParsing type %s.", tabStr, type(obj))
         if isinstance(obj, dict):
             if '_type' in obj.keys():
-                logger.debug(f"{tabStr}Parsing {obj['_type']}.")
+                logger.debug("%sParsing %s.", tabStr, obj['_type'])
                 # if obj['_type'] == 'ofFolder':
                 #     #TODO:  This reads folder from existing path rather than 
                 #     # copying 
@@ -140,17 +143,17 @@ def load(path=Path.cwd() / '.params' / '_case.json', _backup=False):
                          "ERROR")
                         sys.exit()
                     obj_ = FolderParser(case, path=obj['_path']).initOFFolder()
-                    logger.debug(f"{tabStr}Defined obj_: {obj_}")
+                    logger.debug("%sDefined obj_: %s", tabStr, obj_)
                 elif obj['_type'] =='ofCase':
                     obj_ = CaseParser(path=obj['_path']).initOFCase()
                     case = obj['_name']
-                    logger.debug(f"{tabStr}Defined obj_: {obj_}")
+                    logger.debug("%sDefined obj_: %s", tabStr, obj_)
                 elif obj['_type'] == 'ofDictFile':
                     #TODO: simplify initialization
                     # obj_ = ofDictFile(_name= obj['_name'], 
                     #             _location=obj['_location'])
                     obj_ = ofDictFile(_name= obj['_name']) 
-                    logger.debug(f"{tabStr}Defined obj_: {obj_}")
+                    logger.debug("%sDefined obj_: %s", tabStr, obj_)
                 elif (obj['_type'] == 'ofList' 
                 or obj['_type'] == 'ofSplitList'
                 or obj['_type'] == 'ofMultilineStatement'):
@@ -171,24 +174,24 @@ def load(path=Path.cwd() / '.params' / '_case.json', _backup=False):
                         logger.error(f"Could not find suitable type: {obj['_type']}.")
                         raise e
                 for key, value in obj.items():
-                    logger.debug(f"{tabStr}Parsing key {key}.")
+                    logger.debug("%sParsing key %s.", tabStr, key)
                     if (key != '_type' 
                         and not (not parseValue and key == '_value')):
-                        logger.debug(f"{tabStr}Setting key {key}.")
+                        logger.debug("%sSetting key %s.", tabStr, key)
                         value_ = _parseCaseDict(value, case, tabStr)
-                        logger.debug(f"{tabStr}value_: {value_}")
-                        logger.debug(f"{tabStr}obj_: {obj_}")
+                        logger.debug("%svalue_: %s", tabStr, value_)
+                        logger.debug("%sobj_: %s", tabStr, obj_)
                         try:
                             setattr(obj_, key, value_)
                         except FrozenInstanceError:
                             logger.warning(f"{tabStr}Could not set frozen "\
                                 f"instance key: {key}: {value}.")
-                logger.debug(f"{tabStr}Returning {obj_}.")
+                logger.debug("%sReturning %s.", tabStr, obj_)
                 return obj_
             else:
                 return obj
         else:
-            logger.debug(f"{tabStr}Returning {obj}.")
+            logger.debug("%sReturning %s.", tabStr, obj)
             return obj
             
     case_ = _parseCaseDict(caseDict)

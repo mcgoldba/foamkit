@@ -1,12 +1,12 @@
 from pathlib import Path
-import numpy as np
 import foamkit.types as pt
+from foamkit.functions._paths import latestTimeName
 
 import logging
 
 logger = logging.getLogger('foamkit')
 
-def getProbe(field=None, startTime='latestTime', workingDir=Path.cwd(),
+def getProbe(field=None, startTime='latestTime', workingDir=None,
      logPath=None):
     """
     Get an ofProbe object from a log file written to the 'postProcessing/probes'
@@ -34,26 +34,17 @@ def getProbe(field=None, startTime='latestTime', workingDir=Path.cwd(),
 
     """
 
-    # logging.getLogger('foamkit').setLevel(logging.DEBUG)
+    if workingDir is None:
+        workingDir = Path.cwd()
 
     if logPath is None:
         if startTime == 'latestTime':
-            timePath = Path(workingDir) / 'postProcessing' / 'probes'
-            startTime = 0
-            for time in timePath.iterdir():
-                try:
-                    time_ = float(time.name)
-                    if time_ > float(startTime):
-                        startTime = time.name
-                except ValueError:
-                    pass            
-            startTime = str(startTime)
-        logPath = (Path(workingDir) / 'postProcessing' / 'probes' 
+            startTime = latestTimeName(Path(workingDir) / 'postProcessing' / 'probes')
+        logPath = (Path(workingDir) / 'postProcessing' / 'probes'
         / str(startTime) / field)
 
-    logger.debug(f"logPath: {logPath}")
+    logger.debug("logPath: %s", logPath)
 
     probe = pt.ofProbe(logPath)
-    # data = np.loadtxt(logPath, delimiter="\s+")
 
     return probe

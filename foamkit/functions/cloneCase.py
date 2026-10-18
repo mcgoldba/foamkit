@@ -35,10 +35,12 @@ def cloneCase(srcPath, destPath, sshSrc=None, sshDest=None, includeTriSurface=Fa
                 for the remote host in ssh format (e.g. 'marc@my.remote.com')
 
     """
-    #- Note the sshSrc option currently isnt working because the src files need to
-    # be accessed for more than just the subprocess command 
-
-    # logger.setLevel(logging.DEBUG)
+    #- The source files are filtered locally before copying, so a remote
+    #  source cannot be supported this way.  Run `cloneCase` on the source
+    #  host with `sshDest` instead.
+    if sshSrc:
+        userMsg("Cloning from a remote source ('sshSrc') is not supported.  "
+            "Run cloneCase on the source host with 'sshDest' instead.", 'ERROR')
 
     if not isCase(srcPath):
         userMsg("Specified source is not a valid OpenFOAM case", 'ERROR')
@@ -51,18 +53,16 @@ def cloneCase(srcPath, destPath, sshSrc=None, sshDest=None, includeTriSurface=Fa
     destPath=Path(destPath)
 
     tmpPath = Path(tempfile.mkdtemp())
-    # tmpPath = srcPath.parent / (srcPath.name+"_tmp")
 
-    logger.debug(f"temp directory: {tmpPath}")
+    logger.debug("temp directory: %s", tmpPath)
 
-    # tmpPath.mkdir()
 
-    tabStr = ""
+    filesizeLimit = int(getFoamKitConfig('dict_filesize_limit'))
 
     def _copyObj(src, dest, top=False, tabStr=""):
         tabStr += "    "
         for obj in src.iterdir():
-            logger.debug(f"{tabStr}Parsing {obj}")
+            logger.debug("%sParsing %s", tabStr, obj)
             if obj.is_dir():
                 if top and obj.name.startswith('processor'):
                     continue
@@ -76,11 +76,11 @@ def cloneCase(srcPath, destPath, sshSrc=None, sshDest=None, includeTriSurface=Fa
                     except ValueError:
                         pass
                 if top and obj.name == 'constant': #handle constant dir seperately
-                    logger.debug(f"{tabStr}Making directory: {(dest / 'constant')}")
+                    logger.debug("%sMaking directory: %s", tabStr, dest / 'constant')
                     (dest / 'constant').mkdir()
                     for obj_ in obj.iterdir(): #iterate items in 'constant' dir
                         if obj_.is_dir():
-                            logger.debug(f"{tabStr}Parsing object name {obj_.name}")
+                            logger.debug("%sParsing object name %s", tabStr, obj_.name)
                             if (obj_.name == 'polyMesh' or
                             obj_.name == 'extendedFeatureEdgeMesh' 
                             ):
@@ -88,47 +88,36 @@ def cloneCase(srcPath, destPath, sshSrc=None, sshDest=None, includeTriSurface=Fa
                             if (obj_.name == 'triSurface' 
                                 and includeTriSurface == False):
                                 continue
-                            logger.debug(f"{tabStr}Making directory: {(dest / 'constant' / obj_.name)}")
+                            logger.debug("%sMaking directory: %s", tabStr, dest / 'constant' / obj_.name)
                             (dest / 'constant' / obj_.name).mkdir()
                             _copyObj(obj_, (dest / 'constant' /obj_.name), tabStr=tabStr)
                         else:
-                            logger.debug(f"{tabStr}Copying {obj_} to {(dest / 'constant')}")
+                            logger.debug("%sCopying %s to %s", tabStr, obj_, dest / 'constant')
                             shutil.copy(obj_, (dest / 'constant'))
                 if not (dest / obj.name).is_dir():
-                    logger.debug(f"{tabStr}Making directory: {(dest / obj.name)}")
+                    logger.debug("%sMaking directory: %s", tabStr, dest / obj.name)
                     (dest / obj.name).mkdir()
                     _copyObj(obj, (dest / obj.name), tabStr=tabStr)
             else:
-                # if obj.stat().st_size > int(getFoamKitConfig('dict_filesize_limit')):
-                # if obj.stat().st_size > 50000000: #500MB
-                if obj.stat().st_size > int(getFoamKitConfig('dict_filesize_limit')):
+                if obj.stat().st_size > filesizeLimit:
                     continue
-                logger.debug(f"{tabStr}Copying {obj} to {dest}")
+                logger.debug("%sCopying %s to %s", tabStr, obj, dest)
                 shutil.copy(obj, dest)
     
-    _copyObj(srcPath, tmpPath, top=True)
+    try:
+        _copyObj(srcPath, tmpPath, top=True)
 
-    cmd = 'cp'
-
-    if sshSrc:
-        fromStr = f'{sshSrc}:{str(tmpPath)}/*'
-        cmd = 'ssh'
-    else:
-        fromStr = str(tmpPath)+'/.'
-        
-    if sshDest:
-        toStr = f'{sshDest}:{str(destPath)}'
-        cmd = 'ssh'
-    else:
-        toStr = str(destPath)
-
-    cmdStr = f'{cmd} -r {fromStr} {toStr}'
-
-    logger.info(f"Copying case from {srcPath} to {toStr}...")
-
-    if not destPath.is_dir():
-        destPath.mkdir(parents=True)
-
-    subprocess.check_call(cmdStr, shell=True)
-    
-    # shutil.rmtree(tmpPath)
+        if sshDest:
+            toStr = f'{sshDest}:{str(destPath)}'
+            logger.info(f"Copying case from {srcPath} to {toStr}...")
+            #- Argument lists (no shell): paths with spaces or shell
+            #  metacharacters are passed through unchanged.
+            subprocess.check_call(['ssh', sshDest, 'mkdir', '-p', str(destPath)])
+            children = [str(p) for p in tmpPath.iterdir()]
+            if children:
+                subprocess.check_call(['scp', '-r', *children, toStr])
+        else:
+            logger.info(f"Copying case from {srcPath} to {destPath}...")
+            shutil.copytree(tmpPath, destPath, dirs_exist_ok=True)
+    finally:
+        shutil.rmtree(tmpPath, ignore_errors=True)

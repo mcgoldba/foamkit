@@ -1,8 +1,9 @@
-import os
-import sys
-import re
+from pathlib import Path
 
-def isMeshed(self, directory=None):
+#- Files that make up an OpenFOAM polyMesh (each may also be gzip compressed)
+MESH_FILES = ('points', 'faces', 'owner', 'neighbour', 'boundary')
+
+def isMeshed(directory=None):
     """
     Return True if a valid mesh is found in the speficied directory,
     else return False.
@@ -11,21 +12,17 @@ def isMeshed(self, directory=None):
     ----------
 
     directory : str
-        The case directory in which to search for a valid mesh.
+        The case directory in which to search for a valid mesh.  Defaults to
+        the current directory.
 
     """
-    #- Set the default argument
-    if not directory:
-        directory = self.caseDir
+    if directory is None:
+        directory = Path.cwd()
 
-    meshDir = os.path.join(directory, 'constant', 'polyMesh')
+    meshDir = Path(directory) / 'constant' / 'polyMesh'
 
-    #TODO: Gather mesh statstics and return with check.
-
-    if (os.path.isdir(meshDir) and
-        all([file in os.path.listdir(meshDir) for file in
-             ['points', 'neighbors', 'boundary']])):
-             return True
-
-    else:
+    if not meshDir.is_dir():
         return False
+
+    return all((meshDir / f).is_file() or (meshDir / (f+'.gz')).is_file()
+               for f in MESH_FILES)

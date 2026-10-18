@@ -1,8 +1,18 @@
-from pint import UnitRegistry
+from functools import lru_cache
 
 import logging
 
 logger = logging.getLogger('foamkit')
+
+@lru_cache(maxsize=None)
+def _unitRegistry():
+    """
+    Shared pint registry.  Building one parses all unit definitions, and this
+    function is called for every JSON object (`object_hook`), so it is built
+    once, on first use (pint is also slow to import).
+    """
+    from pint import UnitRegistry
+    return UnitRegistry()
 
 def _unitDecoder(dct):
     """
@@ -20,7 +30,7 @@ def _unitDecoder(dct):
 
     # logger.setLevel(logging.DEBUG)
 
-    ureg = UnitRegistry()
+    ureg = _unitRegistry()
     Q_ = ureg.Quantity
 
     ###- Helper function 1
@@ -29,7 +39,7 @@ def _unitDecoder(dct):
             logger.debug("Found string value")
             try:
                 v_ = ureg(v).to_base_units().magnitude
-                logger.debug(f"Interpreted string as '{v_}'")
+                logger.debug("Interpreted string as '%s'", v_)
                 return v_
             #vList = v.split(" ")
             #if len(vList) >= 2:
@@ -64,7 +74,7 @@ def _unitDecoder(dct):
             logger.debug("Parsing list...")
             return [_parseOrDecode(v) for v in obj]
         else:
-            logger.debug(f"Parsing value '{obj}'...")
+            logger.debug("Parsing value '%s'...", obj)
             return _decodeUnits(obj)
 
     return _parseOrDecode(dct)

@@ -11,8 +11,6 @@ import math
 import subprocess
 import tempfile
 
-import pint
-from pint import UnitRegistry
 import json
 import pandas as pd
 # from functools import reduce
@@ -38,7 +36,6 @@ from .cleanDictFile import cleanDictFile
 from .isDecomposed import isDecomposed
 from .isReconstructed import isReconstructed
 from .isMeshed import isMeshed
-from .cleanDictFile import cleanDictFile
 from .isCase import isCase
 from .listCases import listCases
 from .monitor import monitor

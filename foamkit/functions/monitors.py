@@ -2,8 +2,6 @@ import subprocess
 import sys
 import os
 from pathlib import Path
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 import numpy as np
 import pandas as pd
 import logging
@@ -16,7 +14,6 @@ from foamkit.functions.getMonitor import getMonitor
 
 logger = logging.getLogger("foamkit")
 
-plt.style.use('ggplot')
 
 # def monitor(value='U', time='latestTime', supplement=None, 
 #     workingDir=Path.cwd(), title=None, filter=None, yrange = None,
@@ -45,6 +42,9 @@ def monitors(monitorDict):
             })
 
     """
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation
+
     for value in monitorDict.keys():
         if title is None:
             title = Path(workingDir).name
@@ -88,7 +88,7 @@ def monitors(monitorDict):
 
         Y = monitor.data[columns_].apply(pd.to_numeric).to_numpy()
 
-        logger.debug(f"Y: {Y}")
+        logger.debug("Y: %s", Y)
 
         if any(not np.isnan(v) for v in Y.flatten()) is False:
             userMsg("No data found for plot!", "WARNING")

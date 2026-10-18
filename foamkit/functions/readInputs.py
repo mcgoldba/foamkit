@@ -8,7 +8,7 @@ import logging
 
 log = logging.getLogger("foamkit")
 
-def readInputs(filepath=os.path.join(os.getcwd(), 'inputParameters')):
+def readInputs(filepath=None):
     """
     Reads a JSON formatted parameters file, while interpreting units and converting values to standard OpenFOAM units (i.e. SI).
 
@@ -22,6 +22,9 @@ def readInputs(filepath=os.path.join(os.getcwd(), 'inputParameters')):
             A Python dictionary of parameters
 
     """
+
+    if filepath is None:
+        filepath = os.path.join(os.getcwd(), 'inputParameters')
 
     with open(filepath, "r") as paramsFile:
         params = json.load(paramsFile, object_hook=_unitDecoder)
