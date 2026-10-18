@@ -1,8 +1,0 @@
-#!/bin/bash
-
-# Abort the script on error
-#set -euxo pipefail
-set -euo pipefail
-#set -e pipefail
-
-multitail Log log.* 
