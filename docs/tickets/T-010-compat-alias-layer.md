@@ -20,7 +20,7 @@ A script can address case content by its **Foundation 14 name** on any supported
 - **No guessing:** when there is no mapping, or a `translated` value is not in its lookup table, raise `NoEquivalentError` (subclass of `KeyError`) with the case's release and the canonical name.
 - **Native writes:** accessors return the native object. Editing it writes the native file or key. An ESI case is never rewritten into Foundation names.
 
-## Proposed logical (canonical) names, for **maintainer sign-off at approval**
+## Canonical names (**approved by maintainer, 2026-10-18**, together with the accessor `case.canonical(...)`)
 
 Confirm each name and version boundary against the T-007 fact-check table before implementing.
 
@@ -37,7 +37,7 @@ Confirm each name and version boundary against the T-007 fact-check table before
 
 ## Scope
 - `foamkit/compat.py`: the table, `resolve(case, canonical) -> Resolved` (native path or key, kind, release), `nativeName(case, canonical)`, and `NoEquivalentError`.
-- Thin accessors on the case object, for example `case.canonical("constant/physicalProperties")`. This is a new method; no existing attribute changes.
+- The thin accessor `case.canonical(name)` (approved name), for example `case.canonical("constant/physicalProperties")`. This is a new method; no existing attribute changes.
 - Tests: each tested fixture family for every name, plus tiny synthetic dicts for best-effort rows.
 
 ## Out of scope
@@ -54,6 +54,6 @@ Confirm each name and version boundary against the T-007 fact-check table before
 - [ ] The public API is purely additive. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline.
 
 ## Risks
-- The canonical names become public API, so maintainer sign-off on the table is required. Future Foundation renames will add rows rather than rename canonical names; the update policy is recorded in T-012.
+- The canonical names are public API (table approved 2026-10-18). If T-007's fact-check table forces a change to an approved canonical name, bring it back to the maintainer instead of changing it silently. Future Foundation renames add rows rather than renaming canonical names; the update policy is recorded in T-012.
 - The version boundaries in the table are from memory until T-007 confirms them.
 - Detection with `unknown`: `resolve` tries the native candidates in a documented order and reports which one it used.

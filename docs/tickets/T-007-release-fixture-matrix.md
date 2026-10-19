@@ -3,7 +3,7 @@
 - **Type:** code, tests only (owner: `tester`; `implementer` only for the `pyproject.toml` marker registration)
 - **Size:** M
 - **Plan:** docs/plans/openfoam-compatibility.md, section 3
-- **Depends on:** T-004, T-005, T-006, T-013
+- **Depends on:** T-004, T-005, T-006, T-013, T-015, T-016
 
 ## Goal
 CI demonstrates, without OpenFOAM installed, that FoamKit reads, edits and writes representative cases from each **tested** release.

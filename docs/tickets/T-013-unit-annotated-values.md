@@ -37,11 +37,11 @@ On 2026-10-18 I probed these guessed forms with scratch files (no code changed):
 - [ ] The tester first confirms the real v13/v14 syntax and records three or more distinct forms from real files in this ticket (scalar, vector/list, field, plus any others found).
 - [ ] Failing tests exist for every form above that currently fails or corrupts.
 - [ ] After the fix, every recorded form round-trips byte-identically (after FoamKit's normal whitespace formatting) and can be re-parsed.
-- [ ] The numeric part is accessible as a number. The unit is kept as a separate attribute; name it in the ticket at implementation and note it in the CHANGELOG.
+- [ ] The numeric part is accessible as a number through `.value`. The unit string (for example `'m/s'`) is on a new **`.units`** attribute (maintainer-approved 2026-10-18), and is `None` for values without units. There is a CHANGELOG entry under Fix.
 - [ ] Editing the numeric value keeps the unit annotation.
 - [ ] Classic `[0 2 -1 0 0 0 0]` dimensioned entries and all existing golden files are unchanged.
 - [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline.
 
 ## Risks
-- **Type change:** values that come back as `ofStr` today will come back as a typed object. User code comparing `.value` to the string `'2000 [s]'` would break. That code is unlikely, but call it out in the CHANGELOG.
+- **Type change (approved as a bug fix, 2026-10-18):** values that come back as `ofStr` today will come back typed. User code comparing `.value` to the string `'2000 [s]'` would break. The CHANGELOG note is required; no deprecation alias is needed.
 - **Ambiguity:** `[...]` after a value can be a unit or a classic dimension set. Decide by content (numbers only, versus unit symbols) and test both.

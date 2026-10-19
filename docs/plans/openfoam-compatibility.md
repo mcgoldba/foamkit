@@ -24,6 +24,8 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B4 | `foamkit/types/__init__.py:378-383` | Header truncation uses `'line'+str(i)` with `i` starting at 0, an off-by-one. | all → T-006 |
 | B5 | Value and list parsing in `foamkit/types/__init__.py` | Unit-annotated values (forms guessed from the CFD Direct note; T-013 confirms the real syntax): `1.5e-05 [m^2/s]` becomes a plain string (not numeric); `(10 0 0) [m/s]` is **corrupted**, with the unit written inside the list; `uniform (10 0 0) [m/s]` **fails to parse** (`ValueError`). | Tested (Foundation 13/14 make input units standard) → T-013 |
 | B6 | `ofNamedDimension` parsing | `nu nu [0 2 -1 0 0 0 0] 1.5e-05;` is written as `nu [0 2 -1 0 0 0 0];`, so **the value is lost**. | Best-effort only (older `transportProperties`) → T-014 |
+| B7 | Directive dispatch `foamkit/types/__init__.py:3962-3967`, `_parseVerbatimEntry` `:5339-5341` | `#remove`, `#if/#else/#endif`, `#inputMode` and unknown `#word` lines raise, so the whole file fails to load. `#calc "1+2"` raises `TypeError` (`ofCalc` constructor). | Tested (`#calc`, `#remove`, ESI `#if`; to be inventoried) → T-016 |
+| B8 | `ofIncludeFunc` | `#includeFunc f(U)` is written quoted. `#includeFunc f(U, name=s)` fails to parse. | Tested (Foundation function-object arguments) → T-015 |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -74,16 +76,20 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 
 | Order | Ticket | Owner | Size | Depends on |
 |---|---|---|---|---|
-| 1 | T-004 include directives kept verbatim (B1) | tester → implementer | S | T-002 |
+| 1 | T-004 include directives kept verbatim (B1). **Done** (cdfd3c6) | tester → implementer | S | T-002 |
+| 1a | T-017 `FoamKitError` becomes `Exception` (transition: `SystemExit` + `Exception` dual base) | tester → implementer | S | T-002 |
+| 1b | T-016 `#calc`/`#remove`/`#if`/`#inputMode`; unknown directives kept as `ofVerbatimDirective`, `OF_DIRECTIVES` registry (B7) | tester → implementer | M (may split) | T-004, T-017 |
+| 1c | T-015 `#includeFunc` with arguments, original quoting kept (B8); blocked on the quoting option (A/B/C) | tester → implementer | S | T-004, T-017 |
 | 2 | T-005 boxed and bannerless files recognised (B2) | tester → implementer | S | T-002 |
 | 3 | T-013 unit-annotated values (B5) | tester → implementer | M | T-002 |
 | 4 | T-006 header preserved on write (B3, B4) | tester → implementer | S | T-005 |
-| 5 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013 |
+| 5 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016 |
 | 6 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |
 | 7 | T-010 canonical (Foundation 14) mapping table | tester → implementer | M (may split) | T-008 |
 | 8 | T-009 new-file header from `detect()` | tester → implementer | S | T-008, T-006 |
 | 9 | T-011 residuals/`solverInfo` and monitors | tester → implementer | S | T-007, T-010 |
 | 10 | T-012 Supported versions page | docs-writer | S | T-001, T-007 |
+| 10a | T-018 Directive support page, drift-tested against `OF_DIRECTIVES` | docs-writer | S | T-001, T-016 |
 | 11 | T-014 legacy named dimensioned value loss (B6, best-effort) | tester → implementer | S | T-002 |
 
 **Deferred:**
