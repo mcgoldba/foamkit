@@ -5,9 +5,14 @@
   - Foundation (openfoam.org): **11, 12, 13, 14**
   - ESI (openfoam.com): **v2412, v2506, v2512, v2606**
 - **Best-effort, untested:** older releases (for example Foundation 7-10, ESI v2006-v2406) and anything newer than the tested set.
+- **foam-extend (third distribution, added 2026-10-19):** 4.1 and 5.0 are "headers tested, otherwise best-effort":
+  - header recognition and byte-for-byte header write are tested with real-file fixtures (T-005, T-006);
+  - release detection covers foam-extend (T-008);
+  - name mapping (T-010) is deferred;
+  - full-case fixtures are optional and later (T-007 note).
 - **Python:** 3.9+, tested on 3.9 and 3.12.
 
-The version-specific facts below were written from memory. T-007's fact-check table, built from real release files, is the source of truth and overrides this document.
+The version-specific facts below were written from memory unless marked *real file*. On 2026-10-19 a memory-based claim (B2 for boxed banners) turned out to be wrong when checked against real files. T-007's fact-check table, built from real release files (see References), is the source of truth and overrides this document. Fixture text must always be fetched from real files.
 
 ## 1. Inventory: what FoamKit actually touches
 
@@ -19,13 +24,14 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | # | Where | What happens | Affects |
 |---|---|---|---|
 | B1 | `foamkit/types/__init__.py:3962-3964` → `_parseIncludes` `:4686-4697` | `#sinclude "a"` and `#includeIfPresent "b"` are **written back as `#include`**, so an optional include becomes mandatory. | Tested (ESI `#sinclude`; both) → T-004 |
-| B2 | `foamkit/types/_isDictFile.py:12-13`, used at `types/__init__.py:607` | Files with the boxed `\| ... \|` banner and files with no banner are not recognised as dictionaries. `pf.init` **silently drops them**: a boxed `controlDict` was missing from `case.system`. | Tested (ESI banner style, to be confirmed by T-007), best-effort → T-005 |
-| B3 | `foamkit/types/__init__.py:362-376` | A boxed banner is rebuilt by column slicing (`[29:]`), which mangles it. | as B2 → T-006 |
+| B2 (corrected 2026-10-19) | `foamkit/types/_isDictFile.py:12-13`, used at `types/__init__.py:607` | **Header-less** files (first line `FoamFile`) are not recognised, so `pf.init` silently drops them. *Correction:* boxed banners are **not** dropped. Real ESI v2606 and foam-extend 4.1/5.0 files are recognised and fully read. The earlier claim came from a probe written from memory with single backslashes. | Header-less files (all distributions) → T-005 (bug); real banners pinned as characterization in T-005 |
+| B3 (*real file*, 2026-10-19) | `foamkit/types/__init__.py:362-376` | Writing the real ESI v2606 `controlDict` strips the `\|` borders from the boxed banner (column slicing `[29:]`). foam-extend uses the same boxed layout. | ESI, foam-extend → T-006 |
 | B4 | `foamkit/types/__init__.py:378-383` | Header truncation uses `'line'+str(i)` with `i` starting at 0, an off-by-one. | all → T-006 |
 | B5 | Value and list parsing in `foamkit/types/__init__.py` | Unit-annotated values (forms guessed from the CFD Direct note; T-013 confirms the real syntax): `1.5e-05 [m^2/s]` becomes a plain string (not numeric); `(10 0 0) [m/s]` is **corrupted**, with the unit written inside the list; `uniform (10 0 0) [m/s]` **fails to parse** (`ValueError`). | Tested (Foundation 13/14 make input units standard) → T-013 |
 | B6 | `ofNamedDimension` parsing | `nu nu [0 2 -1 0 0 0 0] 1.5e-05;` is written as `nu [0 2 -1 0 0 0 0];`, so **the value is lost**. | Best-effort only (older `transportProperties`) → T-014 |
 | B7 | Directive dispatch `foamkit/types/__init__.py:3962-3967`, `_parseVerbatimEntry` `:5339-5341` | `#remove`, `#if/#else/#endif`, `#inputMode` and unknown `#word` lines raise, so the whole file fails to load. `#calc "1+2"` raises `TypeError` (`ofCalc` constructor). | Tested (`#calc`, `#remove`, ESI `#if`; to be inventoried) → T-016 |
 | B8 | `ofIncludeFunc` | `#includeFunc f(U)` is written quoted. `#includeFunc f(U, name=s)` fails to parse. | Tested (Foundation function-object arguments) → T-015 |
+| B9 (*real file*, 2026-10-19) | Dict-file writer | An unedited read → write of the real ESI v2606 `controlDict` adds a trailing space after `;`, re-aligns key/value padding and adds a blank line after the FoamFile block. | All → T-019 (whitespace), T-020 (padding/layout) |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -45,10 +51,10 @@ The `bin/` shell scripts were removed by the maintainer on 2026-10-18 and are no
 
 ## 2. Architecture
 
-1. **Lossless reading and writing first (no new API):** T-004, T-005, T-006, T-013 (T-014 for best-effort). The original banners, directives and unit annotations are kept verbatim.
+1. **Lossless reading and writing first (no new API):** T-004, T-005, T-006, T-019, T-013, T-015, T-016, then T-020 (T-014 for best-effort). The goal is "write it back the way it was": original banners, directives, unit annotations and formatting of unedited entries.
 2. **Release detection:** `foamkit/release.py` (T-008), with
    ```python
-   FoamRelease(distribution, version, major, source)
+   FoamRelease(distribution, version, major, source)  # distribution: esi | foundation | foam-extend | unknown
    ```
    **Approved precedence:** explicit override or config, then the case banner, then the environment, then `unknown`. It never raises.
 3. **Canonical names:** `foamkit/compat.py` (T-010).
@@ -76,14 +82,17 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 
 | Order | Ticket | Owner | Size | Depends on |
 |---|---|---|---|---|
-| 1 | T-004 include directives kept verbatim (B1). **Done** (cdfd3c6) | tester → implementer | S | T-002 |
-| 1a | T-017 `FoamKitError` becomes `Exception` (transition: `SystemExit` + `Exception` dual base) | tester → implementer | S | T-002 |
-| 1b | T-016 `#calc`/`#remove`/`#if`/`#inputMode`; unknown directives kept as `ofVerbatimDirective`, `OF_DIRECTIVES` registry (B7) | tester → implementer | M (may split) | T-004, T-017 |
-| 1c | T-015 `#includeFunc` with arguments, original quoting kept (B8); blocked on the quoting option (A/B/C) | tester → implementer | S | T-004, T-017 |
-| 2 | T-005 boxed and bannerless files recognised (B2) | tester → implementer | S | T-002 |
-| 3 | T-013 unit-annotated values (B5) | tester → implementer | M | T-002 |
-| 4 | T-006 header preserved on write (B3, B4) | tester → implementer | S | T-005 |
-| 5 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016 |
+| — | T-004 include directives kept verbatim (B1). **Done** (cdfd3c6) | tester → implementer | S | T-002 |
+| 1 | T-005 header-less `FoamFile` files recognised (B2); real banners pinned | tester → implementer | S | T-002 |
+| 2 | T-006 header preserved byte-for-byte: Foundation, ESI, foam-extend (B3, B4) | tester → implementer | S | T-005 |
+| 3 | T-019 no trailing space after `;`, no extra blank line after FoamFile (B9) | tester → implementer | S | T-006 |
+| 4 | T-017 `FoamKitError` becomes `Exception` (dual-base transition) | tester → implementer | S | T-002 |
+| 5 | T-016 other directives; `ofVerbatimDirective`, `OF_DIRECTIVES` (names approved) (B7) | tester → implementer | M (may split) | T-004, T-017 |
+| 6 | T-015 `#includeFunc` arguments, original quoting (option A approved) (B8) | tester → implementer | S | T-004, T-017 |
+| 7 | T-013 unit-annotated values (B5) | tester → implementer | M | T-002 |
+| 7a | T-003 README, T-001 Sphinx site (docs track; see ROADMAP) | docs-writer | S / M | — |
+| 8 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019 |
+| 8a | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
 | 6 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |
 | 7 | T-010 canonical (Foundation 14) mapping table | tester → implementer | M (may split) | T-008 |
 | 8 | T-009 new-file header from `detect()` | tester → implementer | S | T-008, T-006 |
@@ -98,3 +107,15 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 - CI against real OpenFOAM containers
 - modelling ESI `#if/#ifeq` as structured entries
 - renaming the console's `pf`/`pt` aliases to `fkf`/`fkt` (needs a deprecation path)
+- foam-extend name mapping in T-010, and full foam-extend case fixtures
+
+## References: real-file sources (fetch with `curl -sfL` when exact bytes matter)
+- **ESI (openfoam.com), GitLab raw:**
+  - `https://gitlab.com/openfoam/core/openfoam/-/raw/master/tutorials/incompressible/simpleFoam/pitzDaily/system/controlDict` (master was v2606 on 2026-10-18/19).
+  - For a specific release, replace `master` with that release's branch or tag after checking the repository's refs.
+- **foam-extend, SourceForge raw:**
+  - `https://sourceforge.net/p/foam-extend/foam-extend-5.0/ci/master/tree/tutorials/<path>?format=raw`
+  - `https://sourceforge.net/p/foam-extend/foam-extend-4.1/ci/master/tree/tutorials/<path>?format=raw`
+- **Foundation (openfoam.org):**
+  - GitHub repositories `OpenFOAM/OpenFOAM-<N>`, raw files at `https://raw.githubusercontent.com/OpenFOAM/OpenFOAM-<N>/master/tutorials/<path>`.
+  - These are not yet fetched or checked by this plan; the T-007 tester confirms the URL pattern.

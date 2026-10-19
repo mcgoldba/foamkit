@@ -3,7 +3,7 @@
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Follows:** T-004 (criterion 4). The two strict-xfail tests in `tests/test_directives.py` already exist.
-- **Status:** **blocked on one maintainer decision** (see "Conflict"). Everything else is ready.
+- **Status:** ready. **Option A approved by the maintainer (2026-10-19).**
 
 ## Goal
 Function-object includes, with or without arguments, are written back the way they were read. Today `#includeFunc streamlines(U)` comes back as `#includeFunc "streamlines(U)"`, and `#includeFunc streamlines(U, name=s)` fails to parse.
@@ -31,7 +31,7 @@ Options for the maintainer (planner recommendation: **A**):
   - Unquoted bare names are still rewritten. T-007's byte-identical round trip would need an exception for them.
 - **C. No golden changes.** Only possible if the two xfail tests are rewritten to accept quoted argument output. This contradicts the maintainer decision that `writeObjects(kEpsilon:G)` stays unquoted.
 
-The implementer must not start until the maintainer picks A, B or C. The acceptance criteria below assume **A**; for B, swap the golden and test-82 bullets as described above.
+**Decision (2026-10-19): option A.** Options B and C are kept above only as a record. The 4 golden lines and the 1 test expectation pinned below are the only allowed golden/test changes.
 
 ## Forms to support
 These are written from memory. **The tester must confirm each one against real tutorial files** (T-007 fixtures if they exist, otherwise the release sources) and record the source here.
@@ -51,7 +51,7 @@ These are written from memory. **The tester must confirm each one against real t
 - Interpreting arguments (the text is kept verbatim)
 - Other directives (T-016)
 
-## Acceptance criteria (option A)
+## Acceptance criteria (option A, approved)
 - [ ] Both strict-xfail tests in `tests/test_directives.py` pass with their `xfail` markers removed.
 - [ ] Every `#includeFunc` is written with its original quoting. Quoted input stays quoted and unquoted input stays unquoted. This is tested for both a bare name and an argument form, at top level and inside `functions {}`.
 - [ ] Golden changes are **exactly** lines `:56` and `:58` of `tests/golden/case/controlDict.written.txt` and `tests/golden/dicts/pitzDaily/system/controlDict.txt`, made unquoted. No other golden line changes. The reviewer checks `git diff --stat -- tests/golden`.

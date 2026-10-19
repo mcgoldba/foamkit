@@ -3,7 +3,7 @@
 - **Type:** code, tests only (owner: `tester`; `implementer` only for the `pyproject.toml` marker registration)
 - **Size:** M
 - **Plan:** docs/plans/openfoam-compatibility.md, section 3
-- **Depends on:** T-004, T-005, T-006, T-013, T-015, T-016
+- **Depends on:** T-004, T-005, T-006, T-013, T-015, T-016, T-019. T-020 is **not** a dependency: remaining entry padding/layout differences are marked `xfail(strict=True, reason="T-020")`, and these fixtures become T-020's test corpus.
 
 ## Goal
 CI demonstrates, without OpenFOAM installed, that FoamKit reads, edits and writes representative cases from each **tested** release.
@@ -14,13 +14,15 @@ CI demonstrates, without OpenFOAM installed, that FoamKit reads, edits and write
 
 Older releases (Foundation 7-10, ESI v2006-v2406) are **best-effort and untested**. They get no fixture here.
 
+**foam-extend (optional, later):** full `foam-extend-4.1` / `foam-extend-5.0` case fixtures may be added in a follow-up. The header-level fixtures in `tests/fixtures/headers/` (T-005, T-006) already cover their banners. Fetch sources from SourceForge (plan References).
+
 ## Scope
 - `tests/fixtures/releases/{foundation-11,foundation-12,foundation-13,foundation-14,esi-v2412,esi-v2506,esi-v2512,esi-v2606}/`. Each is a minimal case with:
   - `system/controlDict`, `fvSchemes`, `fvSolution`;
   - the release's turbulence and physical-properties files;
   - one `0/` (or `0.orig/`) field.
 
-  The files are taken from that release's `pitzDaily` (or the closest incompressible tutorial) and trimmed, keeping the real banners, include directives and (Foundation 13/14) unit-annotated values. LF line endings, as enforced by `.gitattributes`.
+  The files are fetched byte-exact (`curl -sfL`, URLs in the plan's References section) from that release's `pitzDaily` (or the closest incompressible tutorial) and trimmed, keeping the real banners, include directives and (Foundation 13/14) unit-annotated values. LF line endings, as enforced by `.gitattributes`.
 - `tests/fixtures/releases/README.md`: the source release, tutorial path and download date for each fixture.
 - A **fact-check table** in that README. For each family, record the actual file and key names found: turbulence file, RAS model key, physical-properties file, fvModels/fvConstraints/fvOptions, `application`/`solver`, banner style, residuals function object name. The plan's version-specific claims were written from memory; this table replaces them, and T-010 and T-012 use it as their source.
 - `tests/test_releases.py`, parametrized over the families:

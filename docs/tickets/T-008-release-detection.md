@@ -6,11 +6,11 @@
 - **Depends on:** T-007
 
 ## Goal
-Users and FoamKit internals can ask which OpenFOAM release a case or environment targets (`esi`, `foundation` or `unknown`, plus version) without OpenFOAM installed.
+Users and FoamKit internals can ask which OpenFOAM release a case or environment targets (`esi`, `foundation`, `foam-extend` or `unknown`, plus version) without OpenFOAM installed.
 
 ## Scope
 - New module `foamkit/release.py`:
-  - `FoamRelease` frozen dataclass (`distribution`, `version`, `major`, `source`);
+  - `FoamRelease` frozen dataclass (`distribution: Literal["esi", "foundation", "foam-extend", "unknown"]`, `version`, `major`, `source`);
   - `detect(case_path=None, override=None)`.
 - **Detection order (maintainer-approved 2026-10-18):**
   1. explicit `override` argument, then config key `openfoam_release`;
@@ -26,7 +26,8 @@ Users and FoamKit internals can ask which OpenFOAM release a case or environment
 
 ## Acceptance criteria
 - [ ] Parametrized tests cover:
-  - every T-007 fixture banner;
+  - every T-007 fixture banner, plus the real foam-extend 4.1/5.0 headers in `tests/fixtures/headers/` (banner text `foam-extend: Open Source CFD`, `Version:     4.1` / `5.0`, `Web:         http://www.foam-extend.org`);
+  - a foam-extend environment (`WM_PROJECT=foam`, `WM_PROJECT_VERSION=4.1`). The `WM_PROJECT` value is reported by the maintainer and not yet checked against a foam-extend `etc/bashrc`; the tester confirms it from the SourceForge source;
   - env combinations (ESI `v2606` with `FOAM_API=2606`; Foundation `14`; Foundation `dev`; unset);
   - a case banner that disagrees with the environment, where the banner wins;
   - an override, which beats both.

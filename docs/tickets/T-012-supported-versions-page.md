@@ -11,6 +11,7 @@ A user can see in one page which OpenFOAM releases and Python versions FoamKit s
 - `docs/supported-versions.md`, added to the `index` toctree.
 - **Python:** 3.9+; tested in CI on 3.9 and 3.12 (from `.github/workflows/release.yml`).
 - **Tested releases** (a T-007 fixture runs in CI): Foundation 11, 12, 13, 14 and ESI v2412, v2506, v2512, v2606.
+- **foam-extend:** 4.1 and 5.0, tier "headers tested, otherwise best-effort". Header recognition and byte-for-byte header write are tested (T-005, T-006); release detection is tested (T-008); file and key names are not mapped (no `case.canonical` support).
 - **Best-effort (untested):**
   - older releases, for example Foundation 7-10 and ESI v2006-v2406;
   - releases newer than the tested set;

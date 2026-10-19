@@ -24,7 +24,7 @@ Unknown directives are **kept verbatim, with a one-time WARNING** (once per dire
 - The capture is bounded: it runs to the end of the line, or to the matching close of a balanced `(`, `{`, `#{` or `"` that opens on that line. If no boundary is found, raise `FoamKitError` with the file and line. Never consume to the end of the file silently.
 
 ## Design: tracked in `foamkit.types`
-- **New public type `ofVerbatimDirective`** (proposed name), with:
+- **New public type `ofVerbatimDirective`**, with:
   - `keyword` (for example `"if"`) and `text` (the raw source, including any block up to `#endif` for conditionals);
   - `toString()` returns `text` unchanged;
   - a `known` property: `True` if the keyword is in the registry.
@@ -39,7 +39,7 @@ Unknown directives are **kept verbatim, with a one-time WARNING** (once per dire
 
   It is seeded from the inventory below. It sits alongside the existing `OF_FUNCTION_ENTRIES` (`:2962`) and `OF_VERBATIM_CODE_ENTRIES` (`:3101`); do not change those two.
 - **Finding them from code:** a generator `iterDirectives(obj, status=None)` in `foamkit.types`. It walks an `ofCase`, folder or dict file and yields `(location, directive)` pairs. `status="verbatim"` lists everything preserved but not interpreted, and unknown keywords are reported as `status="unknown"`.
-- **Approval needed:** the names `ofVerbatimDirective`, `OF_DIRECTIVES`, `DirectiveInfo` and `iterDirectives` become public API. The maintainer confirms them at ticket approval.
+- **Public names approved by the maintainer (2026-10-19):** `ofVerbatimDirective`, `OF_DIRECTIVES`, `DirectiveInfo`, `iterDirectives`.
 
 ## Step 1: inventory (tester, recorded in this ticket)
 - Grep the tutorials of the tested releases (Foundation 11-14, ESI v2412-v2606) for `^\s*#[a-zA-Z]` directives, including those inside sub-dictionaries.

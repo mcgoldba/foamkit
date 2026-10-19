@@ -41,6 +41,7 @@ Confirm each name and version boundary against the T-007 fact-check table before
 - Tests: each tested fixture family for every name, plus tiny synthetic dicts for best-effort rows.
 
 ## Out of scope
+- foam-extend name mapping (deferred; foam-extend is supported at the header and detection level only). For a foam-extend case, `case.canonical(...)` raises `NoEquivalentError` and says so.
 - Converting whole cases between distributions
 - Writing canonical names into a case
 - Solver translations beyond the incompressible solvers in the lookup table; add rows later
