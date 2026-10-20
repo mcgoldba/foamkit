@@ -34,6 +34,8 @@
 ## Done
 - **T-002** ruff + mypy config and baseline (ad4c34c)
 - **T-004** `#sinclude` / `#includeIfPresent` / other include keywords kept on write (cdfd3c6)
+- **T-005** header-less `FoamFile` dictionaries recognised; real ESI/foam-extend banners pinned (9912fcc)
+- **T-006** headers written back verbatim, ESI/foam-extend box borders kept; same-line `FoamFile {` read as the header (b97578c)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. The ruff/mypy baseline exists.
