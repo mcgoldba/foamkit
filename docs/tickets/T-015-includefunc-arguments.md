@@ -63,3 +63,6 @@ These are written from memory. **The tester must confirm each one against real t
 ## Risks
 - Users who diff written files see `#includeFunc` lines lose their added quotes. Both forms are valid OpenFOAM; the CHANGELOG entry covers it.
 - **Untrusted input:** argument text is stored and written back, never evaluated. The balanced-bracket scan is bounded by the end of the file.
+
+## Evidence (2026-10-19, real file; no change to acceptance criteria)
+- Foundation 11 pitzDaily `system/controlDict` line 55, `#includeFunc patchAverage(patch=inlet, fields=(p U))`, fails to load ("Could not find functionEntry bracket type"). So stock Foundation 11 pitzDaily cannot be loaded until this ticket lands. Source: `https://raw.githubusercontent.com/OpenFOAM/OpenFOAM-11/master/tutorials/incompressibleFluid/pitzDaily/system/controlDict`.

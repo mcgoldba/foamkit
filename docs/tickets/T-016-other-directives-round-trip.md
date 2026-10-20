@@ -15,6 +15,7 @@ A dictionary that uses any directive found in the tested releases' tutorials loa
 | `#remove x` / `#remove (a b)` | FoamKitError "Could not find functionEntry bracket type" |
 | `#if ... #else ... #endif` | same |
 | `#inputMode merge` | same |
+| `#print` (no argument, inside `RAS {}`), from the real Foundation 14 `constant/momentumTransport` | Fails to load. **Stock Foundation 14 pitzDaily cannot be loaded today** (2026-10-19). |
 | any other `#word` | FoamKitError "Unknown directive ..." (`_parseVerbatimEntry`, `foamkit/types/__init__.py:5339-5341`) |
 
 ## Policy (approved by maintainer, 2026-10-18)
@@ -45,6 +46,7 @@ Unknown directives are **kept verbatim, with a one-time WARNING** (once per dire
 - Grep the tutorials of the tested releases (Foundation 11-14, ESI v2412-v2606) for `^\s*#[a-zA-Z]` directives, including those inside sub-dictionaries.
 - Record each directive, a count, an example file, and the proposed status.
 - From memory, expect `#calc`, `#remove`, `#include*`, `#codeStream`, and on ESI `#eval`, `#if`/`#ifeq`/`#else`/`#endif` and `#sinclude`. `#inputMode` is legacy and best-effort. All of this must be confirmed.
+- **Must round-trip (confirmed from a real file):** `#print`, argument-less, inside a sub-dictionary. Source: Foundation 14 pitzDaily `constant/momentumTransport` line 25, `https://raw.githubusercontent.com/OpenFOAM/OpenFOAM-14/master/tutorials/incompressibleFluid/pitzDaily/constant/momentumTransport`. Add it to the inventory and `OF_DIRECTIVES`, and add a test that this real file loads and round-trips.
 - Every directive found must round-trip. This table seeds `OF_DIRECTIVES`, and through T-018 it is also the **backlog record**: directives marked `verbatim` are the candidates for real interpretation later, if a need comes up.
 
 ## Scope
@@ -60,6 +62,7 @@ Unknown directives are **kept verbatim, with a one-time WARNING** (once per dire
 ## Acceptance criteria
 - [ ] The inventory table is recorded in this ticket with sources, and `OF_DIRECTIVES` contains exactly those rows.
 - [ ] Every inventoried directive round-trips byte-identically (after normal whitespace formatting) at top level and inside a sub-dictionary. The tests are parametrized over `OF_DIRECTIVES`.
+- [ ] The real Foundation 14 `constant/momentumTransport` (fixture copied byte-exact) loads, and `#print` inside `RAS {}` is written back unchanged.
 - [ ] `#calc "1+2"` and `#calc #{ ... #}` parse and round-trip. The `TypeError` is gone.
 - [ ] An unknown `#directive`:
   - parses to `ofVerbatimDirective` with `known == False`;

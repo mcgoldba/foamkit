@@ -1,7 +1,7 @@
 # FoamKit Roadmap
 
 ## Questions for the maintainer
-1. **foam-extend tier:** confirm the proposed label "headers tested (4.1, 5.0), otherwise best-effort" for the Supported versions page (T-012). Release detection is tested; name mapping is deferred.
+None open.
 
 ## Decisions (2026-10-18, 2026-10-19)
 - **Approved by maintainer:** the ranked order, the T-010 canonical name table and the `case.canonical(...)` accessor.
@@ -16,7 +16,9 @@
   - **One-line `FoamFile { ... }` (2026-10-19):** header-less files with a one-line block are not recognised for now and stay skipped, as on HEAD, because the parser cannot read them (`IndexError`, or the entries are lost). T-021 fixes the parser and widens the rule back.
 - **T-006:** promoted to right after T-005. Headers are preserved byte-for-byte for Foundation, ESI and foam-extend, using real-file fixtures. The 3 `tests/golden/dicts/headers/*.txt` goldens (which currently record B3) are regenerated and reviewed deliberately. T-006 also fixes the same-line `FoamFile {` blank-line drift.
 - **Writer formatting churn:** an unedited read → write must reproduce the file. Split into T-019 (whitespace) and T-020 (padding/layout).
-- **foam-extend:** a third distribution, handled at the header and detection level. Name mapping is deferred.
+- **foam-extend:** a third distribution, handled at the header and detection level. Name mapping is deferred. Supported-versions label approved (2026-10-19): "headers tested (4.1, 5.0), otherwise best-effort".
+- **Order (2026-10-19):** T-015 goes next, ahead of T-017, by maintainer choice: stock Foundation 11 pitzDaily cannot load without it. Its error tests use `FoamKitError`, which stays valid under T-017's dual base. T-016 moves up because of the Foundation 14 `#print` evidence, and stays after T-017.
+- **T-013 position (delegated to the coordinator, 2026-10-19):** stays after T-021. Real Foundation 13/14 pitzDaily files show no `[m/s]`-style units. The scope gains Foundation 14 named dimension sets (`[velocity]`).
 - **Docs:**
   - Sphinx + MyST + Furo; the strict build is `sphinx-build -W --keep-going -b html docs docs/_build/html`.
   - Doc and README examples use `import foamkit.functions as fkf` / `import foamkit.types as fkt`.
@@ -38,28 +40,26 @@
 - **T-006** headers written back verbatim, ESI/foam-extend box borders kept; same-line `FoamFile {` read as the header (b97578c)
 
 ## Current state
-- The core init → cache → load → edit → write path is tested on Linux and Windows CI. The ruff/mypy baseline exists.
-- Real ESI v2606 and foam-extend 4.1/5.0 files are read correctly.
-- Gaps that lose data, change files or make them fail to load:
-  - header-less `FoamFile` files are dropped (T-005, in progress);
-  - one-line `FoamFile { ... }` blocks lose their entries or fail the case (T-021);
-  - writing strips boxed-banner borders (T-006) and adds whitespace churn (T-019, T-020);
+- The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
+- Real files (2026-10-19): **stock pitzDaily cannot load for Foundation 11** (`#includeFunc patchAverage(...)`, T-015) **or Foundation 14** (`#print`, T-016). Foundation 12/13 and ESI v2606 headers are fine.
+- Other gaps:
   - `#calc` / `#remove` / `#if` / unknown directives raise (T-016);
-  - `#includeFunc` with arguments (T-015);
-  - unit-annotated values (T-013).
+  - writer whitespace churn (T-019, T-020);
+  - one-line `FoamFile { ... }` (T-021);
+  - Foundation 14 named dimension sets read as strings (T-013).
 - Parse errors are `SystemExit`, so they end callers' processes (T-017).
 - There is no docs site, and the README has broken examples.
 
 ## Next (ranked)
-1. **T-005** header-less `FoamFile` files, with real banners pinned (S): files silently missing from cases.
-2. **T-006** byte-for-byte header write (S): every ESI and foam-extend file is changed on write today.
-3. **T-019** no trailing `; ` or extra blank line (S): cheap; it must precede T-007's byte-identical checks.
-4. **T-021** one-line `FoamFile { ... }` (S): data loss on HEAD, and it can fail a whole case. It builds on T-006's `FoamFile` fix; the input form is rarer, so it comes after T-006 and T-019.
-5. **T-017** `FoamKitError` → `Exception` (S): fixes the error contract before T-016 and T-015 add raise paths.
-6. **T-016** other directives, verbatim type and registry (M): one common directive makes a whole file fail to load.
-7. **T-015** `#includeFunc` arguments, option A (S): ready, and the xfail tests exist.
+1. **T-015** `#includeFunc` arguments, option A (S): unblocks stock Foundation 11 pitzDaily. It goes first by maintainer choice.
+2. **T-017** `FoamKitError` → `Exception` (S): fixes the error contract before T-016 adds raise paths.
+3. **T-016** other directives incl. `#print`, verbatim type and registry (M): unblocks stock Foundation 14 pitzDaily.
+4. **T-019** no trailing `; ` or extra blank line (S): must precede T-007's byte-identical checks.
+5. **T-021** one-line `FoamFile { ... }` (S): data loss on HEAD; the form is rarer.
+6. **T-013** named dimension sets and unit annotations (M): `[velocity]` reads as a string; the annotated-value forms are still unverified.
+7. **T-003** README corrections (S): the PyPI page has code that does not run.
 
-After these, the order is T-013 → T-003 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`). T-020 comes after T-007 on purpose: T-007 marks the remaining layout differences as xfail, and its fixtures then serve as T-020's test corpus.
+After these, the order is T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`). T-020 follows T-007 so it can use T-007's fixtures as its test corpus.
 
 ## Deferred
 - **Removing `SystemExit` from `FoamKitError`:** the release after T-017 ships.

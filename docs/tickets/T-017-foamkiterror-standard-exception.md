@@ -73,7 +73,7 @@ No runtime warning is added, because warning on every raise would be noise for e
 - **Python 3.9:** the dual-base class layout must be verified in CI.
 
 ## Ranking rationale
-This ticket goes right after T-005 and before T-016 and T-015.
+**Order changed by the maintainer (2026-10-19):** T-015 → **T-017** → T-016. T-015 goes first because stock Foundation 11 pitzDaily cannot load without it. Its error-path tests use `pytest.raises(FoamKitError)`, which stays valid under the dual-base class, so nothing needs rewriting after this ticket. The reasons below still apply to T-016, which comes after this ticket.
 - **New raise paths:** both of those tickets add new `FoamKitError` raise paths (unbounded directives, unbalanced parentheses). With this ticket first, their error tests are written once against the final semantics.
 - **CLI pin:** the CLI exit test captures today's behaviour before the parser starts failing differently.
 - **Not removed by T-016:** even after T-016, any remaining parse error ends the caller's process.

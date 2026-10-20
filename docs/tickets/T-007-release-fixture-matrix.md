@@ -8,6 +8,8 @@
 ## Goal
 CI demonstrates, without OpenFOAM installed, that FoamKit reads, edits and writes representative cases from each **tested** release.
 
+**Note (2026-10-19, real files):** stock pitzDaily for **Foundation 11** cannot load until T-015 lands (`#includeFunc patchAverage(...)` in `controlDict`), and for **Foundation 14** until T-016 lands (`#print` in `momentumTransport`). The pitzDaily fixture set for 11 and 14 therefore depends on T-015 and T-016. Foundation pitzDaily lives at `tutorials/incompressibleFluid/pitzDaily/` in releases 11-14.
+
 ## Tested matrix (maintainer decision, 2026-10-18: the four latest releases of each distribution)
 - **Foundation:** 11, 12, 13, 14
 - **ESI:** v2412, v2506, v2512, v2606

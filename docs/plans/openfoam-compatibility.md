@@ -5,7 +5,7 @@
   - Foundation (openfoam.org): **11, 12, 13, 14**
   - ESI (openfoam.com): **v2412, v2506, v2512, v2606**
 - **Best-effort, untested:** older releases (for example Foundation 7-10, ESI v2006-v2406) and anything newer than the tested set.
-- **foam-extend (third distribution, added 2026-10-19):** 4.1 and 5.0 are "headers tested, otherwise best-effort":
+- **foam-extend (third distribution, added 2026-10-19):** 4.1 and 5.0 are **"headers tested (4.1, 5.0), otherwise best-effort"** (label approved 2026-10-19):
   - header recognition and byte-for-byte header write are tested with real-file fixtures (T-005, T-006);
   - release detection covers foam-extend (T-008);
   - name mapping (T-010) is deferred;
@@ -27,10 +27,11 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B2 (corrected 2026-10-19) | `foamkit/types/_isDictFile.py:12-13`, used at `types/__init__.py:607` | **Header-less** files (first line `FoamFile`) are not recognised, so `pf.init` silently drops them. *Correction:* boxed banners are **not** dropped. Real ESI v2606 and foam-extend 4.1/5.0 files are recognised and fully read. The earlier claim came from a probe written from memory with single backslashes. | Header-less files (all distributions) → T-005 (bug); real banners pinned as characterization in T-005 |
 | B3 (*real file*, 2026-10-19) | `foamkit/types/__init__.py:362-376` | Writing the real ESI v2606 `controlDict` strips the `\|` borders from the boxed banner (column slicing `[29:]`). foam-extend uses the same boxed layout. | ESI, foam-extend → T-006 |
 | B4 | `foamkit/types/__init__.py:378-383` | Header truncation uses `'line'+str(i)` with `i` starting at 0, an off-by-one. | all → T-006 |
-| B5 | Value and list parsing in `foamkit/types/__init__.py` | Unit-annotated values (forms guessed from the CFD Direct note; T-013 confirms the real syntax): `1.5e-05 [m^2/s]` becomes a plain string (not numeric); `(10 0 0) [m/s]` is **corrupted**, with the unit written inside the list; `uniform (10 0 0) [m/s]` **fails to parse** (`ValueError`). | Tested (Foundation 13/14 make input units standard) → T-013 |
+| B5 | Value and list parsing in `foamkit/types/__init__.py` | Unit-annotated values (forms guessed from the CFD Direct note; T-013 confirms the real syntax): `1.5e-05 [m^2/s]` becomes a plain string (not numeric); `(10 0 0) [m/s]` is **corrupted**, with the unit written inside the list; `uniform (10 0 0) [m/s]` **fails to parse** (`ValueError`). | Tested (Foundation 13/14 make input units standard) → T-013. *Real files, 2026-10-19:* no `[m/s]`-style forms in Foundation 13/14 pitzDaily; still unverified. |
+| B11 (*real file*, 2026-10-19) | Dimension parsing | Foundation 14 `0/U` `dimensions [velocity];` (a named dimension set) parses as `ofStr('[velocity]')`, not as a dimension type. Foundation 13 `[0 1 -1 0 0 0 0]` is fine. | Foundation 14 → T-013 |
 | B6 | `ofNamedDimension` parsing | `nu nu [0 2 -1 0 0 0 0] 1.5e-05;` is written as `nu [0 2 -1 0 0 0 0];`, so **the value is lost**. | Best-effort only (older `transportProperties`) → T-014 |
-| B7 | Directive dispatch `foamkit/types/__init__.py:3962-3967`, `_parseVerbatimEntry` `:5339-5341` | `#remove`, `#if/#else/#endif`, `#inputMode` and unknown `#word` lines raise, so the whole file fails to load. `#calc "1+2"` raises `TypeError` (`ofCalc` constructor). | Tested (`#calc`, `#remove`, ESI `#if`; to be inventoried) → T-016 |
-| B8 | `ofIncludeFunc` | `#includeFunc f(U)` is written quoted. `#includeFunc f(U, name=s)` fails to parse. | Tested (Foundation function-object arguments) → T-015 |
+| B7 | Directive dispatch `foamkit/types/__init__.py:3962-3967`, `_parseVerbatimEntry` `:5339-5341` | `#remove`, `#if/#else/#endif`, `#inputMode` and unknown `#word` lines raise, so the whole file fails to load. `#calc "1+2"` raises `TypeError` (`ofCalc` constructor). | Tested. *Real file, 2026-10-19:* an argument-less `#print` inside `RAS {}` in Foundation 14 `constant/momentumTransport` fails, so **stock Foundation 14 pitzDaily cannot load**. Others still to be inventoried. → T-016 |
+| B8 | `ofIncludeFunc` | `#includeFunc f(U)` is written quoted. `#includeFunc f(U, name=s)` fails to parse. | Tested. *Real file, 2026-10-19:* Foundation 11 `controlDict` `#includeFunc patchAverage(patch=inlet, fields=(p U))` fails, so **stock Foundation 11 pitzDaily cannot load**. → T-015 |
 | B9 (*real file*, 2026-10-19) | Dict-file writer | An unedited read → write of the real ESI v2606 `controlDict` adds a trailing space after `;`, re-aligns key/value padding and adds a blank line after the FoamFile block. | All → T-019 (whitespace), T-020 (padding/layout) |
 | B10 (2026-10-19) | `FoamFile` block parsing in `DictFileParser` | A one-line `FoamFile { ... }` block: with entries after it, `IndexError` (whole case fails); alone, written back as `FoamFile\n{\n}\n`, so its entries are **lost**. Header-less files with a one-line block, content after `{` on its line, `}` not at the start of its line, or content after `}` on its line are skipped for now (T-005 rule). A related issue: a same-line `FoamFile {` is stored as an ordinary entry (`_foamFile` is `None`), so the first two writes differ by a blank line. | All → T-021 (one-line form), T-006 (same-line form) |
 
@@ -83,25 +84,24 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 
 | Order | Ticket | Owner | Size | Depends on |
 |---|---|---|---|---|
-| — | T-004 include directives kept verbatim (B1). **Done** (cdfd3c6) | tester → implementer | S | T-002 |
-| 1 | T-005 header-less `FoamFile` files recognised (B2); real banners pinned | tester → implementer | S | T-002 |
-| 2 | T-006 header preserved byte-for-byte: Foundation, ESI, foam-extend (B3, B4); same-line `FoamFile {` (B10) | tester → implementer | S | T-005 |
-| 3 | T-019 no trailing space after `;`, no extra blank line after FoamFile (B9) | tester → implementer | S | T-006 |
-| 3a | T-021 one-line `FoamFile { ... }` block parsed and kept (B10) | tester → implementer | S | T-006 |
-| 4 | T-017 `FoamKitError` becomes `Exception` (dual-base transition) | tester → implementer | S | T-002 |
-| 5 | T-016 other directives; `ofVerbatimDirective`, `OF_DIRECTIVES` (names approved) (B7) | tester → implementer | M (may split) | T-004, T-017 |
-| 6 | T-015 `#includeFunc` arguments, original quoting (option A approved) (B8) | tester → implementer | S | T-004, T-017 |
-| 7 | T-013 unit-annotated values (B5) | tester → implementer | M | T-002 |
-| 7a | T-003 README, T-001 Sphinx site (docs track; see ROADMAP) | docs-writer | S / M | — |
-| 8 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021 |
-| 8a | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
-| 6 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |
-| 7 | T-010 canonical (Foundation 14) mapping table | tester → implementer | M (may split) | T-008 |
-| 8 | T-009 new-file header from `detect()` | tester → implementer | S | T-008, T-006 |
-| 9 | T-011 residuals/`solverInfo` and monitors | tester → implementer | S | T-007, T-010 |
-| 10 | T-012 Supported versions page | docs-writer | S | T-001, T-007 |
-| 10a | T-018 Directive support page, drift-tested against `OF_DIRECTIVES` | docs-writer | S | T-001, T-016 |
-| 11 | T-014 legacy named dimensioned value loss (B6, best-effort) | tester → implementer | S | T-002 |
+| — | Done: T-002 (ad4c34c), T-004 (cdfd3c6), T-005 (9912fcc), T-006 (b97578c) | | | |
+| 1 | T-015 `#includeFunc` arguments, original quoting (B8). First by maintainer choice; it unblocks Foundation 11 pitzDaily | tester → implementer | S | T-004 |
+| 2 | T-017 `FoamKitError` becomes `Exception` (dual-base transition) | tester → implementer | S | T-002 |
+| 3 | T-016 other directives incl. `#print`; `ofVerbatimDirective`, `OF_DIRECTIVES` (B7). Unblocks Foundation 14 pitzDaily | tester → implementer | M (may split) | T-004, T-017 |
+| 4 | T-019 no trailing space after `;`, no extra blank line after FoamFile (B9) | tester → implementer | S | T-006 |
+| 5 | T-021 one-line `FoamFile { ... }` block (B10) | tester → implementer | S | T-006 |
+| 6 | T-013 named dimension sets (B11) and unit-annotated values (B5, unverified) | tester → implementer | M (may split) | T-002 |
+| 7 | T-003 README | docs-writer | S | — |
+| 8 | T-001 Sphinx site + Quickstart | docs-writer | M | — |
+| 9 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021 |
+| 10 | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
+| 11 | T-018 Directive support page | docs-writer | S | T-001, T-016 |
+| 12 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |
+| 13 | T-010 canonical (Foundation 14) mapping table | tester → implementer | M (may split) | T-008 |
+| 14 | T-009 new-file header from `detect()` | tester → implementer | S | T-008, T-006 |
+| 15 | T-011 residuals/`solverInfo` and monitors | tester → implementer | S | T-007, T-010 |
+| 16 | T-012 Supported versions page | docs-writer | S | T-001, T-007 |
+| 17 | T-014 legacy named dimensioned value loss (B6, best-effort) | tester → implementer | S | T-002 |
 
 **Deferred:**
 - write-side canonical helpers
@@ -120,4 +120,4 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
   - `https://sourceforge.net/p/foam-extend/foam-extend-4.1/ci/master/tree/tutorials/<path>?format=raw`
 - **Foundation (openfoam.org):**
   - GitHub repositories `OpenFOAM/OpenFOAM-<N>`, raw files at `https://raw.githubusercontent.com/OpenFOAM/OpenFOAM-<N>/master/tutorials/<path>`.
-  - These are not yet fetched or checked by this plan; the T-007 tester confirms the URL pattern.
+  - **Verified 2026-10-19 for 11-14:** `https://raw.githubusercontent.com/OpenFOAM/OpenFOAM-{11,12,13,14}/master/tutorials/incompressibleFluid/pitzDaily/<file>`. Foundation 12/13/14 `controlDict` headers round-trip byte-identically after T-006.
