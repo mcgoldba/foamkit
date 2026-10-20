@@ -1,5 +1,7 @@
 import os
 
+from foamkit import userMsg
+
 def readDict(filepath):
     """
     Reads in a generic  OpenFOAM dictionary file.
@@ -41,8 +43,7 @@ def readDict(filepath):
         dictFile.append(line.split('//')[0])
 
     if 'OpenFOAM: The Open Source CFD Toolbox' not in header:
-        log.error('File is not an OpenFOAM dictionary.')
-        sys.exit()
+        userMsg('File is not an OpenFOAM dictionary.', 'ERROR')
 
     print(header)
 

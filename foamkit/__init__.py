@@ -31,17 +31,28 @@ CONFIG_DEFAULTS = {
 }
 
 
-class FoamKitError(SystemExit):
+class FoamKitError(SystemExit, Exception):
     """
     Raised by `userMsg(..., "ERROR")`.
 
-    Subclasses `SystemExit`, so an unhandled error still terminates a script
-    (as it always has), but with exit status 1, and library callers can
+    A standard `Exception`, so library callers can use `except Exception` or
     `except FoamKitError` to recover.
+
+    Deprecated: during this transition release it also keeps `SystemExit` as
+    a second base, so `except SystemExit` still works, `.code` is 1, and an
+    uncaught error still exits the interpreter silently with status 1 (no
+    traceback).  The `SystemExit` base will be removed in the next minor
+    release; do not rely on it.
+
+    Attributes:
+        msg: The error message.
+        reported: True once the message has been shown to the user (set by
+            `userMsg`), so the command line handler does not print it again.
     """
-    def __init__(self, msg=""):
+    def __init__(self, msg: str = "") -> None:
         super().__init__(1)
         self.msg = msg
+        self.reported = False
 
     def __str__(self):
         return self.msg
@@ -145,7 +156,9 @@ def userMsg(msg, level = "INFO"):
             f' {msg}')
 
     if level == 'ERROR':
-        raise FoamKitError(msg)
+        err = FoamKitError(msg)
+        err.reported = True
+        raise err
 
 def setLoggerLevel(level):
     """Set the message level of the Python logger."""

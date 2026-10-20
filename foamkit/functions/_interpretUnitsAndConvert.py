@@ -1,3 +1,6 @@
+from foamkit import userMsg
+
+
 def _interpretUnitsAndConvert(dct):
     """
     Reads string formatted dimensional values and converts to a float in OpenFOAM standard units
@@ -56,8 +59,7 @@ def _interpretUnitsAndConvert(dct):
             for v in obj:
                 loopContents(obj, v)
         else:
-            log.error('Invalid "obj" provided')
-            sys.exit()
+            userMsg('Invalid "obj" provided', 'ERROR')
 
     loopContents(dct)
 

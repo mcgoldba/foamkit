@@ -1,12 +1,14 @@
 import sys
 import argparse, textwrap
 from importlib.metadata import version as _distVersion
-from foamkit import getFoamKitConfig, setLoggerLevel, enableRichTracebacks
+from foamkit import getFoamKitConfig, setLoggerLevel, enableRichTracebacks, \
+    FoamKitError
 
 from foamkit.commandline import CommandLine
 
 from pathlib import Path
 from rich import print
+from rich.markup import escape
 import logging
 
 logger = logging.getLogger('foamkit')
@@ -73,7 +75,13 @@ def main():
     logger.debug("main args: %s", opt_args+[addArgs[0]])
     logger.debug("main addArgs: %s", addArgs)
 
-    commands[addArgs[0]]()
+    try:
+        commands[addArgs[0]]()
+    except FoamKitError as e:
+        #- `userMsg` has already shown its message; print only if it did not.
+        if not e.reported:
+            print(f"[bold red]ERROR:[/bold red] {escape(e.msg)}")
+        sys.exit(1)
 
     print("")
 

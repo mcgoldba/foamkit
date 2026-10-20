@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       #- Baseline from docs/tickets/T-002-dev-tooling-ruff-mypy.md (re-checked 2026-10-20)
-      RUFF_CHECK_BASELINE: 195
+      RUFF_CHECK_BASELINE: 190
       RUFF_FORMAT_BASELINE: 55
       MYPY_BASELINE: 127
     steps:

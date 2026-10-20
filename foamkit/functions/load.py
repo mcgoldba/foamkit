@@ -6,7 +6,6 @@ from dataclasses import field
 from pathlib import Path
 import json
 from pydoc import locate #ref: https://stackoverflow.com/a/29831586/10592330
-import sys
 from foamkit.functions import isCase
 from foamkit.functions._paths import withJsonSuffix
 import pandas as pd
@@ -141,7 +140,6 @@ def load(path=None, _backup=False):
                     if case is None:
                         userMsg("Top level object is not ofCase in JSON cache.",
                          "ERROR")
-                        sys.exit()
                     obj_ = FolderParser(case, path=obj['_path']).initOFFolder()
                     logger.debug("%sDefined obj_: %s", tabStr, obj_)
                 elif obj['_type'] =='ofCase':
