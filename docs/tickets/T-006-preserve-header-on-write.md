@@ -35,3 +35,16 @@ Writing the real ESI v2606 pitzDaily `controlDict` strips the `|` borders from t
 ## Risks
 - `line1`..`line5` may be used by callers, so keep them populated. Verbatim text is the source of truth for writing.
 - Fixture bytes must come from the real files (see the plan's References), not from memory.
+
+## Completion notes (implementer)
+- `ofHeader` now keeps the source header text (`_text`, lines up to and including the `*/` line) and `toString()` returns it verbatim. `line1`..`line5` are still populated (column-sliced, as before) but are no longer used for writing. Default header (`ofHeader()` with no argument, T-009) is unchanged.
+- B4: removed. The truncation only affected written output, which is now verbatim, so it was unreachable for read files; it also set a stray `line0`.
+- Same-line `FoamFile {`: `readDictFile` now accepts it (`re.fullmatch(r'FoamFile\s*\{', ...)`) and parses it into `_foamFile`; write 1 == write 2 == next-line form.
+- Regenerated only the 3 `tests/golden/dicts/headers/*.txt`; diff is the 5 banner lines each (`|` borders restored). Removed the T-006 strict xfail marker in `tests/test_banner_variants.py`.
+- Review round 1: the 3 `.format` failures were a test bug; the coordinator fixed the assertions to compare `.value`.
+- Results after round 2: pytest 532 passed, 1 skipped, 9 xfailed (conda env and py39); ruff 195, format 55, mypy 127 (all at baseline).
+
+### Round 2 (review: REQUEST CHANGES)
+- `FoamFile{` (no whitespace): `_hasHeaderlessFoamFile` now requires whitespace (or end of text) right after `FoamFile`, and the same-line regex in `readDictFile` is `r'FoamFile\s+\{'`. Such a file is no longer accepted header-less; banner + `FoamFile{` still raises FoamKitError as on HEAD.
+- Short header: `ofHeader.__init__` pads the line list to 6 entries for `lineN` only; the stored `_text` is the real lines, so `note */` is written back verbatim.
+- `ofHeader.__init__` docstring documents `_text` vs `lineN` and the pre-T-006 JSON cache (no `_text`, so `toString` falls back, via `getattr`, to the rebuilt header until `fk init`).

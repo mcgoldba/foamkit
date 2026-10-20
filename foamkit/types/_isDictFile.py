@@ -30,7 +30,11 @@ def _hasHeaderlessFoamFile(text):
     start = head.rfind('\n', 0, len(head) - len(head.lstrip())) + 1
     if not head.startswith('FoamFile', start):
         return False
-    brace = len(head) - len(head[start + len('FoamFile'):].lstrip())
+    after = start + len('FoamFile')
+    #- The keyword must be followed by whitespace: `FoamFile{` is not parsed
+    if after < len(head) and not head[after].isspace():
+        return False
+    brace = len(head) - len(head[after:].lstrip())
     if brace >= len(head) or head[brace] != '{':
         return False
     end = head.find('}', brace)

@@ -230,6 +230,7 @@ UNPARSEABLE = {
     "    class dictionary;\n} application simpleFoam;\n\nendTime 2000;\n",
     "closing_brace_space_semicolon": "FoamFile\n{\n    format ascii;\n"
     "    class dictionary;\n} ;\n" + BODY,
+    "no_space_brace": "FoamFile{\n    format ascii;\n    class dictionary;\n}\n" + BODY,
     "closing_brace_mid_line": "FoamFile {\n format ascii; class dictionary; }\n" + BODY,
 }
 UNPARSEABLE_XFAIL = pytest.mark.xfail(
@@ -323,6 +324,7 @@ def test_headerless_closing_brace_trailer_parses_and_round_trips(tmp_path, tail)
 BRACE_LINES = {
     "nl_brace": "FoamFile\n{",
     "same_line_brace": "FoamFile {",
+    "no_space_brace": "FoamFile{",
     "tab_brace": "FoamFile\t{",
     "blank_then_brace": "FoamFile\n\n{",
     "content_on_brace_line": "FoamFile { format ascii;",
@@ -413,19 +415,7 @@ def test_quoted_brace_in_block_without_class_or_format_is_rejected(tmp_path, blo
 
 @pytest.mark.parametrize(
     "variant",
-    [
-        pytest.param(
-            v,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="T-006: a same-line `FoamFile {` gains one blank line on the "
-                "first write",
-            ),
-        )
-        if v == "brace_on_same_line"
-        else v
-        for v in HEADERLESS
-    ],
+    list(HEADERLESS),
 )
 def test_headerless_file_is_written_back_without_a_banner(tmp_path, variant):
     first = fkt.DictFileParser(_write(tmp_path / "in", HEADERLESS[variant]))

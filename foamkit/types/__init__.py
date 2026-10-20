@@ -360,9 +360,24 @@ class ofHeader(_ofTypeBase):
 
 
     def __init__(self, rawLineList=None):
-        
-        if rawLineList is None:
+        """
+        Header of an OpenFOAM file.
+
+        For a header read from a file (`rawLineList` given), writing uses the
+        verbatim source text (`_text`); `line1`..`line5` are informational
+        only, and editing them does not change the output.  The default header
+        (no argument) is built from `lineN` as before.  A header with fewer
+        than 6 lines is accepted (missing lines are padded for `lineN` only).
+        A JSON cache written before T-006 has no `_text`, so it writes the
+        rebuilt (border-stripped) header until the case is re-initialised with
+        `fk init`.
+        """
+
+        isDefault = rawLineList is None
+        if isDefault:
             rawLineList = OF_HEADER
+        rawText = list(rawLineList)
+        rawLineList = rawText + [''] * (6 - len(rawText))
 
         self.line1 = rawLineList[1][29:] or '\n'
         self.line2 = rawLineList[2][29:] or ' OpenFOAM: The Open Source CFD Toolbox'
@@ -374,16 +389,21 @@ class ofHeader(_ofTypeBase):
             else f' Version:  {FOAM_VERSION}\n')
         self.line5 = rawLineList[5][29:] or '\n'
 
+        #- Header read from a file is written back verbatim (T-006): the
+        #  banner may be boxed (`|` borders), so it cannot be rebuilt from the
+        #  column-sliced `lineN` attributes.  This also makes the old
+        #  over-long-line truncation (B4, which set a stray `line0`)
+        #  unreachable, so it was removed.
+        self._text = None if isDefault else \
+            ''.join(ln if ln.endswith('\n') else ln + '\n'
+                    for ln in rawText)
 
-        for i, line in enumerate(
-            [self.line1, self.line2, self.line3, self.line4]):
-            # logger.debug(f"line: {line}")
-            if len(line) > 51:
-                userMsg(f"Header line length is too long.  Value will be \
-                    truncated:\n {line[:51]}")
-                self.__setattr__('line'+str(i), line[:51])
+    def toString(self, ofRep=False) -> str:
+        """Header text: the stored source text, or the default header."""
+        text = getattr(self, '_text', None)
+        if text is not None:
+            return text
 
-    def toString(self, ofRep=False):
         headerStr = OF_HEADER[0]+'\n'
         headerStr += OF_HEADER[1]+self.line1
         headerStr += OF_HEADER[2]+self.line2
@@ -3891,8 +3911,14 @@ class DictFileParser:
         #   after header):
         #TODO:  Implement the FoamFile class?  Currently doesnt store dictionary
         #       values properly.
-        if self.lines[self.i].strip() == 'FoamFile':
-            self.i+=1
+        #  Both `FoamFile` + `{` on the next line and `FoamFile {` on one line
+        #  are accepted; in the latter `_parseListOrDict` reads the `{` from
+        #  the keyword line itself.
+        foamFileLine = self.lines[self.i].strip()
+        if foamFileLine == 'FoamFile' or re.fullmatch(
+                r'FoamFile\s+\{', foamFileLine):
+            if foamFileLine == 'FoamFile':
+                self.i+=1
             while self.i < len(self.lines) and self.lines[self.i].strip() == "":
                 self.i+=1
             if self.i >= len(self.lines):
