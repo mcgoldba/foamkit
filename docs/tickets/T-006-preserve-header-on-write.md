@@ -17,13 +17,19 @@ Writing the real ESI v2606 pitzDaily `controlDict` strips the `|` borders from t
 
 ## Out of scope
 - The `FoamFile` block and body formatting (trailing spaces, padding, blank lines): T-019 and T-020
+- The one-line `FoamFile { ... }` form: T-021
 - The default header for newly created files: T-009
 
 ## Acceptance criteria
 - [ ] New failing test: for the real ESI v2606 file, the written header (every line up to and including the closing `\*---...---*/`) differs from the source because the `|` borders are lost.
 - [ ] After the fix, the header bytes from the start of the file up to and including the closing banner line are identical between source and written output for all four header fixtures (Foundation open, ESI v2606, foam-extend 4.1, foam-extend 5.0).
 - [ ] The B4 off-by-one has a regression test (an over-long line truncates the intended attribute), or B4 is removed if verbatim preservation makes that code path unreachable for read files. Say which one.
-- [ ] Existing golden files are unchanged. The Foundation open header already round-trips; if one changes, the diff is explained in the PR.
+- [ ] The three goldens `tests/golden/dicts/headers/{esi-v2606,foam-extend-4.1,foam-extend-5.0}.controlDict.txt` (added by T-005) currently record the stripped `|` borders, which is bug B3. They **are expected to change** in this ticket. Regenerate them deliberately (`FOAMKIT_UPDATE_GOLDEN=1`), and include the diff in the PR. The reviewer checks that the header lines now equal the fixture source and that no non-header line changed.
+- [ ] **Same-line `FoamFile {`:** when the block opens on the same line as the keyword, `_foamFile` stays `None` and `FoamFile` is stored as an ordinary entry, so the first two writes differ by one blank line before settling (review finding on T-005). After the fix:
+  - the same-line form is parsed into `_foamFile`, like the next-line form;
+  - a regression test asserts that write 1 == write 2;
+  - a test asserts that `_foamFile` is set.
+- [ ] All other golden files are unchanged. The Foundation open header already round-trips; if any other golden changes, the diff is explained in the PR.
 - [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline.
 
 ## Risks

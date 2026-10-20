@@ -32,6 +32,7 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B7 | Directive dispatch `foamkit/types/__init__.py:3962-3967`, `_parseVerbatimEntry` `:5339-5341` | `#remove`, `#if/#else/#endif`, `#inputMode` and unknown `#word` lines raise, so the whole file fails to load. `#calc "1+2"` raises `TypeError` (`ofCalc` constructor). | Tested (`#calc`, `#remove`, ESI `#if`; to be inventoried) → T-016 |
 | B8 | `ofIncludeFunc` | `#includeFunc f(U)` is written quoted. `#includeFunc f(U, name=s)` fails to parse. | Tested (Foundation function-object arguments) → T-015 |
 | B9 (*real file*, 2026-10-19) | Dict-file writer | An unedited read → write of the real ESI v2606 `controlDict` adds a trailing space after `;`, re-aligns key/value padding and adds a blank line after the FoamFile block. | All → T-019 (whitespace), T-020 (padding/layout) |
+| B10 (2026-10-19) | `FoamFile` block parsing in `DictFileParser` | A one-line `FoamFile { ... }` block: with entries after it, `IndexError` (whole case fails); alone, written back as `FoamFile\n{\n}\n`, so its entries are **lost**. Header-less files with a one-line block, content after `{` on its line, `}` not at the start of its line, or content after `}` on its line are skipped for now (T-005 rule). A related issue: a same-line `FoamFile {` is stored as an ordinary entry (`_foamFile` is `None`), so the first two writes differ by a blank line. | All → T-021 (one-line form), T-006 (same-line form) |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -84,14 +85,15 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 |---|---|---|---|---|
 | — | T-004 include directives kept verbatim (B1). **Done** (cdfd3c6) | tester → implementer | S | T-002 |
 | 1 | T-005 header-less `FoamFile` files recognised (B2); real banners pinned | tester → implementer | S | T-002 |
-| 2 | T-006 header preserved byte-for-byte: Foundation, ESI, foam-extend (B3, B4) | tester → implementer | S | T-005 |
+| 2 | T-006 header preserved byte-for-byte: Foundation, ESI, foam-extend (B3, B4); same-line `FoamFile {` (B10) | tester → implementer | S | T-005 |
 | 3 | T-019 no trailing space after `;`, no extra blank line after FoamFile (B9) | tester → implementer | S | T-006 |
+| 3a | T-021 one-line `FoamFile { ... }` block parsed and kept (B10) | tester → implementer | S | T-006 |
 | 4 | T-017 `FoamKitError` becomes `Exception` (dual-base transition) | tester → implementer | S | T-002 |
 | 5 | T-016 other directives; `ofVerbatimDirective`, `OF_DIRECTIVES` (names approved) (B7) | tester → implementer | M (may split) | T-004, T-017 |
 | 6 | T-015 `#includeFunc` arguments, original quoting (option A approved) (B8) | tester → implementer | S | T-004, T-017 |
 | 7 | T-013 unit-annotated values (B5) | tester → implementer | M | T-002 |
 | 7a | T-003 README, T-001 Sphinx site (docs track; see ROADMAP) | docs-writer | S / M | — |
-| 8 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019 |
+| 8 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021 |
 | 8a | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
 | 6 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |
 | 7 | T-010 canonical (Foundation 14) mapping table | tester → implementer | M (may split) | T-008 |

@@ -13,7 +13,8 @@
   - Boxed ESI and foam-extend banners are already recognised, so they are pinned as characterization tests.
   - The bug part is only header-less `FoamFile` files.
   - Skipped files stay silent (no warning).
-- **T-006:** promoted to right after T-005. Headers are preserved byte-for-byte for Foundation, ESI and foam-extend, using real-file fixtures.
+  - **One-line `FoamFile { ... }` (2026-10-19):** header-less files with a one-line block are not recognised for now and stay skipped, as on HEAD, because the parser cannot read them (`IndexError`, or the entries are lost). T-021 fixes the parser and widens the rule back.
+- **T-006:** promoted to right after T-005. Headers are preserved byte-for-byte for Foundation, ESI and foam-extend, using real-file fixtures. The 3 `tests/golden/dicts/headers/*.txt` goldens (which currently record B3) are regenerated and reviewed deliberately. T-006 also fixes the same-line `FoamFile {` blank-line drift.
 - **Writer formatting churn:** an unedited read → write must reproduce the file. Split into T-019 (whitespace) and T-020 (padding/layout).
 - **foam-extend:** a third distribution, handled at the header and detection level. Name mapping is deferred.
 - **Docs:**
@@ -38,7 +39,8 @@
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. The ruff/mypy baseline exists.
 - Real ESI v2606 and foam-extend 4.1/5.0 files are read correctly.
 - Gaps that lose data, change files or make them fail to load:
-  - header-less `FoamFile` files are dropped (T-005);
+  - header-less `FoamFile` files are dropped (T-005, in progress);
+  - one-line `FoamFile { ... }` blocks lose their entries or fail the case (T-021);
   - writing strips boxed-banner borders (T-006) and adds whitespace churn (T-019, T-020);
   - `#calc` / `#remove` / `#if` / unknown directives raise (T-016);
   - `#includeFunc` with arguments (T-015);
@@ -50,12 +52,12 @@
 1. **T-005** header-less `FoamFile` files, with real banners pinned (S): files silently missing from cases.
 2. **T-006** byte-for-byte header write (S): every ESI and foam-extend file is changed on write today.
 3. **T-019** no trailing `; ` or extra blank line (S): cheap; it must precede T-007's byte-identical checks.
-4. **T-017** `FoamKitError` → `Exception` (S): fixes the error contract before T-016 and T-015 add raise paths.
-5. **T-016** other directives, verbatim type and registry (M): one common directive makes a whole file fail to load.
-6. **T-015** `#includeFunc` arguments, option A (S): ready, and the xfail tests exist.
-7. **T-013** unit-annotated values (M): Foundation 13/14 inputs corrupt or fail to parse.
+4. **T-021** one-line `FoamFile { ... }` (S): data loss on HEAD, and it can fail a whole case. It builds on T-006's `FoamFile` fix; the input form is rarer, so it comes after T-006 and T-019.
+5. **T-017** `FoamKitError` → `Exception` (S): fixes the error contract before T-016 and T-015 add raise paths.
+6. **T-016** other directives, verbatim type and registry (M): one common directive makes a whole file fail to load.
+7. **T-015** `#includeFunc` arguments, option A (S): ready, and the xfail tests exist.
 
-After these, the order is T-003 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`). T-020 comes after T-007 on purpose: T-007 marks the remaining layout differences as xfail, and its fixtures then serve as T-020's test corpus.
+After these, the order is T-013 → T-003 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`). T-020 comes after T-007 on purpose: T-007 marks the remaining layout differences as xfail, and its fixtures then serve as T-020's test corpus.
 
 ## Deferred
 - **Removing `SystemExit` from `FoamKitError`:** the release after T-017 ships.
