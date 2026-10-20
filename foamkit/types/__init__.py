@@ -3867,16 +3867,25 @@ class DictFileParser:
         lineStatus = 'read'
         level = 0
 
-        self.i = self._findEndOfHeader()
+        #- A header-less file starts directly with the FoamFile block; it keeps
+        #  no header so that none is written back.
+        firstLine = next((ln for ln in self.lines if ln.strip() != ''), '')
+        if re.match(r'FoamFile(?=[\s{]|$)', firstLine):
+            self.i = 0
+            self.dictFile._header = None
+        else:
+            self.i = self._findEndOfHeader()
+            self.dictFile._header = ofHeader(self.lines[:self.i])
 
         # logger.debug(f"End of header at line {self.i+1}.")
 
-        self.dictFile._header = ofHeader(self.lines[:self.i])
-
         # logger.debug(f"ofDictFile: {self.dictFile}")
 
-        while self.lines[self.i].strip() == "":
+        while self.i < len(self.lines) and self.lines[self.i].strip() == "":
             self.i+=1
+        if self.i >= len(self.lines):
+            userMsg('Invalid OpenFOAM file specified: '+str(self.filepath),
+                    'ERROR')
 
         #- Manually parse the FoamFile (assumes FoamFile is located immediately
         #   after header):
@@ -3884,6 +3893,11 @@ class DictFileParser:
         #       values properly.
         if self.lines[self.i].strip() == 'FoamFile':
             self.i+=1
+            while self.i < len(self.lines) and self.lines[self.i].strip() == "":
+                self.i+=1
+            if self.i >= len(self.lines):
+                userMsg('Invalid OpenFOAM file specified: '
+                        +str(self.filepath), 'ERROR')
             self.dictFile._foamFile = self._parseListOrDict('FoamFile')
 
         #- Guard against parser bugs that stop consuming input.  Each
