@@ -79,7 +79,8 @@ def test_known_include_parses_to_its_type(tmp_path, line, cls):
             '#includeEtc "caseDicts/setConstraintTypes"',
             '#includeEtc "caseDicts/setConstraintTypes"',
         ),
-        ("#includeFunc streamlines", '#includeFunc "streamlines"'),
+        # T-015 (option A): unquoted input is written back unquoted.
+        ("#includeFunc streamlines", "#includeFunc streamlines"),
     ],
 )
 def test_known_include_round_trips(tmp_path, line, written):
@@ -157,22 +158,12 @@ def test_mixed_directives_keep_following_entries(tmp_path):
     assert d.nx.value == 10
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T-004 criterion 4: `#includeFunc streamlines(U)` is written back quoted "
-    '(`"streamlines(U)"`); ticket asks for unchanged output',
-)
 @pytest.mark.parametrize("arg", ["streamlines(U)"])
 def test_includeFunc_with_arguments_round_trips_unchanged(tmp_path, arg):
     _, _, text = _roundtrip(tmp_path, f"#includeFunc {arg}\n\nx 1;\n")
     assert _directive_lines(text) == [f"#includeFunc {arg}"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T-004 criterion 4: `#includeFunc` with a comma/`name=` argument list "
-    "fails to parse (FoamKitError: Could not find functionEntry bracket type)",
-)
 def test_includeFunc_with_named_arguments_round_trips(tmp_path):
     line = "#includeFunc streamlines(U, name=s)"
     _, _, text = _roundtrip(tmp_path, f"{line}\n\nx 1;\n")

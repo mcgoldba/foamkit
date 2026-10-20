@@ -2858,9 +2858,29 @@ class ofIncludeEtc(ofInclude):
 
 @dataclass
 class ofIncludeFunc(ofInclude):
+    """
+    An `#includeFunc` directive.  `value` is the function name with any
+    argument text kept verbatim (e.g. `patchAverage(patch=inlet)`).  `quoted`
+    records whether the source quoted it; entries built in code are quoted.
+    """
+    _quoted: bool = True
+
+    @property
+    def quoted(self) -> bool:
+        """True if the value is written inside double quotes."""
+        return self._quoted
+
+    @quoted.setter
+    def quoted(self, v: bool) -> None:
+        self._quoted = bool(v)
+
     @_ofFunctionEntry.feType.getter
     def feType(self):
         return 'includeFunc'
+
+    def toString(self, ofRep=False) -> str:
+        v = f'"{self.value}"' if self._quoted else str(self.value)
+        return printNameStr(f"#{self.feType}")+v+'\n\n'
 
 @dataclass
 class ofEval(_ofFunctionEntry, _ofNamedTypeBase):
@@ -4026,7 +4046,14 @@ class DictFileParser:
                 # Line is blank
                 return None
             elif lineList[0][0] == '#':
-                if (len(lineList) == 2 and 'include' in lineList[0]
+                includeFunc = None
+                if lineList[0] == '#includeFunc':
+                    includeFunc = self._parseIncludeFunc(
+                        self.extraLine[0] if parsingExtraLine
+                        else self.lines[self.i])
+                if includeFunc is not None:
+                    value = includeFunc
+                elif (len(lineList) == 2 and 'include' in lineList[0]
                         and INCLUDE_KEYWORD_RE.fullmatch(lineList[0])):
                     value = self._parseIncludes(lineList[0], lineList[1])
                     logger.debug("includeValue: %s", value)
@@ -4749,6 +4776,65 @@ class DictFileParser:
         
         return foamFile
 
+
+    def _parseIncludeFunc(self, line):
+        """
+        Parse a `#includeFunc` line, keeping its argument text and quoting.
+
+        The scan is limited to `line` (linear time).  Returns None if the line
+        does not have the form `#includeFunc <name-or-"name">` followed only by
+        an optional comment, so the caller can use its generic handling.
+        Raises `FoamKitError` if parentheses in the arguments are unbalanced
+        or a quoted argument value is unterminated.  Inside the arguments,
+        `"..."` spans (with `\\"` escapes) are skipped, so parentheses and
+        `//` in quoted values do not count.
+        """
+        rest = line.strip()[len('#includeFunc'):]
+        n = len(rest)
+        j = 0
+        while j < n and rest[j] in ' \t':
+            j += 1
+        if j == 0 or j >= n:
+            return None
+        if rest[j] == '"':
+            end = rest.find('"', j+1)
+            if end < 0:
+                return None
+            token, quoted, j = rest[j+1:end], True, end+1
+        else:
+            start, depth = j, 0
+            while j < n:
+                c = rest[j]
+                if c in ' \t' and depth == 0:
+                    break
+                if c == '"' and depth > 0:
+                    #- quoted span inside the arguments: skip to the closing
+                    #  quote, honouring backslash escapes
+                    j += 1
+                    while j < n and rest[j] != '"':
+                        j += 2 if rest[j] == '\\' else 1
+                    if j >= n:
+                        userMsg(f"Unterminated quote in #includeFunc on line "
+                                f"{self.i+1} of file {self.filepath}.", "ERROR")
+                    j += 1
+                    continue
+                if c == '/' and rest[j+1:j+2] in ('/', '*'):
+                    break
+                if c == '(':
+                    depth += 1
+                elif c == ')' and depth > 0:
+                    depth -= 1
+                j += 1
+            if depth > 0:
+                userMsg(f"Unbalanced parentheses in #includeFunc on line "
+                        f"{self.i+1} of file {self.filepath}.", "ERROR")
+            token, quoted = rest[start:j], False
+        tail = rest[j:].strip()
+        if token == '' or not (tail == '' or tail.startswith('//')
+                               or (tail.startswith('/*')
+                                   and tail.endswith('*/'))):
+            return None
+        return ofIncludeFunc(token, _quoted=quoted)
 
     def _parseIncludes(self, key, value):
         """
