@@ -1,5 +1,6 @@
 # T-021: Parse the one-line `FoamFile { ... }` block (banner and header-less files)
 
+- **Issue:** [#28](https://github.com/mcgoldba/foamkit/issues/28)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B10

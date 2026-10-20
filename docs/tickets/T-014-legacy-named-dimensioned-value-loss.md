@@ -1,5 +1,6 @@
 # T-014: Legacy named dimensioned entries lose their value on write (best-effort releases)
 
+- **Issue:** [#21](https://github.com/mcgoldba/foamkit/issues/21)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B6

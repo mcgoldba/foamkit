@@ -1,5 +1,6 @@
 # T-008: Detect the OpenFOAM distribution and version (`FoamRelease`)
 
+- **Issue:** [#15](https://github.com/mcgoldba/foamkit/issues/15)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** M
 - **Plan:** docs/plans/openfoam-compatibility.md, section 2.2

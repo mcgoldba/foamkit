@@ -1,5 +1,6 @@
 # T-011: Residuals/`solverInfo` and monitor parsing across distributions
 
+- **Issue:** [#18](https://github.com/mcgoldba/foamkit/issues/18)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Depends on:** T-007, T-010 (uses its `residuals` ↔ `solverInfo` table row)

@@ -1,5 +1,6 @@
 # T-002: Make the CLAUDE.md lint and type checks runnable (ruff + mypy baseline)
 
+- **Issue:** [#9](https://github.com/mcgoldba/foamkit/issues/9)
 - **Type:** code (config only; owner: `implementer`; no tester step, because there is no behaviour to test)
 - **Size:** S
 

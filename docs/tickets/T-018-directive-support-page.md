@@ -1,5 +1,6 @@
 # T-018: "Directive support" docs page, checked against `OF_DIRECTIVES`
 
+- **Issue:** [#25](https://github.com/mcgoldba/foamkit/issues/25)
 - **Type:** docs (owner: `docs-writer`; `tester` for the drift test)
 - **Size:** S
 - **Depends on:** T-001 (Sphinx site) and T-016 (`OF_DIRECTIVES` registry). It is a separate ticket because T-001 is ranked after T-016.

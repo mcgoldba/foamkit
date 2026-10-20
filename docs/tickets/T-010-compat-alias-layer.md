@@ -1,5 +1,6 @@
 # T-010: Canonical (Foundation 14) names with data-driven mapping for ESI and older Foundation
 
+- **Issue:** [#17](https://github.com/mcgoldba/foamkit/issues/17)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** M. Split into T-010a (renames: one table and the accessors) and T-010b (non-rename cases: fvOptions, solver) if T-010a alone fills a session.
 - **Plan:** docs/plans/openfoam-compatibility.md, section 2.3

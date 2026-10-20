@@ -1,5 +1,6 @@
 # T-001: Docs site skeleton (Sphinx + MyST, strict build) and Quickstart page
 
+- **Issue:** [#8](https://github.com/mcgoldba/foamkit/issues/8)
 - **Type:** docs (owner: `docs-writer`; `implementer` for the pyproject, environment and CI changes)
 - **Size:** M
 - **Workflow note:** No logic changes, so skip the tester-first step. The docs-writer adds one doc-example test under `tests/docs/`, and that test is the verification.

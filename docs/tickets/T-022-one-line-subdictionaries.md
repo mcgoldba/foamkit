@@ -1,5 +1,6 @@
 # T-022: Parse one-line sub-dictionaries (`p { type probes; }`) instead of raising IndexError
 
+- **Issue:** [#29](https://github.com/mcgoldba/foamkit/issues/29)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S. If keeping the layout unchanged needs T-020's source-text mechanism, do only the "keep every entry" part here and leave layout to T-020.
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B12

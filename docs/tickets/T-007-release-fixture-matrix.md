@@ -1,5 +1,6 @@
 # T-007: Per-release fixture cases and parametrized round-trip tests
 
+- **Issue:** [#14](https://github.com/mcgoldba/foamkit/issues/14)
 - **Type:** code, tests only (owner: `tester`; `implementer` only for the `pyproject.toml` marker registration)
 - **Size:** M
 - **Plan:** docs/plans/openfoam-compatibility.md, section 3

@@ -1,5 +1,6 @@
 # T-004: Keep `#sinclude`, `#includeIfPresent` and other include variants intact on write
 
+- **Issue:** [#11](https://github.com/mcgoldba/foamkit/issues/11)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B1

@@ -1,5 +1,6 @@
 # T-019: Writer churn: no trailing space after `;`, no extra blank line after the FoamFile block
 
+- **Issue:** [#26](https://github.com/mcgoldba/foamkit/issues/26)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B9

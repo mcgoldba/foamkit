@@ -1,5 +1,6 @@
 # T-016: `#calc`, `#remove`, `#if/#else/#endif`, `#inputMode` and unknown directives
 
+- **Issue:** [#23](https://github.com/mcgoldba/foamkit/issues/23)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** M. Split if the inventory shows conditional blocks need a block-level parser: **T-016a** for single-line directives, the registry and the verbatim type; **T-016b** for `#if`/`#ifeq`/`#else`/`#endif` blocks.
 - **Follows:** T-004, T-017 (error semantics)

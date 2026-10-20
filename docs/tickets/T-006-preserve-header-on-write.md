@@ -1,5 +1,6 @@
 # T-006: Preserve the file header byte-for-byte on write (Foundation, ESI, foam-extend)
 
+- **Issue:** [#13](https://github.com/mcgoldba/foamkit/issues/13)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Plan:** docs/plans/openfoam-compatibility.md, bugs B3 (confirmed on a real file, 2026-10-19) and B4

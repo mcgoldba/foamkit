@@ -1,5 +1,6 @@
 # T-003: Correct the README examples, module aliases, CLI naming and release tags
 
+- **Issue:** [#10](https://github.com/mcgoldba/foamkit/issues/10)
 - **Type:** docs (owner: `docs-writer`)
 - **Size:** S
 

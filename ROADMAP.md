@@ -69,6 +69,6 @@ After these, the order is T-003 → T-001 → T-007 → T-020 → T-018 → T-00
 - **Rewriting bare `except:` handlers** (13 places, listed in T-017): after T-017.
 - **foam-extend name mapping (T-010) and full foam-extend case fixtures:** only if users need them.
 - **API reference:** after T-010 stabilises the API. Use autodoc2 or an env-clean autodoc (see T-001 risks).
-- **Repo-wide `ruff format`, lint in CI:** after the bug-fix tickets above, as one dedicated diff.
+- **Repo-wide `ruff format` and a zero-finding lint gate:** after the bug-fix tickets above, as one dedicated diff. Until then CI (`ci.yml`) only blocks new findings above the T-002 baseline.
 - **Console aliases `pf`/`pt` → `fkf`/`fkt`:** a code ticket with a deprecation path, after T-003.
 - **Real-OpenFOAM CI, write-side canonical helpers, case conversion, interpreting verbatim directives (backlog on the T-018 page), tutorials, hosting, versioned docs:** these need the work above first.

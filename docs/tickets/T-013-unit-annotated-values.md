@@ -1,5 +1,6 @@
 # T-013: Parse and round-trip unit-annotated values (Foundation 13+ input units)
 
+- **Issue:** [#20](https://github.com/mcgoldba/foamkit/issues/20)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** M. If the tester finds more forms than listed here, split it: T-013a scalars, T-013b lists and fields.
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B5

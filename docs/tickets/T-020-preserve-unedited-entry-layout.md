@@ -1,5 +1,6 @@
 # T-020: Preserve key/value padding and layout of unedited entries on write
 
+- **Issue:** [#27](https://github.com/mcgoldba/foamkit/issues/27)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** M. The first step is a short design note in this ticket. If that note shows more than M, split by entry kind: T-020a scalars and words, T-020b lists and sub-dictionaries.
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B9

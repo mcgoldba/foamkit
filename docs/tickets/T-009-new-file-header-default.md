@@ -1,5 +1,6 @@
 # T-009: Default header for newly created files comes from `detect()` at write time
 
+- **Issue:** [#16](https://github.com/mcgoldba/foamkit/issues/16)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Depends on:** T-008, T-006

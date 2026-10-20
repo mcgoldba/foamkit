@@ -1,5 +1,6 @@
 # T-005: Recognise header-less `FoamFile` dictionaries; pin real banner recognition
 
+- **Issue:** [#12](https://github.com/mcgoldba/foamkit/issues/12)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B2 (corrected 2026-10-19)

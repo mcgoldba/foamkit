@@ -1,5 +1,6 @@
 # T-017: `FoamKitError` becomes a standard `Exception` (with a one-release transition)
 
+- **Issue:** [#24](https://github.com/mcgoldba/foamkit/issues/24)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S. If the `sys.exit()` cleanup grows, split it off as T-017b.
 

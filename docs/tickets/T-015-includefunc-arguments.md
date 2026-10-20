@@ -1,5 +1,6 @@
 # T-015: `#includeFunc` with arguments round-trips unchanged
 
+- **Issue:** [#22](https://github.com/mcgoldba/foamkit/issues/22)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
 - **Follows:** T-004 (criterion 4). The two strict-xfail tests in `tests/test_directives.py` already exist.
