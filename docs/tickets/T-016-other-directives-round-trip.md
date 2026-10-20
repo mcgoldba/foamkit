@@ -75,6 +75,6 @@ Unknown directives are **kept verbatim, with a one-time WARNING** (once per dire
 - [ ] All existing golden files are unchanged. New public names have type hints and docstrings. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline.
 
 ## Risks
-- **Behaviour change:** files that used to raise will now load, so callers who relied on an error for validation lose it. Note it in the CHANGELOG.
+- **Behaviour change:** files that used to raise will now load, so callers who relied on an error for validation lose it. Describe it in the `fix:` commit body.
 - **Conditional blocks:** capture the whole block up to `#endif`. Otherwise the entries inside would look like normal editable entries. If this needs a block parser, use the T-016b split.
 - **Version facts:** which release supports which directive is from memory until the inventory is recorded.

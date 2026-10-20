@@ -34,6 +34,7 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B8 | `ofIncludeFunc` | `#includeFunc f(U)` is written quoted. `#includeFunc f(U, name=s)` fails to parse. | Tested. *Real file, 2026-10-19:* Foundation 11 `controlDict` `#includeFunc patchAverage(patch=inlet, fields=(p U))` fails, so **stock Foundation 11 pitzDaily cannot load**. → T-015 |
 | B9 (*real file*, 2026-10-19) | Dict-file writer | An unedited read → write of the real ESI v2606 `controlDict` adds a trailing space after `;`, re-aligns key/value padding and adds a blank line after the FoamFile block. | All → T-019 (whitespace), T-020 (padding/layout) |
 | B10 (2026-10-19) | `FoamFile` block parsing in `DictFileParser` | A one-line `FoamFile { ... }` block: with entries after it, `IndexError` (whole case fails); alone, written back as `FoamFile\n{\n}\n`, so its entries are **lost**. Header-less files with a one-line block, content after `{` on its line, `}` not at the start of its line, or content after `}` on its line are skipped for now (T-005 rule). A related issue: a same-line `FoamFile {` is stored as an ordinary entry (`_foamFile` is `None`), so the first two writes differ by a blank line. | All → T-021 (one-line form), T-006 (same-line form) |
+| B12 (2026-10-19, T-015 review) | `_parseLineLenTwo` `foamkit/types/__init__.py:4143` | A one-line sub-dict (`p { type probes; }`) raises `IndexError` at top level, inside `functions {}`, and after `#include`, so `pf.init` fails for the whole case. | All → T-022 |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -90,10 +91,11 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 | 3 | T-016 other directives incl. `#print`; `ofVerbatimDirective`, `OF_DIRECTIVES` (B7). Unblocks Foundation 14 pitzDaily | tester → implementer | M (may split) | T-004, T-017 |
 | 4 | T-019 no trailing space after `;`, no extra blank line after FoamFile (B9) | tester → implementer | S | T-006 |
 | 5 | T-021 one-line `FoamFile { ... }` block (B10) | tester → implementer | S | T-006 |
+| 5a | T-022 one-line sub-dictionaries (B12) | tester → implementer | S | T-021 (shared tokenizing) |
 | 6 | T-013 named dimension sets (B11) and unit-annotated values (B5, unverified) | tester → implementer | M (may split) | T-002 |
 | 7 | T-003 README | docs-writer | S | — |
 | 8 | T-001 Sphinx site + Quickstart | docs-writer | M | — |
-| 9 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021 |
+| 9 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021, T-022 |
 | 10 | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
 | 11 | T-018 Directive support page | docs-writer | S | T-001, T-016 |
 | 12 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |

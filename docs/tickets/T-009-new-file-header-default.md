@@ -18,9 +18,9 @@ A dictionary file that FoamKit creates from scratch gets a banner matching the t
 ## Acceptance criteria
 - [ ] Tests cover new-file header output for ESI, Foundation and `unknown`.
 - [ ] The ESI line order and wording match a real ESI file from T-007.
-- [ ] The `unknown` output is unchanged from today. If it changes, golden files are updated with the reason stated, and there is a CHANGELOG entry.
+- [ ] The `unknown` output is unchanged from today. If it changes, golden files are updated with the reason stated, and there is a `fix:` commit whose body describes the user-visible change.
 - [ ] No import-time read of the environment is added.
 - [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline.
 
 ## Risks
-- This is a visible output change for users with OpenFOAM sourced. It needs a CHANGELOG note.
+- This is a visible output change for users with OpenFOAM sourced. Describe it in the `fix:` commit body.

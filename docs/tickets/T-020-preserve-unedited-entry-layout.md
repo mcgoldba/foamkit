@@ -27,9 +27,9 @@ An unedited read → write reproduces each entry's original spacing and layout. 
 - [ ] Editing one entry changes only that entry's lines. A diff test on a real fixture checks this.
 - [ ] `test_repeated_writes_converge` still passes. Goldens are regenerated, and their diffs are reviewed as "now equal to source".
 - [ ] The cache behaviour is documented and tested.
-- [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline. There is a CHANGELOG entry.
+- [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline. There is a `fix:` commit whose body describes the user-visible change.
 
 ## Risks
 - **Memory:** keeping source text per entry costs memory on large dictionaries; check against `dict_filesize_limit`.
 - **Modified flags:** nested edits (`case.a.b.c = x`) must mark the right node as modified.
-- **Output change:** users who relied on FoamKit normalizing formatting will see that stop. Note it in the CHANGELOG.
+- **Output change:** users who relied on FoamKit normalizing formatting will see that stop. Say so in the commit body (the `fix:` commit).

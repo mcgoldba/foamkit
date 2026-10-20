@@ -29,7 +29,7 @@ On write:
   - the line count between the FoamFile `}` and the next non-blank line equals the source's.
 - [ ] **Golden diffs are limited to** removing trailing spaces and the extra blank line. The reviewer checks this with `git diff --stat` and `git diff -w` on `tests/golden/`: `-w` shows only blank-line changes.
 - [ ] `test_repeated_writes_converge` still passes.
-- [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline. There is a CHANGELOG entry under Fix.
+- [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline. There is a `fix:` commit whose body describes the user-visible change.
 
 ## Risks
 - Every golden file changes (whitespace only). That is a large but mechanical diff, so review it with `-w`.

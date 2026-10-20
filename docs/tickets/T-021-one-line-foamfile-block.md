@@ -32,7 +32,7 @@ A dictionary whose `FoamFile` block is written on one line, for example `FoamFil
   - Add to the T-005 invariant test's generator: brace line `FoamFile\n{ `, closing line ` }`, and an "inner lines" dimension with `    #inputMode merge` and `    /*\n}\n    */`.
 
 ## Out of scope
-- One-line forms of other sub-dictionaries (a separate follow-up, if the tester finds them in real files)
+- One-line forms of other sub-dictionaries (`p { type probes; }`): **T-022**
 - Header banner handling (T-006)
 
 ## Acceptance criteria
@@ -42,7 +42,7 @@ A dictionary whose `FoamFile` block is written on one line, for example `FoamFil
 - [ ] `test_repeated_writes_converge`-style check: write 1 == write 2 for both forms.
 - [ ] The header-less one-line form and the two related shapes are recognised by `_isDictFile` and loaded by `pf.init`; the T-005 rule is widened back accordingly. The T-005 strict-xfail markers are removed and those tests pass, and the paired T-005 "rejected for now" tests are deleted.
 - [ ] The T-005 negatives still reject: no `class`/`format`, unterminated block, BOM, indented banner.
-- [ ] All existing golden files are unchanged. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline. There is a CHANGELOG entry under Fix.
+- [ ] All existing golden files are unchanged. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline. There is a `fix:` commit whose body describes the user-visible change.
 
 ## Risks
 - **How often the form occurs:** OpenFOAM-written files and the tutorials checked so far use the multi-line form, so the one-line form is expected mainly in hand-written or generated files. The tester greps the real-file sources (plan References) and records whether any tutorial uses it.
