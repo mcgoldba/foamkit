@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from foamkit import getFoamKitConfig
 
@@ -11,6 +12,47 @@ _BANNER_START = \
     '/*--------------------------------*- C++ -*----------------------------------'
 _BANNER_LINES = ('=========', '\\\\      /  F ield', '\\\\    /   O peration',
                  '\\\\  /    A nd', '\\\\/     M anipulation')
+
+#- Header-less files: how much of the text is searched for the FoamFile block
+_FOAMFILE_SCAN_LIMIT = 4096
+_FOAMFILE_KEY = re.compile(r'(?:^|[\s;{])(?:class|format)\s')
+
+
+def _hasHeaderlessFoamFile(text):
+    """
+    Checks if `text` starts (after blank lines) with a `FoamFile { ... }` block
+    that contains a `class` or `format` entry.  Only the first
+    `_FOAMFILE_SCAN_LIMIT` characters are examined, and an unterminated block
+    is rejected.
+    """
+    head = text[:_FOAMFILE_SCAN_LIMIT]
+    #- Start of the first non-blank line (indentation is not skipped)
+    start = head.rfind('\n', 0, len(head) - len(head.lstrip())) + 1
+    if not head.startswith('FoamFile', start):
+        return False
+    after = start + len('FoamFile')
+    #- The keyword must be followed by whitespace: `FoamFile{` is not parsed
+    if after < len(head) and not head[after].isspace():
+        return False
+    brace = len(head) - len(head[after:].lstrip())
+    if brace >= len(head) or head[brace] != '{':
+        return False
+    end = head.find('}', brace)
+    eol = head.find('\n', brace)
+    #- `{` ends its line, and the first `}` starts its own line
+    if end < 0 or not 0 <= eol < end or head[brace + 1:eol].strip():
+        return False
+    if head[head.rfind('\n', 0, end) + 1:end].strip():
+        return False
+    #- Only `;` and/or a `//` comment may follow the `}` on its line
+    eol = text.find('\n', end)
+    tail = text[end + 1:eol if eol >= 0 else len(text)]
+    if tail.startswith(';'):
+        tail = tail[1:]
+    tail = tail.strip()
+    if tail and not tail.startswith('//'):
+        return False
+    return _FOAMFILE_KEY.search(head, brace, end) is not None
 
 
 def _isDictFile(file):
@@ -80,6 +122,10 @@ Description
                 and block[0].startswith(_BANNER_START)
                 and all(s in l for s, l in zip(_BANNER_LINES, block[1:6]))):
             isDictFile = True
+
+    #- Header-less file that starts directly with a FoamFile block
+    if not isDictFile:
+        isDictFile = _hasHeaderlessFoamFile(text)
 
     if isDictFile:
         logger.debug("'%s' is an OpenFOAM dictionary file.", file)

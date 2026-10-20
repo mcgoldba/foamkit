@@ -1,0 +1,80 @@
+name: Lint and types
+
+# Tests run in release.yml on every push and pull request. This workflow adds
+# the CLAUDE.md lint and type checks as a ratchet: the codebase still has the
+# findings recorded in T-002, so a check fails only when a change ADDS findings.
+# When a change removes findings, lower the matching baseline below.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    name: ruff + mypy (no new findings)
+    runs-on: ubuntu-latest
+    env:
+      #- Baseline from docs/tickets/T-002-dev-tooling-ruff-mypy.md (re-checked 2026-10-20)
+      RUFF_CHECK_BASELINE: 195
+      RUFF_FORMAT_BASELINE: 55
+      MYPY_BASELINE: 127
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        # The baseline was recorded with Python 3.12 (mypy targets 3.9 via config)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install package and dev tools
+        run: python -m pip install -e ".[dev]"
+
+      - name: Compare findings with the baseline
+        run: |
+          set -u
+          ruff --version
+          mypy --version
+
+          ruff_check=$(ruff check . --exit-zero --output-format json \
+            | python -c "import json, sys; print(len(json.load(sys.stdin)))")
+
+          format_out=$(ruff format --check . 2>&1 || true)
+          ruff_format=$(echo "$format_out" | sed -n 's/^\([0-9]*\) files\{0,1\} would be reformatted.*/\1/p')
+          ruff_format=${ruff_format:-0}
+
+          mypy_out=$(mypy foamkit/ 2>&1 || true)
+          if echo "$mypy_out" | grep -q '^Success: no issues found'; then
+            mypy_count=0
+          else
+            mypy_count=$(echo "$mypy_out" | sed -n 's/^Found \([0-9]*\) errors\{0,1\} in .*/\1/p')
+          fi
+          if [ -z "$mypy_count" ]; then
+            echo "::error::mypy did not finish normally"
+            echo "$mypy_out" | tail -20
+            exit 1
+          fi
+
+          status=0
+          compare() {
+            name=$1; count=$2; baseline=$3
+            echo "$name: $count (baseline $baseline)"
+            if [ "$count" -gt "$baseline" ]; then
+              echo "::error::$name has $((count - baseline)) new finding(s); fix them before merging"
+              status=1
+            elif [ "$count" -lt "$baseline" ]; then
+              echo "::notice::$name dropped to $count; lower its baseline in .github/workflows/ci.yml"
+            fi
+          }
+          compare "ruff check" "$ruff_check" "$RUFF_CHECK_BASELINE"
+          compare "ruff format --check" "$ruff_format" "$RUFF_FORMAT_BASELINE"
+          compare "mypy foamkit/" "$mypy_count" "$MYPY_BASELINE"
+
+          if [ "$status" -ne 0 ]; then
+            echo "--- ruff check ---"; ruff check . --output-format concise --exit-zero | tail -40
+            echo "--- ruff format ---"; echo "$format_out" | grep -i 'would reformat\|-->' | tail -40
+            echo "--- mypy ---"; echo "$mypy_out" | tail -40
+          fi
+          exit $status

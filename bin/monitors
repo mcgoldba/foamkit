@@ -1,9 +1,0 @@
-
-for FILE in postProcessing/residuals/0/*; do
-  gnuplot <<- EOF
-      set xlabel "Iteration"
-      set ylabel "Residual Error"
-      set title "${FILE} Monitor"
-      plot "${FILE}" using 1:2:3:4
-EOF
-done

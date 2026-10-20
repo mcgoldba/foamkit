@@ -53,9 +53,9 @@ cacheTemporaryObjects
 
 functions
 {
-    #includeFunc	"streamlines"
+    #includeFunc	streamlines
 
-    #includeFunc	"writeObjects(kEpsilon:G)"
+    #includeFunc	writeObjects(kEpsilon:G)
 
     probes
     {

@@ -360,9 +360,24 @@ class ofHeader(_ofTypeBase):
 
 
     def __init__(self, rawLineList=None):
-        
-        if rawLineList is None:
+        """
+        Header of an OpenFOAM file.
+
+        For a header read from a file (`rawLineList` given), writing uses the
+        verbatim source text (`_text`); `line1`..`line5` are informational
+        only, and editing them does not change the output.  The default header
+        (no argument) is built from `lineN` as before.  A header with fewer
+        than 6 lines is accepted (missing lines are padded for `lineN` only).
+        A JSON cache written before T-006 has no `_text`, so it writes the
+        rebuilt (border-stripped) header until the case is re-initialised with
+        `fk init`.
+        """
+
+        isDefault = rawLineList is None
+        if isDefault:
             rawLineList = OF_HEADER
+        rawText = list(rawLineList)
+        rawLineList = rawText + [''] * (6 - len(rawText))
 
         self.line1 = rawLineList[1][29:] or '\n'
         self.line2 = rawLineList[2][29:] or ' OpenFOAM: The Open Source CFD Toolbox'
@@ -374,16 +389,21 @@ class ofHeader(_ofTypeBase):
             else f' Version:  {FOAM_VERSION}\n')
         self.line5 = rawLineList[5][29:] or '\n'
 
+        #- Header read from a file is written back verbatim (T-006): the
+        #  banner may be boxed (`|` borders), so it cannot be rebuilt from the
+        #  column-sliced `lineN` attributes.  This also makes the old
+        #  over-long-line truncation (B4, which set a stray `line0`)
+        #  unreachable, so it was removed.
+        self._text = None if isDefault else \
+            ''.join(ln if ln.endswith('\n') else ln + '\n'
+                    for ln in rawText)
 
-        for i, line in enumerate(
-            [self.line1, self.line2, self.line3, self.line4]):
-            # logger.debug(f"line: {line}")
-            if len(line) > 51:
-                userMsg(f"Header line length is too long.  Value will be \
-                    truncated:\n {line[:51]}")
-                self.__setattr__('line'+str(i), line[:51])
+    def toString(self, ofRep=False) -> str:
+        """Header text: the stored source text, or the default header."""
+        text = getattr(self, '_text', None)
+        if text is not None:
+            return text
 
-    def toString(self, ofRep=False):
         headerStr = OF_HEADER[0]+'\n'
         headerStr += OF_HEADER[1]+self.line1
         headerStr += OF_HEADER[2]+self.line2
@@ -2771,13 +2791,38 @@ class _ofFunctionEntry(_ofUnnamedTypeBase):
 
         return pStr+'\n'
 
+#- Directive keyword: '#' then an ASCII letter or '_', then ASCII letters,
+#- digits, '_', '.' or '-'.
+INCLUDE_KEYWORD_RE = re.compile(r'#[A-Za-z_][A-Za-z0-9_.\-]*')
+
+
 @dataclass
 class ofInclude(_ofFunctionEntry):
+    """
+    An `#include`-style directive.  `keyword` holds the directive as written
+    (e.g. `#sinclude`, `#includeIfPresent`); it defaults to `#include`.  The
+    subclasses `ofIncludeEtc` and `ofIncludeFunc` have a fixed keyword, and
+    setting `keyword` on them raises `AttributeError`.
+    """
+    _keyword: "str | None" = None
 
+    @property
+    def keyword(self) -> str:
+        """The directive keyword including the leading '#'."""
+        return f'#{self.feType}'
+
+    @keyword.setter
+    def keyword(self, v: str) -> None:
+        if type(self) is not ofInclude:
+            raise AttributeError(
+                f"The keyword of {type(self).__name__} is fixed.")
+        if not isinstance(v, str) or INCLUDE_KEYWORD_RE.fullmatch(v) is None:
+            raise ValueError(f"Invalid include keyword '{v}'.")
+        self._keyword = v
 
     @_ofFunctionEntry.feType.getter
     def feType(self):
-        return 'include'
+        return 'include' if self._keyword is None else self._keyword[1:]
     @_ofFunctionEntry.vBracketType.getter
     def vBracketType(self):
         return 0
@@ -2813,9 +2858,29 @@ class ofIncludeEtc(ofInclude):
 
 @dataclass
 class ofIncludeFunc(ofInclude):
+    """
+    An `#includeFunc` directive.  `value` is the function name with any
+    argument text kept verbatim (e.g. `patchAverage(patch=inlet)`).  `quoted`
+    records whether the source quoted it; entries built in code are quoted.
+    """
+    _quoted: bool = True
+
+    @property
+    def quoted(self) -> bool:
+        """True if the value is written inside double quotes."""
+        return self._quoted
+
+    @quoted.setter
+    def quoted(self, v: bool) -> None:
+        self._quoted = bool(v)
+
     @_ofFunctionEntry.feType.getter
     def feType(self):
         return 'includeFunc'
+
+    def toString(self, ofRep=False) -> str:
+        v = f'"{self.value}"' if self._quoted else str(self.value)
+        return printNameStr(f"#{self.feType}")+v+'\n\n'
 
 @dataclass
 class ofEval(_ofFunctionEntry, _ofNamedTypeBase):
@@ -3842,23 +3907,43 @@ class DictFileParser:
         lineStatus = 'read'
         level = 0
 
-        self.i = self._findEndOfHeader()
+        #- A header-less file starts directly with the FoamFile block; it keeps
+        #  no header so that none is written back.
+        firstLine = next((ln for ln in self.lines if ln.strip() != ''), '')
+        if re.match(r'FoamFile(?=[\s{]|$)', firstLine):
+            self.i = 0
+            self.dictFile._header = None
+        else:
+            self.i = self._findEndOfHeader()
+            self.dictFile._header = ofHeader(self.lines[:self.i])
 
         # logger.debug(f"End of header at line {self.i+1}.")
 
-        self.dictFile._header = ofHeader(self.lines[:self.i])
-
         # logger.debug(f"ofDictFile: {self.dictFile}")
 
-        while self.lines[self.i].strip() == "":
+        while self.i < len(self.lines) and self.lines[self.i].strip() == "":
             self.i+=1
+        if self.i >= len(self.lines):
+            userMsg('Invalid OpenFOAM file specified: '+str(self.filepath),
+                    'ERROR')
 
         #- Manually parse the FoamFile (assumes FoamFile is located immediately
         #   after header):
         #TODO:  Implement the FoamFile class?  Currently doesnt store dictionary
         #       values properly.
-        if self.lines[self.i].strip() == 'FoamFile':
-            self.i+=1
+        #  Both `FoamFile` + `{` on the next line and `FoamFile {` on one line
+        #  are accepted; in the latter `_parseListOrDict` reads the `{` from
+        #  the keyword line itself.
+        foamFileLine = self.lines[self.i].strip()
+        if foamFileLine == 'FoamFile' or re.fullmatch(
+                r'FoamFile\s+\{', foamFileLine):
+            if foamFileLine == 'FoamFile':
+                self.i+=1
+            while self.i < len(self.lines) and self.lines[self.i].strip() == "":
+                self.i+=1
+            if self.i >= len(self.lines):
+                userMsg('Invalid OpenFOAM file specified: '
+                        +str(self.filepath), 'ERROR')
             self.dictFile._foamFile = self._parseListOrDict('FoamFile')
 
         #- Guard against parser bugs that stop consuming input.  Each
@@ -3914,9 +3999,10 @@ class DictFileParser:
                         #  keyword, otherwise it is renamed on write.
                         self.dictFile.update({value.name: value})
                     else:
-                        name_ = value.feType+str(self.nFeTypes[value.feType])
+                        name_ = value.feType+str(self.nFeTypes.get(value.feType, 0))
                         self.dictFile.update({name_: value})
-                        self.nFeTypes[value.feType]+= 1
+                        self.nFeTypes[value.feType] = self.nFeTypes.get(
+                            value.feType, 0)+1
                 else:
                     userMsg(f"Invalid value type: {type(value)}.", "ERROR")
 
@@ -3960,7 +4046,15 @@ class DictFileParser:
                 # Line is blank
                 return None
             elif lineList[0][0] == '#':
-                if len(lineList) == 2 and 'include' in lineList[0]:
+                includeFunc = None
+                if lineList[0] == '#includeFunc':
+                    includeFunc = self._parseIncludeFunc(
+                        self.extraLine[0] if parsingExtraLine
+                        else self.lines[self.i])
+                if includeFunc is not None:
+                    value = includeFunc
+                elif (len(lineList) == 2 and 'include' in lineList[0]
+                        and INCLUDE_KEYWORD_RE.fullmatch(lineList[0])):
                     value = self._parseIncludes(lineList[0], lineList[1])
                     logger.debug("includeValue: %s", value)
                 else:
@@ -4683,6 +4777,65 @@ class DictFileParser:
         return foamFile
 
 
+    def _parseIncludeFunc(self, line):
+        """
+        Parse a `#includeFunc` line, keeping its argument text and quoting.
+
+        The scan is limited to `line` (linear time).  Returns None if the line
+        does not have the form `#includeFunc <name-or-"name">` followed only by
+        an optional comment, so the caller can use its generic handling.
+        Raises `FoamKitError` if parentheses in the arguments are unbalanced
+        or a quoted argument value is unterminated.  Inside the arguments,
+        `"..."` spans (with `\\"` escapes) are skipped, so parentheses and
+        `//` in quoted values do not count.
+        """
+        rest = line.strip()[len('#includeFunc'):]
+        n = len(rest)
+        j = 0
+        while j < n and rest[j] in ' \t':
+            j += 1
+        if j == 0 or j >= n:
+            return None
+        if rest[j] == '"':
+            end = rest.find('"', j+1)
+            if end < 0:
+                return None
+            token, quoted, j = rest[j+1:end], True, end+1
+        else:
+            start, depth = j, 0
+            while j < n:
+                c = rest[j]
+                if c in ' \t' and depth == 0:
+                    break
+                if c == '"' and depth > 0:
+                    #- quoted span inside the arguments: skip to the closing
+                    #  quote, honouring backslash escapes
+                    j += 1
+                    while j < n and rest[j] != '"':
+                        j += 2 if rest[j] == '\\' else 1
+                    if j >= n:
+                        userMsg(f"Unterminated quote in #includeFunc on line "
+                                f"{self.i+1} of file {self.filepath}.", "ERROR")
+                    j += 1
+                    continue
+                if c == '/' and rest[j+1:j+2] in ('/', '*'):
+                    break
+                if c == '(':
+                    depth += 1
+                elif c == ')' and depth > 0:
+                    depth -= 1
+                j += 1
+            if depth > 0:
+                userMsg(f"Unbalanced parentheses in #includeFunc on line "
+                        f"{self.i+1} of file {self.filepath}.", "ERROR")
+            token, quoted = rest[start:j], False
+        tail = rest[j:].strip()
+        if token == '' or not (tail == '' or tail.startswith('//')
+                               or (tail.startswith('/*')
+                                   and tail.endswith('*/'))):
+            return None
+        return ofIncludeFunc(token, _quoted=quoted)
+
     def _parseIncludes(self, key, value):
         """
         Extract value as the appropriate include type
@@ -4694,7 +4847,10 @@ class DictFileParser:
         elif key == '#includeFunc':
             return ofIncludeFunc(value)
         else:
-            return ofInclude(value)
+            incl = ofInclude(value)
+            if key != '#include':
+                incl.keyword = key  #- keep #sinclude, #includeIfPresent, etc.
+            return incl
 
     def _parseTable(self, name, string = None):
         """
@@ -5306,6 +5462,9 @@ class DictFileParser:
                 )
             rv.vBracketType = bCharType
         else:
+            if vType not in OF_VERBATIM_CODE_ENTRIES:
+                userMsg(f"Unknown directive '#{vType}' on line {self.i+1} of "
+                        f"file {self.filepath}.", "ERROR")
             #- Store the code without the file's indentation; the writer
             #  re-indents it for its nesting level, so the block is unchanged
             #  by a read/write round trip.

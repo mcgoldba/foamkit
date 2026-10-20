@@ -28,6 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest"]
+dev = ["ruff>=0.17.1,<0.18", "mypy>=1.19,<1.21"]
 
 [project.urls]
 Home = "https://github.com/mcgoldba/foamkit"
@@ -46,6 +47,27 @@ foamkit = ["config.ini"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py39"
+#- Markdown is not formatted (docs, tickets and agent prompts would churn the baseline)
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+#- Third-party stubs use syntax newer than the py39 target (e.g. numpy's `type`
+#- statement) and abort the run, so treat them as Any. Scoped to runtime
+#- dependencies so the standard library stays type-checked. Keep this list in
+#- sync with [project].dependencies by hand.
+module = ["numpy", "numpy.*", "pandas", "pandas.*", "matplotlib", "matplotlib.*", "pint", "pint.*", "rich", "rich.*", "IPython", "IPython.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
 
 [tool.commitizen]
 name = "cz_conventional_commits"
