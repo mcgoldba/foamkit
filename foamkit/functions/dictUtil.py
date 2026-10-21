@@ -1,8 +1,8 @@
 import os
-import sys
 from shutil import copyfile
 import warnings
 
+from foamkit import userMsg
 from foamkit.types import ofDictFile, ofDict, ofList, ofInt, ofFloat, \
     ofStr, ofBool, ofDimensionedScalar, ofVector, ofDimensionedVector, TAB_STR
 
@@ -515,7 +515,7 @@ def _findEndOfDict(file):
     #- TODO: Handle the case where a subdict of an existing dictionary is
     #  not found.
 
-    endofDict = None
+    endOfDict = None
 
     with open(file) as f:
         lines = f.readlines()
@@ -545,5 +545,4 @@ def _findEndOfHeader(file):
                 line[:6] == '// * *')):
                 return i+1
 
-    log.error('Invalid OpenFOAM file specified: '+str(file))
-    sys.exit()
+    userMsg('Invalid OpenFOAM file specified: '+str(file), 'ERROR')

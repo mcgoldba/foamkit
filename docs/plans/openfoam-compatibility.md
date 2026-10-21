@@ -85,25 +85,26 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 
 | Order | Ticket | Owner | Size | Depends on |
 |---|---|---|---|---|
-| — | Done: T-002 (ad4c34c), T-004 (cdfd3c6), T-005 (9912fcc), T-006 (b97578c) | | | |
-| 1 | T-015 `#includeFunc` arguments, original quoting (B8). First by maintainer choice; it unblocks Foundation 11 pitzDaily | tester → implementer | S | T-004 |
-| 2 | T-017 `FoamKitError` becomes `Exception` (dual-base transition) | tester → implementer | S | T-002 |
-| 3 | T-016 other directives incl. `#print`; `ofVerbatimDirective`, `OF_DIRECTIVES` (B7). Unblocks Foundation 14 pitzDaily | tester → implementer | M (may split) | T-004, T-017 |
+| — | Done: T-002 (ad4c34c), T-004 (cdfd3c6), T-005 (9912fcc), T-006 (b97578c), T-015 (17e125f) | | | |
+| 1 | T-017 `FoamKitError` becomes `Exception` (dual-base transition). **In progress** | tester → implementer | S | T-002 |
+| 2 | T-016 other directives incl. `#print`; `ofVerbatimDirective`, `OF_DIRECTIVES` (B7). Unblocks Foundation 14 pitzDaily | tester → implementer | M (may split) | T-004, T-017 |
+| 3 | T-023 `fk` subcommands fail cleanly on non-case paths (no tracebacks) | tester → implementer | S | T-017 |
 | 4 | T-019 no trailing space after `;`, no extra blank line after FoamFile (B9) | tester → implementer | S | T-006 |
 | 5 | T-021 one-line `FoamFile { ... }` block (B10) | tester → implementer | S | T-006 |
-| 5a | T-022 one-line sub-dictionaries (B12) | tester → implementer | S | T-021 (shared tokenizing) |
-| 6 | T-013 named dimension sets (B11) and unit-annotated values (B5, unverified) | tester → implementer | M (may split) | T-002 |
-| 7 | T-003 README | docs-writer | S | — |
-| 8 | T-001 Sphinx site + Quickstart | docs-writer | M | — |
-| 9 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021, T-022 |
-| 10 | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
-| 11 | T-018 Directive support page | docs-writer | S | T-001, T-016 |
-| 12 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |
-| 13 | T-010 canonical (Foundation 14) mapping table | tester → implementer | M (may split) | T-008 |
-| 14 | T-009 new-file header from `detect()` | tester → implementer | S | T-008, T-006 |
-| 15 | T-011 residuals/`solverInfo` and monitors | tester → implementer | S | T-007, T-010 |
-| 16 | T-012 Supported versions page | docs-writer | S | T-001, T-007 |
-| 17 | T-014 legacy named dimensioned value loss (B6, best-effort) | tester → implementer | S | T-002 |
+| 6 | T-022 one-line sub-dictionaries (B12) | tester → implementer | S | T-021 (shared tokenizing) |
+| 7 | T-013 named dimension sets (B11) and unit-annotated values (B5, unverified) | tester → implementer | M (may split) | T-002 |
+| 8 | T-024 remove never-working `_interpretUnitsAndConvert` | implementer | S | T-017 |
+| 9 | T-003 README | docs-writer | S | — |
+| 10 | T-001 Sphinx site + Quickstart | docs-writer | M | — |
+| 11 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021, T-022 |
+| 12 | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
+| 13 | T-018 Directive support page | docs-writer | S | T-001, T-016 |
+| 14 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |
+| 15 | T-010 canonical (Foundation 14) mapping table | tester → implementer | M (may split) | T-008 |
+| 16 | T-009 new-file header from `detect()` | tester → implementer | S | T-008, T-006 |
+| 17 | T-011 residuals/`solverInfo` and monitors | tester → implementer | S | T-007, T-010 |
+| 18 | T-012 Supported versions page | docs-writer | S | T-001, T-007 |
+| 19 | T-014 legacy named dimensioned value loss (B6, best-effort) | tester → implementer | S | T-002 |
 
 **Deferred:**
 - write-side canonical helpers
@@ -112,6 +113,18 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 - modelling ESI `#if/#ifeq` as structured entries
 - renaming the console's `pf`/`pt` aliases to `fkf`/`fkt` (needs a deprecation path)
 - foam-extend name mapping in T-010, and full foam-extend case fixtures
+
+## Known gaps (not ticketed yet)
+- **Bare `except:` blocks swallow errors** (found during T-017, 2026-10-20). There are 13:
+  - `foamkit/types/__init__.py` ×9 (`:452, 4866, 4891, 4898, 4904, 4910, 4937, 5646, 5685` as of the T-017 audit; the line numbers drift);
+  - `foamkit/functions/dictUtil.py` ×3 (`:224, 282, 504`);
+  - `foamkit/functions/_unitDecoder.py:63`.
+
+  They catch everything, including `FoamKitError`, `KeyboardInterrupt` and real bugs, and often turn them into `None` or a fallback parse. T-017 leaves them alone.
+- **Proposal:** yes, one ticket, but **after T-016 and T-022**. Those tickets rewrite the same parser paths in `types/__init__.py`, so narrowing the handlers first would churn twice.
+  - Shape: tester-first, one test per site showing what each handler is meant to catch, then narrow it to that exception (usually `ValueError`/`KeyError`/`TypeError`). No behaviour change for valid input.
+  - Size: S/M, split by file if needed (`types` vs `functions`).
+  - Not opened as an issue yet. The planner writes it when T-022 lands.
 
 ## References: real-file sources (fetch with `curl -sfL` when exact bytes matter)
 - **ESI (openfoam.com), GitLab raw:**

@@ -79,3 +79,10 @@ No runtime warning is added, because warning on every raise would be noise for e
 - **CLI pin:** the CLI exit test captures today's behaviour before the parser starts failing differently.
 - **Not removed by T-016:** even after T-016, any remaining parse error ends the caller's process.
 - **Small cost:** it is S and independent, so it delays T-016 by one short session.
+
+## Completion notes (implementer)
+- `FoamKitError(SystemExit, Exception)`; `.code == 1`, `.msg` kept. New `reported` attribute (default False), set to True by `userMsg` before it raises (also in DEBUG-log mode, where the message goes to the logger). The CLI handler in `__main__.main()` prints `ERROR: <msg>` (rich-escaped) only when `reported` is False, then `sys.exit(1)`. The docstring states the `SystemExit` base is removed in the next minor release, and that an uncaught error still exits silently with status 1 (no traceback) during the transition.
+- `sys.exit()` converted to `userMsg(..., "ERROR")` in `dictUtil._findEndOfHeader`, `readDict` (this module never imported `sys`, so the path was a NameError; it now imports `userMsg`) and `_interpretUnitsAndConvert` (unreachable, not otherwise fixed; T-024). `load.py` unreachable exit removed. Unused `import sys` dropped from `dictUtil.py` and `load.py`.
+- Latent bug fixed because a test needs it: `_findEndOfDict` initialised `endofDict` (typo) so an empty file raised UnboundLocalError instead of reaching `_findEndOfHeader`.
+- Bare `except:` blocks listed in the audit are unchanged. The tester's AST test found no converted function called inside a bare `except:` in `foamkit/functions/`; the `types/__init__.py` bare `except:` blocks (452, 4866, ...) were not checked for calls into these helpers and still swallow any FoamKitError raised inside them.
+- Numbers: ruff check 195 -> 190 (baseline lowered in `.github/workflows/ci.yml`), ruff format 55 -> 55, mypy 127 -> 127.

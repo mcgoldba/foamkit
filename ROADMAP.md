@@ -1,7 +1,9 @@
 # FoamKit Roadmap
 
 ## Questions for the maintainer
-None open.
+These are decided when the tickets are approved.
+1. **T-023 (#32), `fk edit` with no cache:** exit with `ERROR` (proposed), or keep opening a console with `case = None` and only reword the message?
+2. **T-024 (#33):** delete `_interpretUnitsAndConvert` with no deprecation alias (proposed)? It is private and has never worked.
 
 ## Decisions (2026-10-18, 2026-10-19)
 - **Approved by maintainer:** the ranked order, the T-010 canonical name table and the `case.canonical(...)` accessor.
@@ -43,30 +45,34 @@ None open.
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
-- Real files (2026-10-19): **stock pitzDaily cannot load for Foundation 11** (`#includeFunc patchAverage(...)`, T-015) **or Foundation 14** (`#print`, T-016). Foundation 12/13 and ESI v2606 headers are fine.
+- Real files (2026-10-19): stock pitzDaily for Foundation 11 loads since T-015. **Foundation 14 still fails** (`#print`, T-016). Foundation 12/13 and ESI v2606 headers are fine.
 - Other gaps:
   - `#calc` / `#remove` / `#if` / unknown directives raise (T-016);
   - writer whitespace churn (T-019, T-020);
   - one-line `FoamFile { ... }` (T-021);
   - one-line sub-dicts (`p { type probes; }`) raise `IndexError`, so the whole case fails (T-022);
   - Foundation 14 named dimension sets read as strings (T-013).
-- Parse errors are `SystemExit`, so they end callers' processes (T-017).
+- Parse errors are `SystemExit`, so they end callers' processes (T-017, in progress).
+- `fk init` / `write` / `plot` on a non-case path crash with a traceback instead of a clean `ERROR:` (T-023).
+- `_interpretUnitsAndConvert` is dead code that fails on every call (T-024).
 - There is no docs site, and the README has broken examples.
 
 ## Next (ranked)
-1. **T-015** `#includeFunc` arguments, option A (S): unblocks stock Foundation 11 pitzDaily. It goes first by maintainer choice.
-2. **T-017** `FoamKitError` → `Exception` (S): fixes the error contract before T-016 adds raise paths.
-3. **T-016** other directives incl. `#print`, verbatim type and registry (M): unblocks stock Foundation 14 pitzDaily.
-4. **T-019** no trailing `; ` or extra blank line (S): must precede T-007's byte-identical checks.
-5. **T-021** one-line `FoamFile { ... }` (S): data loss on HEAD; the form is rarer.
-6. **T-022** one-line sub-dicts (S): the whole case fails to load. It reuses T-021's one-line tokenizing, and a hard failure outranks T-013.
-7. **T-013** named dimension sets and unit annotations (M): `[velocity]` reads as a string; the annotated-value forms are still unverified.
+**In progress:** T-017 `FoamKitError` → `Exception` (branch `t-017-foamkiterror-exception`).
 
-After these, the order is T-003 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`). T-020 follows T-007 so it can use T-007's fixtures as its test corpus.
+1. **T-016** other directives incl. `#print`, verbatim type and registry (M): unblocks stock Foundation 14 pitzDaily.
+2. **T-023** `fk` subcommands fail cleanly on non-case paths (S): user-facing and builds on T-017's CLI handler. It comes after T-016 because those commands already exit 1; only the traceback and message are wrong.
+3. **T-019** no trailing `; ` or extra blank line (S): must precede T-007's byte-identical checks.
+4. **T-021** one-line `FoamFile { ... }` (S): data loss on HEAD; the form is rarer.
+5. **T-022** one-line sub-dicts (S): the whole case fails to load. It reuses T-021's one-line tokenizing.
+6. **T-013** named dimension sets and unit annotations (M): `[velocity]` reads as a string; the annotated-value forms are still unverified.
+7. **T-003** README corrections (S): the PyPI page has code that does not run.
+
+After these, the order is T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`). T-024 removes dead code and can be picked up any time after T-017. T-020 follows T-007 so it can use T-007's fixtures as its test corpus.
 
 ## Deferred
 - **Removing `SystemExit` from `FoamKitError`:** the release after T-017 ships.
-- **Rewriting bare `except:` handlers** (13 places, listed in T-017): after T-017.
+- **Narrowing the 13 bare `except:` handlers:** they swallow `FoamKitError`, `KeyboardInterrupt` and real bugs. A ticket is proposed for **after T-016 and T-022**, which rewrite the same parser paths. Sites and proposed shape are under Known gaps in `docs/plans/openfoam-compatibility.md`.
 - **foam-extend name mapping (T-010) and full foam-extend case fixtures:** only if users need them.
 - **API reference:** after T-010 stabilises the API. Use autodoc2 or an env-clean autodoc (see T-001 risks).
 - **Repo-wide `ruff format` and a zero-finding lint gate:** after the bug-fix tickets above, as one dedicated diff. Until then CI (`ci.yml`) only blocks new findings above the T-002 baseline.
