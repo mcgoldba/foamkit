@@ -86,15 +86,16 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 | Order | Ticket | Owner | Size | Depends on |
 |---|---|---|---|---|
 | — | Done: T-002 (ad4c34c), T-004 (cdfd3c6), T-005 (9912fcc), T-006 (b97578c), T-015 (17e125f) | | | |
-| 1 | T-017 `FoamKitError` becomes `Exception` (dual-base transition). **In progress** | tester → implementer | S | T-002 |
+| 1 | T-017 `FoamKitError` becomes `Exception` (dual-base transition). **In review (PR #34)** | tester → implementer | S | T-002 |
+| 1a | T-025 `userMsg` prints literally; ERROR always raises `FoamKitError` | tester → implementer | S | T-017 |
 | 2 | T-016 other directives incl. `#print`; `ofVerbatimDirective`, `OF_DIRECTIVES` (B7). Unblocks Foundation 14 pitzDaily | tester → implementer | M (may split) | T-004, T-017 |
-| 3 | T-023 `fk` subcommands fail cleanly on non-case paths (no tracebacks) | tester → implementer | S | T-017 |
+| 3 | T-023 `fk` user errors never show a traceback (all subcommands; `fk edit` with no cache exits 1) | tester → implementer | S | T-017, T-025 |
 | 4 | T-019 no trailing space after `;`, no extra blank line after FoamFile (B9) | tester → implementer | S | T-006 |
 | 5 | T-021 one-line `FoamFile { ... }` block (B10) | tester → implementer | S | T-006 |
 | 6 | T-022 one-line sub-dictionaries (B12) | tester → implementer | S | T-021 (shared tokenizing) |
 | 7 | T-013 named dimension sets (B11) and unit-annotated values (B5, unverified) | tester → implementer | M (may split) | T-002 |
-| 8 | T-024 remove never-working `_interpretUnitsAndConvert` | implementer | S | T-017 |
-| 9 | T-003 README | docs-writer | S | — |
+| 8 | T-003 README | docs-writer | S | — |
+| 9 | T-024 remove never-working `_interpretUnitsAndConvert` (approved: no alias) | implementer | S | T-017 |
 | 10 | T-001 Sphinx site + Quickstart | docs-writer | M | — |
 | 11 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021, T-022 |
 | 12 | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
