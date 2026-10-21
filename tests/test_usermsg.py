@@ -14,6 +14,7 @@ is replaced; `userMsg` and rich's own printing run unchanged, however
 
 import io
 import logging
+import pathlib
 
 import pytest
 import rich
@@ -191,3 +192,100 @@ def test_debug_logging_branch_still_raises_foamkit_error_at_error(caplog):
     caplog.set_level(logging.DEBUG, logger="foamkit")
     err = _call("a [/] b", "ERROR")
     assert err is not None and err.msg == "a [/] b"
+
+
+# --- messages that are not str ----------------------------------------------
+
+NON_STR = [
+    pathlib.Path("a/b"),
+    123,
+    ValueError("v"),
+    None,
+    ["a", "b"],
+]
+NON_STR_IDS = ["path", "int", "exception", "none", "list"]
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("msg", NON_STR, ids=NON_STR_IDS)
+def test_non_str_message_prints_its_str(capsys, msg, level):
+    err = _call(msg, level)
+    assert capsys.readouterr().out == f"{level}: {str(msg)}\n"
+    assert (err is not None) == (level == "ERROR")
+
+
+@pytest.mark.parametrize("msg", NON_STR, ids=NON_STR_IDS)
+def test_non_str_message_at_error_raises_only_foamkit_error(capsys, msg):
+    with pytest.raises(BaseException) as err:
+        userMsg(msg, "ERROR")
+    assert type(err.value) is FoamKitError
+    assert err.value.msg is msg
+
+
+@pytest.mark.parametrize("level", ["INFO", "WARNING"])
+@pytest.mark.parametrize("msg", NON_STR, ids=NON_STR_IDS)
+def test_non_str_message_does_not_raise_at_info_and_warning(capsys, msg, level):
+    assert userMsg(msg, level) is None
+
+
+def test_list_message_prints_as_str_of_the_list(capsys):
+    userMsg(["a", "b"])
+    assert capsys.readouterr().out == f"INFO: {str(['a', 'b'])}\n"
+
+
+# --- control characters are shown, not executed -----------------------------
+
+# - (message, expected text after "<LEVEL>: ") using Python's escape form
+CONTROL = [
+    ("ctl\x1b[31mred", "ctl\\x1b[31mred"),
+    ("a\x07b", "a\\x07b"),
+    ("a\x00b", "a\\x00b"),
+    ("a\x08b", "a\\x08b"),
+]
+CONTROL_IDS = ["escape_sequence", "bell", "nul", "backspace"]
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("msg, shown", CONTROL, ids=CONTROL_IDS)
+def test_control_characters_print_in_escaped_form(capsys, msg, shown, level):
+    _call(msg, level)
+    assert capsys.readouterr().out == f"{level}: {shown}\n"
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("msg", [c[0] for c in CONTROL[:4]], ids=CONTROL_IDS[:4])
+def test_control_characters_never_reach_stdout_raw(capsys, msg, level):
+    _call(msg, level)
+    out = capsys.readouterr().out
+    assert not any(c in out for c in "\x1b\x07\x00\x08")
+
+
+@pytest.mark.parametrize("level", LEVELS)
+def test_carriage_return_is_printed_in_escaped_form(capsys, level):
+    """A carriage return is treated like the other C0 characters (rich silently strips it
+    today, which hides part of the message)."""
+    _call("a\rb", level)
+    assert capsys.readouterr().out == f"{level}: a\\rb\n"
+
+
+def test_error_msg_keeps_the_original_unescaped_text(capsys):
+    msg = "ctl\x1b[31mred"
+    err = _call(msg, "ERROR")
+    assert err.msg == msg
+    assert str(err) == msg
+    assert "\x1b" in err.msg
+
+
+@pytest.mark.parametrize("level", LEVELS)
+def test_multiline_message_is_unchanged(capsys, level):
+    _call("line one\nline two [velocity]", level)
+    assert capsys.readouterr().out == f"{level}: line one\nline two [velocity]\n"
+
+
+@pytest.mark.parametrize("level", LEVELS)
+def test_tab_is_expanded_as_before(capsys, level):
+    """Rich expands tabs to 8-column stops; pin that rather than a raw tab."""
+    _call("a\tb", level)
+    out = capsys.readouterr().out
+    assert "\t" not in out
+    assert out == f"{level}: a\tb".expandtabs(8) + "\n"
