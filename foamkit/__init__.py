@@ -7,7 +7,7 @@ import logging
 
 
 import rich
-from rich.markup import escape
+from rich.text import Text
 
 logger = logging.getLogger('foamkit')
 # Library convention: stay silent unless the application configures logging.
@@ -155,12 +155,12 @@ def userMsg(msg, level = "INFO"):
     if logger.level == logging.DEBUG:
         logger.debug('User Msg:%s: %s', level, msg)
     else:
-        #- Escape markup in the message; `emoji=False` stops `:code:` text
-        #  being replaced and `highlight=False` stops rich colouring numbers etc.
-        #  in the message (the label has neither).
-        rich.get_console().print(
-            f'[{printStyle[level]}]{level}:[/{printStyle[level]}]'
-            f' {escape(msg)}', emoji=False, highlight=False)
+        #- Build a `Text` rather than a markup string, so the message is
+        #  never parsed (no escaping needed, backslashes show as written).
+        #  Only the label is styled; an unparseable style name such as
+        #  "bold orange" is ignored by rich at render time.
+        line = Text.assemble((f'{level}:', printStyle[level]), ' ', msg)
+        rich.get_console().print(line, emoji=False, highlight=False)
 
     if level == 'ERROR':
         err = FoamKitError(msg)

@@ -2,13 +2,14 @@
 `userMsg` prints its message literally at every level and, at ERROR level,
 always raises `FoamKitError` (T-025).
 
-Output capture: `rich.print` writes to `sys.stdout`, which `capsys` replaces
+Output capture: rich writes to `sys.stdout`, which `capsys` replaces
 with a non-terminal stream.  rich then emits no ANSI codes, applies no
 highlighting and wraps at 80 columns, so the messages below are kept short and
 the expected stdout is exactly `"<LEVEL>: <msg>\n"`.  The styled label is
 checked separately by redirecting rich's global console to a colour-forcing
 console that writes to a `StringIO` (`_colourConsole`); only the output stream
-is replaced, `userMsg` and `rich.print` run unchanged.
+is replaced; `userMsg` and rich's own printing run unchanged, however
+`userMsg` reaches the console.
 """
 
 import io
@@ -108,6 +109,24 @@ def test_default_level_is_info(capsys):
 @pytest.mark.parametrize("level", LEVELS)
 def test_windows_path_backslashes_print_unchanged(capsys, level):
     msg = r"Could not read C:\Users\ivgol\case\0\U"
+    _call(msg, level)
+    assert capsys.readouterr().out == f"{level}: {msg}\n"
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize(
+    "msg",
+    ["C:\\dir\\", "\\", "ends with two \\\\", "a \\ b"],
+    ids=["path_trailing_backslash", "lone_backslash", "two_backslashes", "inner"],
+)
+def test_backslashes_at_end_of_message_print_unchanged(capsys, msg, level):
+    _call(msg, level)
+    assert capsys.readouterr().out == f"{level}: {msg}\n"
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("msg", [":warning: x", "a :smile: b :thumbs_up:"])
+def test_emoji_codes_print_literally(capsys, msg, level):
     _call(msg, level)
     assert capsys.readouterr().out == f"{level}: {msg}\n"
 

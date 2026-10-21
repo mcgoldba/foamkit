@@ -64,3 +64,8 @@ Any message FoamKit shows the user is printed exactly as written, including text
 - `emoji` and `highlight` are Console.print arguments that `rich.print` does not expose, hence `rich.get_console().print`. The tests' `rich.get_console` monkeypatch still applies because it is looked up through the module.
 - The DEBUG-logger branch and `FoamKitError(msg)` (original unescaped text, `reported = True`) are unchanged.
 - Numbers: pytest 731 passed, 1 skipped, 7 xfailed on 3.12 and 3.9; ruff check 190 (baseline 190, no change); ruff format 55 files (baseline 55); mypy 127 (baseline 127). The ci.yml baselines are not lowered.
+
+### Update after review (backslash fix)
+- `rich.markup.escape()` appends a `\` when the text ends in an odd number of backslashes, so `userMsg('C:\dir\')` printed `C:\dir\`. `userMsg` now builds `Text.assemble((f'{level}:', style), ' ', msg)` and prints it with `rich.get_console().print(line, emoji=False, highlight=False)`. The message is never parsed as markup, so `escape` is no longer used and its import was removed (replaced by `from rich.text import Text`).
+- WARNING's `"bold orange"` does not raise: `Text` render resolves span styles with `console.get_style(..., default=Style.null())`, so the unparseable name is ignored and WARNING stays unstyled (verified; pinned ANSI tests pass). INFO and ERROR label ANSI is byte-identical. `emoji=False` is kept (harmless, Text is not emoji-processed anyway).
+- Numbers: pytest 749 passed, 1 skipped, 7 xfailed on 3.12 and 3.9; ruff check 190 (baseline 190); ruff format 55 files (max 55); mypy 127 (max 127). No baseline change.
