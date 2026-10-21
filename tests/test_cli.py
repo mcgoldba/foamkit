@@ -86,3 +86,42 @@ def test_uncaught_foamkit_error_in_a_script_exits_non_zero(tmp_path):
     out = _run([], tmp_path, code="from foamkit import userMsg; userMsg('x', 'ERROR')")
     assert out.returncode == 1
     assert out.stdout.count("ERROR: x") == 1
+
+
+# - T-025: a markup-looking error message must not turn into a traceback.
+MARKUP_RAISE = DIRECT_RAISE.replace(
+    "raise FoamKitError('direct failure')",
+    "from foamkit import userMsg\n    userMsg('bad value [/] here', 'ERROR')",
+)
+
+
+def test_cli_error_message_with_closing_tag_text_is_one_clean_line(tmp_path):
+    out = _run([], tmp_path, code=MARKUP_RAISE)
+    assert out.returncode == 1
+    assert out.stdout.count("ERROR: bad value [/] here") == 1
+    assert out.stdout.count("ERROR:") == 1
+    assert "Traceback" not in out.stdout + out.stderr
+    assert "MarkupError" not in out.stdout + out.stderr
+
+
+def test_cli_foamkit_error_raised_without_userMsg_prints_markup_text_literally(
+    tmp_path,
+):
+    code = DIRECT_RAISE.replace("direct failure", "bad [/] and [velocity]")
+    out = _run([], tmp_path, code=code)
+    assert out.returncode == 1
+    assert out.stdout.count("ERROR: bad [/] and [velocity]") == 1
+    assert "Traceback" not in out.stdout + out.stderr
+
+
+def test_cli_monitor_with_no_log_file_shows_bracketed_directory_name(tmp_path):
+    """Real path: `fk monitor <name>` puts the case-controlled directory name
+    into a `userMsg(..., "ERROR")`."""
+    (tmp_path / "postProcessing" / "[velocity]" / "0").mkdir(parents=True)
+    out = _run(["monitor", "[velocity]"], tmp_path)
+    assert out.returncode == 1
+    assert out.stdout.count("ERROR:") == 1
+    # - rich wraps long lines, so compare with all whitespace removed.
+    directory = tmp_path / "postProcessing" / "[velocity]" / "0"
+    assert "".join(str(directory).split()) in "".join(out.stdout.split())
+    assert "Traceback" not in out.stdout + out.stderr

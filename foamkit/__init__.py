@@ -6,7 +6,8 @@ import sys
 import logging
 
 
-from rich import print
+import rich
+from rich.markup import escape
 
 logger = logging.getLogger('foamkit')
 # Library convention: stay silent unless the application configures logging.
@@ -136,7 +137,9 @@ def userMsg(msg, level = "INFO"):
     Write message to console or stdout for the user (i.e. without code details)
 
     Parameters:
-        msg [str]:  The message to print
+        msg [str]:  The message to print.  It is printed literally: rich
+        markup (e.g. `[velocity]`, `[/]`) and emoji codes (e.g. `:warning:`)
+        in it are not interpreted.  Only the level label is styled.
 
         level [str]: Either "INFO", "WARNING" or "ERROR".  If "ERROR", a
         `FoamKitError` is raised, which terminates the script with exit
@@ -152,8 +155,12 @@ def userMsg(msg, level = "INFO"):
     if logger.level == logging.DEBUG:
         logger.debug('User Msg:%s: %s', level, msg)
     else:
-        print(f'[{printStyle[level]}]{level}:[/{printStyle[level]}]'\
-            f' {msg}')
+        #- Escape markup in the message; `emoji=False` stops `:code:` text
+        #  being replaced and `highlight=False` stops rich colouring numbers etc.
+        #  in the message (the label has neither).
+        rich.get_console().print(
+            f'[{printStyle[level]}]{level}:[/{printStyle[level]}]'
+            f' {escape(msg)}', emoji=False, highlight=False)
 
     if level == 'ERROR':
         err = FoamKitError(msg)
