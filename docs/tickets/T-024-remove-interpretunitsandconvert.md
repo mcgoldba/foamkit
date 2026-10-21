@@ -19,9 +19,9 @@ The package no longer ships a function that fails on every call. This removes de
 - **Callers:** none. Its only reference is the re-export `from ._interpretUnitsAndConvert import _interpretUnitsAndConvert` in `foamkit/functions/__init__.py:25`, plus T-017's source-level test (`tests/test_foamkit_error.py`, parametrized over module paths). No module, CLI command or other test calls it.
 - **Not to be confused with `_unitDecoder`.** `_unitDecoder` is a separate, working module used by `fkf.readInputs` (`readInputs.py:5, 30`) as a JSON `object_hook` with `pint`. It is **not** part of this ticket.
 
-## Decision proposed: delete, without a deprecation alias
+## Decision: delete, without a deprecation alias (approved by the maintainer, 2026-10-20)
 - CLAUDE.md's deprecation rule protects public API that works. This name is underscore-prefixed, so private by convention, and it has never worked: any caller already gets `NameError`. A deprecation alias would only replace one error with another.
-- **The maintainer confirms at approval.** The alternative is to keep a stub that raises `NotImplementedError` with a `DeprecationWarning` for one release. The planner sees no benefit in that.
+- **Approved by the maintainer in chat, 2026-10-20:** delete it, with no alias and no stub. The issue labels are handled by the maintainer.
 
 ## Relation to T-013
 - **T-013 should not own this.** T-013 parses unit-annotated values from case files into `.value` + `.units` and does not convert units. This function tried to convert free-form strings to SI floats with `pint`, which is a separate, unrequested feature.

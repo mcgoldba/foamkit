@@ -6,7 +6,8 @@ import sys
 import logging
 
 
-from rich import print
+import rich
+from rich.text import Text
 
 logger = logging.getLogger('foamkit')
 # Library convention: stay silent unless the application configures logging.
@@ -131,12 +132,25 @@ def getFoamKitConfig(param):
 
     return CONFIG_DEFAULTS.get(key)
 
+#- Control characters shown visibly in `userMsg` output (all of C0 and DEL
+#  except newline and tab), so case-file text cannot inject terminal escapes.
+_CONTROL_CHAR_TABLE = {
+    **{c: f'\\x{c:02x}' for c in [*range(0x20), 0x7f] if c not in (0x09, 0x0a)},
+    0x0d: '\\r',
+}
+
+
 def userMsg(msg, level = "INFO"):
     """
     Write message to console or stdout for the user (i.e. without code details)
 
     Parameters:
-        msg [str]:  The message to print
+        msg [str]:  The message to print.  A non-`str` message is converted
+        with `str()` for printing.  It is printed literally: rich markup
+        (e.g. `[velocity]`, `[/]`) and emoji codes (e.g. `:warning:`) in it
+        are not interpreted, and control characters other than newline and
+        tab are shown escaped (`\\x1b`, `\\r`).  Only the level label is
+        styled.  The raised `FoamKitError` keeps the original `msg`.
 
         level [str]: Either "INFO", "WARNING" or "ERROR".  If "ERROR", a
         `FoamKitError` is raised, which terminates the script with exit
@@ -152,8 +166,13 @@ def userMsg(msg, level = "INFO"):
     if logger.level == logging.DEBUG:
         logger.debug('User Msg:%s: %s', level, msg)
     else:
-        print(f'[{printStyle[level]}]{level}:[/{printStyle[level]}]'\
-            f' {msg}')
+        #- Build a `Text` rather than a markup string, so the message is
+        #  never parsed (no escaping needed, backslashes show as written).
+        #  Only the label is styled; an unparseable style name such as
+        #  "bold orange" is ignored by rich at render time.
+        line = Text.assemble((f'{level}:', printStyle[level]), ' ',
+                              str(msg).translate(_CONTROL_CHAR_TABLE))
+        rich.get_console().print(line, emoji=False, highlight=False)
 
     if level == 'ERROR':
         err = FoamKitError(msg)
