@@ -30,11 +30,15 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B5 | Value and list parsing in `foamkit/types/__init__.py` | Unit-annotated values (forms guessed from the CFD Direct note; T-013 confirms the real syntax): `1.5e-05 [m^2/s]` becomes a plain string (not numeric); `(10 0 0) [m/s]` is **corrupted**, with the unit written inside the list; `uniform (10 0 0) [m/s]` **fails to parse** (`ValueError`). | Tested (Foundation 13/14 make input units standard) → T-013. *Real files, 2026-10-19:* no `[m/s]`-style forms in Foundation 13/14 pitzDaily; still unverified. |
 | B11 (*real file*, 2026-10-19) | Dimension parsing | Foundation 14 `0/U` `dimensions [velocity];` (a named dimension set) parses as `ofStr('[velocity]')`, not as a dimension type. Foundation 13 `[0 1 -1 0 0 0 0]` is fine. | Foundation 14 → T-013 |
 | B6 | `ofNamedDimension` parsing | `nu nu [0 2 -1 0 0 0 0] 1.5e-05;` is written as `nu [0 2 -1 0 0 0 0];`, so **the value is lost**. | Best-effort only (older `transportProperties`) → T-014 |
-| B7 | Directive dispatch `foamkit/types/__init__.py:3962-3967`, `_parseVerbatimEntry` `:5339-5341` | `#remove`, `#if/#else/#endif`, `#inputMode` and unknown `#word` lines raise, so the whole file fails to load. `#calc "1+2"` raises `TypeError` (`ofCalc` constructor). | Tested. *Real file, 2026-10-19:* an argument-less `#print` inside `RAS {}` in Foundation 14 `constant/momentumTransport` fails, so **stock Foundation 14 pitzDaily cannot load**. Others still to be inventoried. → T-016 |
+| B7 (re-inventoried 2026-10-21) | Directive dispatch and `_parseVerbatimEntry` in `foamkit/types/__init__.py` | Many directives fail to load. See **Directive inventory** below for per-release counts and the ticket that owns each. | Tested → T-016 (framework and single-line), T-026 (conditionals), T-027 (`#calc`/`#neg`), T-028 (next-line brace), T-029 (`#includeModel`/`#includeConstraint`) |
 | B8 | `ofIncludeFunc` | `#includeFunc f(U)` is written quoted. `#includeFunc f(U, name=s)` fails to parse. | Tested. *Real file, 2026-10-19:* Foundation 11 `controlDict` `#includeFunc patchAverage(patch=inlet, fields=(p U))` fails, so **stock Foundation 11 pitzDaily cannot load**. → T-015 |
 | B9 (*real file*, 2026-10-19) | Dict-file writer | An unedited read → write of the real ESI v2606 `controlDict` adds a trailing space after `;`, re-aligns key/value padding and adds a blank line after the FoamFile block. | All → T-019 (whitespace), T-020 (padding/layout) |
 | B10 (2026-10-19) | `FoamFile` block parsing in `DictFileParser` | A one-line `FoamFile { ... }` block: with entries after it, `IndexError` (whole case fails); alone, written back as `FoamFile\n{\n}\n`, so its entries are **lost**. Header-less files with a one-line block, content after `{` on its line, `}` not at the start of its line, or content after `}` on its line are skipped for now (T-005 rule). A related issue: a same-line `FoamFile {` is stored as an ordinary entry (`_foamFile` is `None`), so the first two writes differ by a blank line. | All → T-021 (one-line form), T-006 (same-line form) |
 | B12 (2026-10-19, T-015 review) | `_parseLineLenTwo` `foamkit/types/__init__.py:4143` | A one-line sub-dict (`p { type probes; }`) raises `IndexError` at top level, inside `functions {}`, and after `#include`, so `pf.init` fails for the whole case. | All → T-022 |
+| B13 (*real files*, 2026-10-21) | `$` reference validation (`ofVar`) | Scoped references `$/a/b`, `$file!a/b` and `$../file!a/b` raise `ValueError: ... is not a valid key` (ESI freePiston `0/U:21`, Foundation 14 cylinder `fvSolution:55`, floatingBeam `blockMeshDict:17`). | → T-030 |
+| B14 (*real files*, 2026-10-21) | Block-comment parsing and writing | Multi-line `/* … */` comments lose their newlines on write (ESI bendJunction `blockMeshDict`). ESI potentialFoam/cylinder `blockMeshDict` fails with "Could not find end of commented block". | → T-031 |
+| B15 (2026-10-21) | Number printing | `5e-4` is written as `0.0005`: the source token is not kept. | → T-032 (related to T-020) |
+| B16 (*real files*, 2026-10-21) | `ofCodeStream` writer | It writes `vertices #codeStream{` and adds a blank line per code line on **every** write (F14 floatingBeam, ESI potentialFoam/cylinder `blockMeshDict`). | → T-033 |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -51,6 +55,46 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | Names | `turbulenceProperties`/`momentumTransport`, `RASModel`/`model`, `transportProperties`/`physicalProperties`, `fvOptions`/`fvModels`+`fvConstraints`, `simpleFoam`/`foamRun`+`solver`. These appear only in docs and user code; they are handled by the T-010 canonical mapping. |
 
 The `bin/` shell scripts were removed by the maintainer on 2026-10-18 and are no longer in scope.
+
+## Directive inventory (real tutorial trees, 2026-10-21)
+This is the reference for T-016, T-026..T-029, T-018 and `OF_DIRECTIVES`.
+- **Counts:** dictionary files that use the directive, per release; "F" is Foundation 11/12/13/14, "E" is ESI v2412-v2606.
+- **Gathered by:** the T-016 tester. The method is described below.
+
+| Directive | Releases (count) | Example (real file) | Status today | Owner |
+|---|---|---|---|---|
+| `#include`, `#includeEtc`, `#includeFunc` | F, E | many | OK (T-004, T-015) | done |
+| `#includeIfPresent` | F only, 1 per release | — | loads; written quoted | T-029 |
+| `#sinclude` | E only, 3 | — | loads in 2 of 3 | T-029 tester checks the third; record it |
+| `#includeModel` | F 4/4/7/7 | F14 `fluid/roomHeating/constant/fvModels:17` | loads; written quoted | T-029 |
+| `#includeConstraint` | F 7/9/11/13 | F14 `XiFluid/engine2Valve2D/system/fvConstraints:17` `limitLowPressure(min=1e4)` | fails ("bracket type") | T-029 |
+| `#calc` (value position) | F ~15/36/133/133; E 2 (IO test dict only) | F14 `incompressibleFluid/cylinder/system/blockMeshDict:27` | fails (`ofCalc` TypeError) | T-027 |
+| `#neg` | F ~102/119/135/135 | same file `:29` `cylMin #neg $cylMax;` | fails ("bracket type") | T-027 |
+| `#eval` | E only, ~330 | — | OK (`ofEval`) | done |
+| `#codeStream` | F 1/1/1/4; E 14 | F14 `floatingBeam/system/blockMeshDict:21` | loads; writer unstable | T-033 |
+| `#print` | F14 only, 25 uses / 24 files | F14 pitzDaily `constant/momentumTransport` | fails | T-016 |
+| `#remove` | E only, 41-48 | E `basic/potentialFoam/cylinder/system/blockMeshDict:87` | fails | T-016 |
+| `#if` | E only, 16 | E `IO/dictionary/good-if1.dict:21` (nested) | fails | T-026 |
+| `#ifeq`, `#else`, `#endif` | F13, F14, E | F14 `incompressibleFluid/cylinder/system/fvSchemes:39` | fails | T-026 |
+| `#inputMode` | E only, 1 | — | fails | T-016 |
+| `#calcInclude` | F11-F13 only, 1 | F13 `fluid/aerofoilNACA0012Steady/0/U:21` | fails | T-016 |
+| `#codeBlock`, `#endCodeBlock`, `#codeInclude` | F14 only, 7/7/1 | F14 `fluid/aerofoilNACA0012Steady/0/U:20-26` | fails | T-016 |
+| `#codeDict` | F14 only, 2 | F14 `trayedPipe` `createZonesDict:24` (`{` on the next line) | fails | T-028 |
+| `#message` | E, 4 | E `IO/dictionary/good-word-expand.dict:18,21,24` | fails | T-016 |
+| `#word` | E, 3 | same file `:29,34,42` (`{` on the next line at `:34`) | fails | T-028 |
+
+Notes:
+- **Conditional blocks** can be nested (`good-if1.dict`), and dead branches can contain unbalanced braces (`good-if3.dict`), so the capture must be textual, up to the matching `#endif`.
+- **`#codeDict` and `#word`** have their `{` on the next line, which breaks T-016's "bracket opened on the directive line" rule. Hence T-028.
+- **A top-level `#calc "1+2"`** occurs in no tutorial.
+- **The first real `value [unit]` form:** F14 `fluid/aerofoilNACA0012Steady/0/U:18` `angleOfAttack 0 [deg];` (T-013).
+- **Test copies:** byte-exact copies of the cited files are in `tests/releases/` (added by the T-016 tester).
+
+**Method.** Shallow, sparse (`tutorials/` only) clones:
+- `git clone --depth 1 --filter=blob:none --sparse https://github.com/OpenFOAM/OpenFOAM-{11,12,13,14}`, default branch `master`. At gathering time OF14 was at `a4867fc` (2026-10-08).
+- `git clone --depth 1 --filter=blob:none --sparse --branch OpenFOAM-v{2412,2506,2512,2606} https://gitlab.com/openfoam/core/openfoam`.
+- Then `git sparse-checkout set tutorials`. Grep for `^\s*#[A-Za-z]\w*` (and value-position `\s#[A-Za-z]`) over dictionary files, and count files per directive per release.
+- The working copies were in the session scratchpad (`clones/`, with a `count.py` tally script). They are not committed, so re-create them with the commands above.
 
 ## 2. Architecture
 
@@ -85,27 +129,29 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 
 | Order | Ticket | Owner | Size | Depends on |
 |---|---|---|---|---|
-| — | Done: T-002 (ad4c34c), T-004 (cdfd3c6), T-005 (9912fcc), T-006 (b97578c), T-015 (17e125f) | | | |
-| 1 | T-017 `FoamKitError` becomes `Exception` (dual-base transition). **In review (PR #34)** | tester → implementer | S | T-002 |
-| 1a | T-025 `userMsg` prints literally; ERROR always raises `FoamKitError` | tester → implementer | S | T-017 |
-| 2 | T-016 other directives incl. `#print`; `ofVerbatimDirective`, `OF_DIRECTIVES` (B7). Unblocks Foundation 14 pitzDaily | tester → implementer | M (may split) | T-004, T-017 |
-| 3 | T-023 `fk` user errors never show a traceback (all subcommands; `fk edit` with no cache exits 1) | tester → implementer | S | T-017, T-025 |
-| 4 | T-019 no trailing space after `;`, no extra blank line after FoamFile (B9) | tester → implementer | S | T-006 |
-| 5 | T-021 one-line `FoamFile { ... }` block (B10) | tester → implementer | S | T-006 |
-| 6 | T-022 one-line sub-dictionaries (B12) | tester → implementer | S | T-021 (shared tokenizing) |
-| 7 | T-013 named dimension sets (B11) and unit-annotated values (B5, unverified) | tester → implementer | M (may split) | T-002 |
-| 8 | T-003 README | docs-writer | S | — |
-| 9 | T-024 remove never-working `_interpretUnitsAndConvert` (approved: no alias) | implementer | S | T-017 |
-| 10 | T-001 Sphinx site + Quickstart | docs-writer | M | — |
-| 11 | T-007 tested-release fixtures + fact-check table | tester | M | T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021, T-022 |
-| 12 | T-020 preserve padding/layout of unedited entries (B9) | tester → implementer | M (may split) | T-019, T-007 (corpus) |
-| 13 | T-018 Directive support page | docs-writer | S | T-001, T-016 |
-| 14 | T-008 `FoamRelease` detection | tester → implementer | M | T-007 |
-| 15 | T-010 canonical (Foundation 14) mapping table | tester → implementer | M (may split) | T-008 |
-| 16 | T-009 new-file header from `detect()` | tester → implementer | S | T-008, T-006 |
-| 17 | T-011 residuals/`solverInfo` and monitors | tester → implementer | S | T-007, T-010 |
-| 18 | T-012 Supported versions page | docs-writer | S | T-001, T-007 |
-| 19 | T-014 legacy named dimensioned value loss (B6, best-effort) | tester → implementer | S | T-002 |
+| — | Done: T-002, T-004, T-005, T-006, T-015, T-017 (PR #34), T-025 (5c10d41) | | | |
+| 1 | T-016 verbatim directive framework + single-line directives. **In progress** | tester → implementer | M | T-004, T-017, T-025 |
+| 2 | T-027 value-position `#calc`/`#neg` (#38) | tester → implementer | S | T-016 |
+| 3 | T-026 conditional blocks (#37) | tester → implementer | M | T-016 |
+| 4 | T-030 scoped `$` references (#41) | tester → implementer | S | — |
+| 5 | T-029 `#includeModel`/`#includeConstraint` (#40) | tester → implementer | S | T-015 |
+| 6 | T-023 CLI user errors without traceback (#32) | tester → implementer | S | T-017, T-025 |
+| 7 | T-031 block comments (#42) | tester → implementer | S | — |
+| 8 | T-033 `#codeStream` writer (#44) | tester → implementer | S | — |
+| 9 | T-019 no trailing space / extra blank line (B9) | tester → implementer | S | T-006 |
+| 10 | T-021 one-line `FoamFile { ... }` (B10) | tester → implementer | S | T-006 |
+| 11 | T-022 one-line sub-dictionaries (B12) | tester → implementer | S | T-021 |
+| 12 | T-013 named dimension sets (B11) + unit annotations (B5; `0 [deg]` now confirmed) | tester → implementer | M | T-002 |
+| 13 | T-034 `userMsg` C1/bidi escaping, `str(FoamKitError)` (#45) | tester → implementer | S | T-025 |
+| 14 | T-032 number formatting kept (#43) | tester → implementer | S | — (overlaps T-020) |
+| 15 | T-028 `#codeDict`/`#word` next-line brace (#39) | tester → implementer | S | T-016 |
+| 16 | T-003 README | docs-writer | S | — |
+| 17 | T-024 remove `_interpretUnitsAndConvert` (approved) | implementer | S | T-017 |
+| 18 | T-001 Sphinx site + Quickstart | docs-writer | M | — |
+| 19 | T-007 tested-release fixtures + fact-check table | tester | M | the load-failure tickets above |
+| 20 | T-020 preserve padding/layout of unedited entries | tester → implementer | M | T-019, T-007 |
+| 21 | T-018 Directive support page | docs-writer | S | T-001, T-016 |
+| 22 | T-008 → T-010 → T-009 → T-011 → T-012 → T-014 | as before | | |
 
 **Deferred:**
 - write-side canonical helpers
@@ -116,6 +162,7 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 - foam-extend name mapping in T-010, and full foam-extend case fixtures
 
 ## Known gaps (not ticketed yet)
+- **One-line `vertices 10;` reported by the T-016 tester:** the planner could **not** reproduce it at top level on 2026-10-21 (`vertices 10;` round-trips). If the tester has the file and line, add it to T-022 (one-line forms), or open a ticket.
 - **Bare `except:` blocks swallow errors** (found during T-017, 2026-10-20). There are 13:
   - `foamkit/types/__init__.py` ×9 (`:452, 4866, 4891, 4898, 4904, 4910, 4937, 5646, 5685` as of the T-017 audit; the line numbers drift);
   - `foamkit/functions/dictUtil.py` ×3 (`:224, 282, 504`);

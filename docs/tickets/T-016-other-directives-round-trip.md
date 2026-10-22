@@ -1,81 +1,107 @@
-# T-016: `#calc`, `#remove`, `#if/#else/#endif`, `#inputMode` and unknown directives
+# T-016: Verbatim directive framework and single-line directives (`#print`, `#remove`, …)
 
 - **Issue:** [#23](https://github.com/mcgoldba/foamkit/issues/23)
 - **Type:** code (owner: `tester` first, then `implementer`)
-- **Size:** M. Split if the inventory shows conditional blocks need a block-level parser: **T-016a** for single-line directives, the registry and the verbatim type; **T-016b** for `#if`/`#ifeq`/`#else`/`#endif` blocks.
-- **Follows:** T-004, T-017 (error semantics)
-- **Docs follow-up:** T-018 (Directive support page). T-001 is ranked after this ticket, so the page is a separate docs ticket rather than part of T-016.
+- **Size:** M
+- **Follows:** T-004, T-017 (error semantics), T-025 (`userMsg` prints untrusted text literally)
+- **Narrowed 2026-10-21 (maintainer-approved)** after the tester's real-tutorial inventory. The other directive work moved to:
+  - T-026: `#if`/`#ifeq`/`#else`/`#endif`
+  - T-027: value-position `#calc`/`#neg`
+  - T-028: next-line-brace `#codeDict`/`#word`
+  - T-029: `#includeModel`/`#includeConstraint`
+- **Docs follow-up:** T-018 (Directive support page).
 
 ## Goal
-A dictionary that uses any directive found in the tested releases' tutorials loads, and is written back unchanged. Directives FoamKit does not interpret can be found from code.
-
-## Current behaviour (reported after T-004)
-| Input (top level) | Today |
-|---|---|
-| `#calc "1+2"` | `TypeError: ofCalc.__init__() got an unexpected keyword argument 'name'` |
-| `#remove x` / `#remove (a b)` | FoamKitError "Could not find functionEntry bracket type" |
-| `#if ... #else ... #endif` | same |
-| `#inputMode merge` | same |
-| `#print` (no argument, inside `RAS {}`), from the real Foundation 14 `constant/momentumTransport` | Fails to load. **Stock Foundation 14 pitzDaily cannot be loaded today** (2026-10-19). |
-| any other `#word` | FoamKitError "Unknown directive ..." (`_parseVerbatimEntry`, `foamkit/types/__init__.py:5339-5341`) |
+**Stock Foundation 14 pitzDaily loads.** Today its `constant/momentumTransport` fails on an argument-less `#print` inside `RAS {}`. More generally, directives FoamKit does not interpret are kept verbatim, can be found from code, and are written back unchanged.
 
 ## Policy (approved by maintainer, 2026-10-18)
-Unknown directives are **kept verbatim, with a one-time WARNING** (once per directive name per file), instead of raising.
+Unknown directives are **kept verbatim, with a one-time WARNING** (once per directive name per file, via `userMsg`, which prints literally since T-025), instead of raising.
 - FoamKit never runs directives, so it never changes a file's meaning.
 - Raising makes the whole case fail to load.
-- The capture is bounded: it runs to the end of the line, or to the matching close of a balanced `(`, `{`, `#{` or `"` that opens on that line. If no boundary is found, raise `FoamKitError` with the file and line. Never consume to the end of the file silently.
 
-## Design: tracked in `foamkit.types`
-- **New public type `ofVerbatimDirective`**, with:
-  - `keyword` (for example `"if"`) and `text` (the raw source, including any block up to `#endif` for conditionals);
-  - `toString()` returns `text` unchanged;
-  - a `known` property: `True` if the keyword is in the registry.
+**Line-level capture boundary (this ticket):** a single-line directive is captured from `#` to the end of its line. A balanced `(`, `{` or `"` that opens on the directive line extends the capture to its matching close, which may be on a later line.
+- If the close is never found, raise `FoamKitError` with the file and line. Never consume to the end of the file silently.
+- Directives whose `{` is on the **next** line (`#codeDict`, `#word`) do not fit this rule and are T-028.
+- Block directives (`#if` … `#endif`) are T-026.
 
-  It is used for every directive FoamKit preserves but does not interpret, both registry-listed and unknown ones. Existing interpreted types (`ofInclude*`, `ofEval`, `ofCodeStream`, `ofCalc`) are unchanged.
-- **Registry constant `OF_DIRECTIVES`** in `foamkit/types/__init__.py`, plain data:
-  ```python
-  {keyword: DirectiveInfo(status, distributions, note)}
-  ```
-  - `status` is `"interpreted"`, `"verbatim"` or `"unsupported"`;
-  - `distributions` is the releases where the tester found it, for example `("foundation-11..14", "esi-v2412..v2606")`.
+## Design: tracked in `foamkit.types` (public names approved 2026-10-19)
+- **`ofVerbatimDirective`:**
+  - `keyword` and `text` (raw source); `toString()` returns `text` unchanged;
+  - a `known` property: `True` if the keyword is in `OF_DIRECTIVES`.
+- **`OF_DIRECTIVES`:** `{keyword: DirectiveInfo(status, distributions, note)}`.
+  - `status` is `"interpreted"`, `"verbatim"` or `"unsupported"`.
+  - It is seeded from the inventory in `docs/plans/openfoam-compatibility.md` (section "Directive inventory"). **All** inventoried directives get a row, including those handled by other tickets; those are marked `"unsupported"` with a note naming the ticket until that ticket lands.
+  - It sits next to `OF_FUNCTION_ENTRIES` and `OF_VERBATIM_CODE_ENTRIES`; do not change those two.
+- **`iterDirectives(obj, status=None)`:** walks an `ofCase`, folder or dict file and yields `(location, directive)` pairs. `status` may be `"verbatim"`, `"unknown"`, … .
 
-  It is seeded from the inventory below. It sits alongside the existing `OF_FUNCTION_ENTRIES` (`:2962`) and `OF_VERBATIM_CODE_ENTRIES` (`:3101`); do not change those two.
-- **Finding them from code:** a generator `iterDirectives(obj, status=None)` in `foamkit.types`. It walks an `ofCase`, folder or dict file and yields `(location, directive)` pairs. `status="verbatim"` lists everything preserved but not interpreted, and unknown keywords are reported as `status="unknown"`.
-- **Public names approved by the maintainer (2026-10-19):** `ofVerbatimDirective`, `OF_DIRECTIVES`, `DirectiveInfo`, `iterDirectives`.
+## Directives handled here (from the real-tutorial inventory, 2026-10-21)
+| Directive | Where (real files) | Form |
+|---|---|---|
+| `#print` | Foundation 14 only, 25 uses in 24 files: pitzDaily `constant/momentumTransport`, `fluid/cavity/constant/thermophysicalTransport:23`, `XiFluid/1D/constant/combustionProperties:53` | argument-less, inside a sub-dict |
+| `#remove` | ESI only, 41-48 files: `basic/potentialFoam/cylinder/system/blockMeshDict:87` `#remove ( "r(Inner\|Outer).*" "[xy](min\|max)" )`, `coldEngineFoam/freePiston/0/U:51` `#remove (wall piston)` | word or same-line list |
+| `#inputMode` | ESI only, 1 file | word |
+| `#calcInclude` | Foundation 11-13 only, 1 file (`fluid/aerofoilNACA0012Steady/0/U:21`, `#calcInclude "transform.H"`) | quoted string |
+| `#message` | ESI, 4 (`IO/dictionary/good-word-expand.dict:18,21,24`) | word, quoted string, or same-line `{ ... }` |
+| `#codeBlock`, `#endCodeBlock`, `#codeInclude` | Foundation 14 only, 7/7/1 (`fluid/aerofoilNACA0012Steady/0/U:20-26`) | marker lines; `#codeInclude "transform.H"` |
 
-## Step 1: inventory (tester, recorded in this ticket)
-- Grep the tutorials of the tested releases (Foundation 11-14, ESI v2412-v2606) for `^\s*#[a-zA-Z]` directives, including those inside sub-dictionaries.
-- Record each directive, a count, an example file, and the proposed status.
-- From memory, expect `#calc`, `#remove`, `#include*`, `#codeStream`, and on ESI `#eval`, `#if`/`#ifeq`/`#else`/`#endif` and `#sinclude`. `#inputMode` is legacy and best-effort. All of this must be confirmed.
-- **Must round-trip (confirmed from a real file):** `#print`, argument-less, inside a sub-dictionary. Source: Foundation 14 pitzDaily `constant/momentumTransport` line 25, `https://raw.githubusercontent.com/OpenFOAM/OpenFOAM-14/master/tutorials/incompressibleFluid/pitzDaily/constant/momentumTransport`. Add it to the inventory and `OF_DIRECTIVES`, and add a test that this real file loads and round-trips.
-- Every directive found must round-trip. This table seeds `OF_DIRECTIVES`, and through T-018 it is also the **backlog record**: directives marked `verbatim` are the candidates for real interpretation later, if a need comes up.
+`#codeBlock`/`#endCodeBlock` enclose ordinary entries that use value-position `#calc` (T-027). Here they are captured as single marker lines, and the entries between them are parsed normally. The tester confirms that the F14 aerofoil `0/U` gets past both markers; full load of that file also needs T-027 and T-013 (`angleOfAttack 0 [deg];`).
 
 ## Scope
-- The directive dispatch (`foamkit/types/__init__.py:3962-3967`), `_parseVerbatimEntry` (`:5339-5341`) and the `ofCalc` constructor
-- `ofVerbatimDirective`, `OF_DIRECTIVES`, `DirectiveInfo` and `iterDirectives` in `foamkit/types`
-- `tests/test_directives.py` and a fixture dict made of real tutorial lines
+- Directive dispatch and `_parseVerbatimEntry` in `foamkit/types/__init__.py`. Unknown directives go to `ofVerbatimDirective` instead of raising "Unknown directive".
+- `ofVerbatimDirective`, `OF_DIRECTIVES`, `DirectiveInfo`, `iterDirectives`
+- Tests, using the tester's real-file fixtures under `tests/releases/`
 
 ## Out of scope
-- Evaluating `#calc`/`#eval`, resolving `#remove`, or choosing `#if` branches. Entries inside `#if` blocks are part of the verbatim text and are not editable through attributes; document this in the docstrings.
-- `#includeFunc` arguments (T-015)
+- `#if`/`#ifeq`/`#else`/`#endif` (T-026)
+- value-position `#calc` and `#neg`, and the `ofCalc` TypeError (T-027)
+- `#codeDict`, `#word` with `{` on the next line (T-028)
+- `#includeModel`, `#includeConstraint` (T-029)
+- `#codeStream` writer instability (T-033)
+- Evaluating anything
 - The Sphinx page (T-018)
 
 ## Acceptance criteria
-- [ ] The inventory table is recorded in this ticket with sources, and `OF_DIRECTIVES` contains exactly those rows.
-- [ ] Every inventoried directive round-trips byte-identically (after normal whitespace formatting) at top level and inside a sub-dictionary. The tests are parametrized over `OF_DIRECTIVES`.
-- [ ] The real Foundation 14 `constant/momentumTransport` (fixture copied byte-exact) loads, and `#print` inside `RAS {}` is written back unchanged.
-- [ ] `#calc "1+2"` and `#calc #{ ... #}` parse and round-trip. The `TypeError` is gone.
+- [ ] **Stock Foundation 14 pitzDaily loads.** The real `constant/momentumTransport` (`tests/releases/foundation-14.pitzDaily.momentumTransport`) parses, and `#print` inside `RAS {}` is written back unchanged.
+- [ ] Every directive in the table above round-trips unchanged (after normal whitespace formatting) at top level and inside a sub-dict. Use the real-file lines quoted above as test inputs.
+- [ ] `OF_DIRECTIVES` has a row for every directive in the plan's inventory, with the correct status and distributions. Directives deferred to T-026..T-029 are marked `"unsupported"` with the ticket in `note`.
 - [ ] An unknown `#directive`:
   - parses to `ofVerbatimDirective` with `known == False`;
   - is written back byte-for-byte;
-  - logs one WARNING per name per file;
-  - does not stop the entries after it from parsing.
-- [ ] An unbounded unknown directive raises `FoamKitError` with the file and line.
-- [ ] `iterDirectives` on a fixture case returns every verbatim and unknown directive with its location. Tested with `status=None`, `"verbatim"` and `"unknown"`.
-- [ ] `#includeEtc` and `#includeFunc` inside sub-dictionaries keep their keyword and value: a dedicated test beyond the existing golden coverage (`tests/golden/case/controlDict.written.txt:56-58`, `tests/golden/dicts/pitzDaily/0/p.txt:37`).
-- [ ] All existing golden files are unchanged. New public names have type hints and docstrings. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline.
+  - logs exactly one WARNING per name per file;
+  - does not stop later entries from parsing.
+- [ ] A directive whose same-line bracket is never closed raises `FoamKitError` with the file and line.
+- [ ] `iterDirectives` returns every verbatim and unknown directive with its location. Tested with `status=None`, `"verbatim"` and `"unknown"`.
+- [ ] `#includeEtc` and `#includeFunc` inside sub-dicts keep their keyword and value: a dedicated test.
+- [ ] All existing golden files are unchanged. New public names have type hints and docstrings. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.
+- [ ] A `fix:` commit whose body describes the user-visible change.
 
 ## Risks
-- **Behaviour change:** files that used to raise will now load, so callers who relied on an error for validation lose it. Describe it in the `fix:` commit body.
-- **Conditional blocks:** capture the whole block up to `#endif`. Otherwise the entries inside would look like normal editable entries. If this needs a block parser, use the T-016b split.
-- **Version facts:** which release supports which directive is from memory until the inventory is recorded.
+- **Behaviour change:** files that used to raise now load. Describe it in the commit body.
+- **Unknown-directive warnings could hide real typos.** The once-per-name warning and `iterDirectives` make them discoverable.
+- **Untrusted text in warnings:** the directive text from case files goes through `userMsg`, which prints it literally since T-025.
+
+## Completion notes (implementer, 2026-10-21)
+- **Done:**
+  - `ofVerbatimDirective`, `DirectiveInfo`, `OF_DIRECTIVES` (all 25 inventoried directives) and `iterDirectives` are in `foamkit/types/__init__.py`.
+  - Registered "verbatim" directives and unregistered `#word` directives at the start of a line go to `DictFileParser._parseVerbatimDirective`.
+  - The real Foundation 14 pitzDaily `momentumTransport` loads, writes `#print` back unchanged, and `pf.init` works.
+- **Statuses:**
+  - interpreted: the include family, `eval`, `codeStream`.
+  - verbatim: `print`, `remove`, `inputMode`, `calcInclude`, `message`, `codeBlock`, `endCodeBlock`, `codeInclude`.
+  - unsupported (ticket in `note`): `includeModel`/`includeConstraint` T-029, `calc`/`neg` T-027, `if`/`ifeq`/`else`/`endif` T-026, `codeDict`/`word` T-028.
+  - Unsupported directives keep today's behaviour.
+- **Capture:** one linear pass from the `#` to the end of the line. `(`, `{`, `"` and `#{` extend it to the matching close (`#}` for `#{`).
+  - Inside a string only the closing quote counts (with `\"` escapes); inside `#{ ... #}` only `#}` counts.
+  - Outside them `//` ends the scan of the line.
+  - An unclosed opener raises `FoamKitError` naming the file and the directive's physical line.
+- **Warning:** only unknown directives warn, once per name per file (`DictFileParser._warnedDirectives`).
+- **`text`:** the raw source from the `#`. Continuation lines lose the directive's own indentation; the writer adds the nesting indentation back. Reads and writes at the same level therefore keep every character, and they stay stable in nested dicts.
+- **`iterDirectives`:**
+  - "verbatim" and "unknown" are disjoint; `None` returns both.
+  - `location` is the `/`-joined attribute path starting with the name of the object passed in (e.g. `pitzDaily/constant/momentumTransport/RAS/unnamed_1`).
+- **Fixed:** `#codeInclude "transform.H"` no longer raises `IndexError`.
+- **Tests believed wrong (not edited):**
+  - `test_entries_inside_captured_braces_are_not_attributes`: `ofDict.__getattr__ = dict.get`, so `hasattr(d, anything)` is always True. The same `not hasattr` pattern is in three strict-xfail T-026 tests, which therefore can never flip. Suggested fix: `assert first.inner is None`.
+  - `test_real_file_second_write_is_stable[esi-v2606.bendJunction.blockMeshDict]`: fails on the T-031 block-comment bug. A single-line `/* ... */` is read back with its `/*` kept, so each write prepends another `/*`. Suggest a T-031 xfail for this file.
+  - `test_iterDirectives_locations_say_where_each_directive_is`: asserts at least 4 distinct locations, but the case has exactly 3 directives (another test requires exactly 3).
+- **Checks:** pytest passes except those three tests (see the report). ruff 190, ruff format 55, mypy 127: no change from the baselines.
