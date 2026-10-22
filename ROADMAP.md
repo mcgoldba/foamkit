@@ -34,6 +34,11 @@ None open.
 - **CLI user errors never show a traceback (maintainer principle, 2026-10-20).** Bad arguments, running a command in an invalid directory, or a missing `fk init` cache print one clean `ERROR:` line and exit non-zero. This applies to every `fk` subcommand and to all future CLI work. In particular, `fk edit` with no cache exits 1 instead of opening a console with `case = None` (T-023).
 - **`userMsg` output is literal (2026-10-20).** Messages are never interpreted as rich markup, and the ERROR level always raises `FoamKitError`, whatever the text (T-025).
 - **T-024 approved (2026-10-20):** delete `_interpretUnitsAndConvert` with no alias or stub.
+- **T-016 split (maintainer-approved, 2026-10-21)** after the real-tutorial directive inventory (Foundation 11-14, ESI v2412-v2606; the table is in the plan doc).
+  - T-016 keeps the verbatim framework (`ofVerbatimDirective`, `OF_DIRECTIVES`, `iterDirectives`), unknown-directive handling, and the single-line directives `#print`, `#remove`, `#inputMode`, `#calcInclude`, `#message`, `#codeBlock`, `#endCodeBlock` and `#codeInclude`. Its goal is that stock Foundation 14 pitzDaily loads.
+  - Split out: T-026 (`#if`/`#ifeq`/`#else`/`#endif`), T-027 (value-position `#calc`/`#neg`), T-028 (`#codeDict`/`#word`), T-029 (`#includeModel`/`#includeConstraint`).
+  - Non-directive blockers found in real files: T-030 (scoped `$` references), T-031 (block comments), T-032 (number formatting), T-033 (`#codeStream` writer).
+- **T-034 (2026-10-21), a T-025 follow-up:** escape C1 and bidi controls in `userMsg`; `str(FoamKitError)` must never raise.
 - **Fixtures** come from real files only. Source URLs are in `docs/plans/openfoam-compatibility.md`, under References.
 - **`bin/` scripts:** deleted by the maintainer.
 
@@ -44,33 +49,46 @@ None open.
 - **T-006** headers written back verbatim, ESI/foam-extend box borders kept; same-line `FoamFile {` read as the header (b97578c)
 - **T-015** `#includeFunc` with arguments parsed; original quoting kept (17e125f)
 - **T-017** `FoamKitError` catchable with `except Exception` (dual base for one release) (PR #34)
+- **T-025** `userMsg` prints messages literally; always raises `FoamKitError` at ERROR (5c10d41, PR #36)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
 - Real files (2026-10-19): stock pitzDaily for Foundation 11 loads since T-015. **Foundation 14 still fails** (`#print`, T-016). Foundation 12/13 and ESI v2606 headers are fine.
+- Real-tutorial inventory (2026-10-21), load failures by frequency:
+  - value-position `#calc`/`#neg`: 100+ Foundation 13/14 files (T-027);
+  - `#if`/`#ifeq` blocks: Foundation 13/14 `fvSchemes`, ESI (T-026);
+  - scoped `$` references (T-030);
+  - `#includeConstraint` (T-029);
+  - block comments (T-031);
+  - `#remove`/`#print`/other single-line directives (T-016).
 - Other gaps:
-  - `#calc` / `#remove` / `#if` / unknown directives raise (T-016);
+  - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
   - writer whitespace churn (T-019, T-020);
   - one-line `FoamFile { ... }` (T-021);
   - one-line sub-dicts (`p { type probes; }`) raise `IndexError`, so the whole case fails (T-022);
   - Foundation 14 named dimension sets read as strings (T-013).
-- `userMsg` treats messages as rich markup: `[velocity]` is dropped, and `[/]` raises `MarkupError` instead of `FoamKitError` (T-025).
-- `fk init` / `write` / `plot` on a non-case path crash with a traceback instead of a clean `ERROR:` (T-023).
+- `fk init` / `write` / `plot` / `edit` on a non-case path crash with a traceback, or open a console with no case, instead of printing a clean `ERROR:` (T-023).
+- `userMsg` does not escape C1 or bidi control characters, and `str(FoamKitError(42))` raises (T-034).
 - `_interpretUnitsAndConvert` is dead code that fails on every call (T-024).
 - There is no docs site, and the README has broken examples.
 
 ## Next (ranked)
-**In progress:** T-025 `userMsg` prints messages literally (#35).
+**In progress:** T-016 verbatim directive framework and single-line directives (#23, narrowed 2026-10-21).
 
-1. **T-025** `userMsg` prints literally and always raises `FoamKitError` (S): tiny, and it affects every message. Untrusted case text can crash it today. It goes before T-016 because T-016's new warnings quote directive text from case files, and T-023's "clean `ERROR:`" promise depends on it.
-2. **T-016** other directives incl. `#print`, verbatim type and registry (M): unblocks stock Foundation 14 pitzDaily.
-3. **T-023** `fk` user errors never show a traceback, including `fk edit` with no cache (S): the CLI principle above.
-4. **T-019** no trailing `; ` or extra blank line (S): must precede T-007's byte-identical checks.
-5. **T-021** one-line `FoamFile { ... }` (S): data loss on HEAD; the form is rarer.
-6. **T-022** one-line sub-dicts (S): the whole case fails to load. It reuses T-021's one-line tokenizing.
-7. **T-013** named dimension sets and unit annotations (M): `[velocity]` reads as a string; the annotated-value forms are still unverified.
+1. **T-016** (M): stock Foundation 14 pitzDaily loads, and the other directive tickets build on its type and registry.
+2. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread load failure, in 100+ files per Foundation 13/14 release, mostly `blockMeshDict`.
+3. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` (for example `cylinder`) and ESI dictionaries. It is less widespread than T-027.
+4. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
+5. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release. It reuses T-015's design.
+6. **T-023** `fk` user errors never show a traceback (S, #32): user-facing, but those commands already exit 1, so real-file load failures come first.
+7. **T-031** block comments (S, #42): comments are lost, or ESI `blockMeshDict` files fail to load.
 
-After these, the order is T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`). T-024 is approved and can be picked up any time after T-017. T-020 follows T-007 so it can use T-007's fixtures as its test corpus.
+After these, the order is T-033 → T-019 → T-021 → T-022 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+- T-033 is next because the file grows on every write.
+- T-021 and T-022 were not seen in the real-tutorial inventory, so they drop below the files that fail today.
+- T-028 affects only 3 files.
+- T-024 can be picked up any time.
+- T-020 follows T-007, so it can use T-007's test cases as its corpus.
 
 ## Deferred
 - **Removing `SystemExit` from `FoamKitError`:** the release after T-017 ships.
