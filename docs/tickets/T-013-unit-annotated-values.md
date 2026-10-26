@@ -28,6 +28,9 @@ On 2026-10-18 I probed these guessed forms with scratch files (no code changed):
 - Foundation 13 `0/U`: `dimensions [0 1 -1 0 0 0 0];`, which parses as `ofNamedDimension`. OK.
 - **Foundation 14 `0/U`: `dimensions [velocity];` (a named dimension set) parses as `ofStr('[velocity]')`**, not as a dimension type. Source: `https://raw.githubusercontent.com/OpenFOAM/OpenFOAM-14/master/tutorials/incompressibleFluid/pitzDaily/0/U`.
 
+### Real unit annotation found (2026-10-21, T-016 inventory)
+- **Foundation 14 `fluid/aerofoilNACA0012Steady/0/U:18` `angleOfAttack   0 [deg];`**: the first real `value [unit]` form (`tests/releases/foundation-14.aerofoilNACA0012Steady.U`). Use it as the scalar case. The same file has `dimensions [velocity];` at `:28`.
+
 ## Scope
 - **Step 1 (tester):** record the real unit syntax. pitzDaily shows none, so grep the wider Foundation 13/14 tutorial trees for `\[[a-zA-Z^/ ]+\]` after values and in `dimensions` entries. Record each distinct form with its source URL. If no annotated value forms exist, report back; the annotated-value part of this ticket may then be descoped by the maintainer.
 - **Named dimension sets (Foundation 14):** `[velocity]`, plus every other name found in the 14 tutorials (record them). Parse them into a dimension type, not `ofStr`. The name is kept and written back unchanged. Classic `[0 1 -1 0 0 0 0]` handling is unchanged.

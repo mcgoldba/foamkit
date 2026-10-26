@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field, make_dataclass
 #from selectors import EpollSelector
-from typing import List, Callable
+from typing import List, Callable, Iterator, Literal, Optional, Tuple
 import types
 import copy
 from pathlib import Path
@@ -2131,7 +2131,7 @@ class ofDict(dict, _ofTypeBase):
                     # dStr = dStr.rstrip()
                     # dStr+=';'
                     dStr += '\n'
-                elif isinstance(v, _ofVerbatimCode):
+                elif isinstance(v, (_ofVerbatimCode, ofVerbatimDirective)):
                     #- Multi-line: indent every line, not only the first
                     for v_ in v.toString(ofRep=ofRep).rstrip('\n').split('\n'):
                         dStr+= (TAB_STR+v_ if v_ else '')+'\n'
@@ -2304,6 +2304,8 @@ class ofDictFile(ofDict, _ofFolderItemBase):
                 if hasattr(v, 'toString') and callable(getattr(v, 'toString')):
                     # dStr += printNameStr(TAB_STR+k)+v.toString()
                     str_ += v.toString(ofRep=ofRep)
+                    if isinstance(v, ofVerbatimDirective):
+                        str_ += '\n'  #- raw text has no line end of its own
                     # logger.debug("Found 'toString()' method.")
                 else:
                     # logger.debug("Could not find 'toString()' method.")
@@ -3145,6 +3147,172 @@ def createVerbatimCodeRegistry(func):
         createVerbatimCodeRegistry(dc)
 createVerbatimCodeRegistry(_ofVerbatimCode)
 
+
+@dataclass(frozen=True)
+class DirectiveInfo:
+    """
+    One row of `OF_DIRECTIVES`.
+
+    Attributes:
+        status: "interpreted" (FoamKit models it), "verbatim" (kept as raw
+            text and written back unchanged) or "unsupported" (not handled
+            yet; `note` names the ticket that owns it).  Annotation only;
+            the value is not checked at run time.
+        distributions: The OpenFOAM distributions and releases whose
+            tutorials use it (e.g. "Foundation 14", "ESI v2412-v2606").
+        note: Free text.
+    """
+    status: Literal["interpreted", "verbatim", "unsupported"]
+    distributions: Tuple[str, ...]
+    note: str = ""
+
+
+_FOUNDATION_ALL = "Foundation 11-14"
+_ESI_ALL = "ESI v2412-v2606"
+
+#- Seeded from "Directive inventory" in docs/plans/openfoam-compatibility.md.
+_OF_DIRECTIVES = {
+    "include": DirectiveInfo(
+        "interpreted", (_FOUNDATION_ALL, _ESI_ALL), "ofInclude"),
+    "includeEtc": DirectiveInfo(
+        "interpreted", (_FOUNDATION_ALL, _ESI_ALL), "ofIncludeEtc"),
+    "includeFunc": DirectiveInfo(
+        "interpreted", (_FOUNDATION_ALL, _ESI_ALL), "ofIncludeFunc"),
+    "includeIfPresent": DirectiveInfo(
+        "interpreted", (_FOUNDATION_ALL,), "ofInclude; quoting: T-029"),
+    "sinclude": DirectiveInfo(
+        "interpreted", (_ESI_ALL,), "ofInclude; quoting: T-029"),
+    "includeModel": DirectiveInfo(
+        "unsupported", (_FOUNDATION_ALL,), "T-029"),
+    "includeConstraint": DirectiveInfo(
+        "unsupported", (_FOUNDATION_ALL,), "T-029"),
+    "calc": DirectiveInfo(
+        "unsupported", (_FOUNDATION_ALL, _ESI_ALL),
+        "T-027 (value position)"),
+    "neg": DirectiveInfo("unsupported", (_FOUNDATION_ALL,), "T-027"),
+    "eval": DirectiveInfo("interpreted", (_ESI_ALL,), "ofEval"),
+    "codeStream": DirectiveInfo(
+        "interpreted", (_FOUNDATION_ALL, _ESI_ALL),
+        "ofCodeStream; writer: T-033"),
+    "print": DirectiveInfo("verbatim", ("Foundation 14",), ""),
+    "remove": DirectiveInfo("verbatim", (_ESI_ALL,), ""),
+    "if": DirectiveInfo("unsupported", (_ESI_ALL,), "T-026"),
+    "ifeq": DirectiveInfo(
+        "unsupported", ("Foundation 13-14", _ESI_ALL), "T-026"),
+    "else": DirectiveInfo(
+        "unsupported", ("Foundation 13-14", _ESI_ALL), "T-026"),
+    "endif": DirectiveInfo(
+        "unsupported", ("Foundation 13-14", _ESI_ALL), "T-026"),
+    "inputMode": DirectiveInfo("verbatim", (_ESI_ALL,), ""),
+    "calcInclude": DirectiveInfo("verbatim", ("Foundation 11-13",), ""),
+    "codeBlock": DirectiveInfo("verbatim", ("Foundation 14",), ""),
+    "endCodeBlock": DirectiveInfo("verbatim", ("Foundation 14",), ""),
+    "codeInclude": DirectiveInfo("verbatim", ("Foundation 14",), ""),
+    "codeDict": DirectiveInfo(
+        "unsupported", ("Foundation 14",), "T-028"),
+    "message": DirectiveInfo("verbatim", (_ESI_ALL,), ""),
+    "word": DirectiveInfo("unsupported", (_ESI_ALL,), "T-028"),
+}
+
+#- Read-only view: a `Mapping`, not a `MutableMapping`.
+OF_DIRECTIVES = types.MappingProxyType(_OF_DIRECTIVES)
+
+
+@dataclass(init=False)
+class ofVerbatimDirective(_ofUnnamedTypeBase):
+    """
+    A directive kept as raw text and written back unchanged.
+
+    Attributes:
+        keyword: The directive name without '#' (e.g. "print").
+        text: The source text from the '#' to the end of the capture, which
+            may span several lines.  Continuation lines have the directive's
+            own indentation removed, and the writer adds the indentation of
+            the nesting level back, so a read/write cycle at the same level
+            keeps every character.
+
+    `toString()` returns `text` unchanged.  Both arguments are keyword-only.
+    """
+    keyword: Optional[str] = None
+    text: Optional[str] = None
+
+    def __init__(self, *, keyword: Optional[str] = None,
+                 text: Optional[str] = None, value=None,
+                 _comment=None) -> None:
+        #- Keyword-only (`dataclass(kw_only=True)` needs Python 3.10).  The
+        #  no-argument form is used by the JSON cache reload, which then sets
+        #  the attributes.
+        self.value = value
+        self._comment = _comment
+        self.keyword = keyword
+        self.text = text
+
+    @property
+    def known(self) -> bool:
+        """True if `keyword` has a row in `OF_DIRECTIVES`."""
+        return self.keyword in OF_DIRECTIVES
+
+    def toString(self, ofRep=False) -> str:
+        """The raw directive text, unchanged."""
+        return '' if self.text is None else self.text
+
+    def __str__(self):
+        return self.toString()
+
+
+def _directiveStatus(directive: "ofVerbatimDirective") -> str:
+    """The `OF_DIRECTIVES` status of `directive`, or "unknown" if unregistered."""
+    info = OF_DIRECTIVES.get(directive.keyword or '')
+    return 'unknown' if info is None else info.status
+
+
+def iterDirectives(obj, status: Optional[str] = None
+                   ) -> Iterator[Tuple[str, "ofVerbatimDirective"]]:
+    """
+    Yield `(location, directive)` for the verbatim directives below `obj`.
+
+    Parameters:
+        obj: An `ofCase`, an `ofFolder`, an `ofDictFile` or an `ofDict`.
+        status: "verbatim" (registered in `OF_DIRECTIVES` as verbatim),
+            "unknown" (not in `OF_DIRECTIVES`) or any other `OF_DIRECTIVES`
+            status.  "verbatim" and "unknown" are disjoint.  `None` yields
+            every verbatim and every unknown directive.
+
+    `location` is a string: the `/`-joined attribute names from `obj` down
+    to the directive, starting with the name of `obj` itself (the folder,
+    file or dict name) when it has one.  It therefore contains the file name
+    (e.g. `momentumTransport/RAS/unnamed_1`).  Unnamed entries are stored as
+    `unnamed_<n>`.
+    """
+    if status is not None and status not in (
+            'verbatim', 'unknown', 'interpreted', 'unsupported'):
+        raise ValueError(f"Invalid directive status '{status}'.")
+
+    def wanted(d):
+        s = _directiveStatus(d)
+        return s in ('verbatim', 'unknown') if status is None else s == status
+
+    def walk(o, path, seen):
+        if id(o) in seen:
+            return
+        seen.add(id(o))
+        for key, val in list(vars(o).items()):
+            if isinstance(val, ofVerbatimDirective):
+                if wanted(val):
+                    yield '/'.join(path + [key]), val
+            elif isinstance(val, (ofDict, _ofFolderBase)):
+                yield from walk(val, path + [key], seen)
+
+    root = []
+    if isinstance(obj, ofDict):
+        name = obj._name
+    else:
+        name = getattr(obj, '_path', None)
+        name = Path(name).name if name else None
+    if name:
+        root = [str(name)]
+    yield from walk(obj, root, set())
+
 class _RowBuffer:
     """
     Growable table of monitor rows.
@@ -3856,6 +4024,8 @@ class DictFileParser:
         self.nComments = 0
         self.nFeTypes = {t: 0 for t in OF_FUNCTION_ENTRIES.keys()}
         self.needSemicolon = True
+        #- Names of unknown directives already warned about (once per file)
+        self._warnedDirectives = set()
 
 
     def _addExtraLine(self, line):
@@ -3975,7 +4145,9 @@ class DictFileParser:
             if value is not None:
                 logger.debug("adding value: %s", value)
             #     self.entryList.append(value)
-                if (isinstance(value, _ofTypeBase) 
+                if isinstance(value, ofVerbatimDirective):
+                    self.dictFile.update(value)
+                elif (isinstance(value, _ofTypeBase)
                     and not isinstance(value, ofComment)
                     and not isinstance(value, _ofFunctionEntry)):
                     #- rename key if already in dict:
@@ -4058,7 +4230,10 @@ class DictFileParser:
                     value = self._parseIncludes(lineList[0], lineList[1])
                     logger.debug("includeValue: %s", value)
                 else:
-                    value = self._parseVerbatimEntry(lineList=lineList)
+                    value = self._parseVerbatimDirective(
+                        lineList[0], parsingExtraLine)
+                    if value is None:
+                        value = self._parseVerbatimEntry(lineList=lineList)
                 return value
             # elif len(lineList) >= 2:
             #     if lineList[1][0] == '#':
@@ -4738,10 +4913,15 @@ class DictFileParser:
 
         # logger.debug("End of initialization loop.")
 
+        skipTo = 0
         while level > 0:
             if i_ >= len(self.lines):
                 userMsg(f'Invalid syntax.  Could not locate end of '\
-                    f'{type} starting on line {self.i+1}.', 'ERROR')
+                    f'{type} starting on line {self.i+1} of file '\
+                    f'{self.filepath}.', 'ERROR')
+            if type == 'dict' and i_ >= skipTo:
+                #- Interim guard, removed by T-035 (issue #47)
+                skipTo = i_ + 1 + self._checkDirectiveBraces(i_)
             line = self.lines[i_]
             # logger.debug(f"i: {i_}")
             # logger.debug(f"line: {line}")
@@ -5320,6 +5500,179 @@ class DictFileParser:
             logger.warning("Parsing single line as 'ofMultilineStatement'.")
 
         return ofMultilineStatement(name=key, value=value)
+
+    def _verbatimDirectiveKind(self, token):
+        """
+        Return `(keyword, info)` if the line-start `token` is captured as an
+        `ofVerbatimDirective` (`info` is None for an unregistered keyword),
+        else None.
+        """
+        if INCLUDE_KEYWORD_RE.fullmatch(token) is None:
+            return None
+        keyword = token[1:]
+        info = OF_DIRECTIVES.get(keyword)
+        if info is not None:
+            if info.status != 'verbatim':
+                return None
+        elif (keyword in OF_FUNCTION_ENTRIES
+              or keyword in OF_VERBATIM_CODE_ENTRIES):
+            return None
+        return keyword, info
+
+    def _scanDirective(self, i, first, token, keyword, canContinue=True,
+                       comments=False):
+        """
+        Find the end of the directive on line `i` (text `first`, starting with
+        `token`) using the capture rules of `_parseVerbatimDirective`.
+
+        Returns `(k, cont, nets)`: the number of extra lines, the
+        continuation lines (the directive's own indentation removed), and,
+        per captured line, the number of '{' minus the number of '}' on it.
+        If `comments` is true, `/* ... */` is skipped as a comment (used by
+        the interim brace guard only; the capture itself does not do this).
+        Raises `FoamKitError` if the capture is not closed.  No state is
+        changed.
+        """
+        col = len(first) - len(first.lstrip())
+        indent = first[:col]
+        line, j, k = first, col + len(token), 0
+        stack, cont = [], []
+        inBlock = False
+        nets = [first[col:].count('{') - first[col:].count('}')]
+        while True:
+            n = len(line)
+            while j < n:
+                c = line[j]
+                top = stack[-1] if stack else ''
+                if inBlock:
+                    end = line.find('*/', j)
+                    inBlock = end < 0
+                    j = n if end < 0 else end + 1
+                elif top == '#}':
+                    #- code block: only its terminator matters
+                    if line.startswith('#}', j):
+                        stack.pop()
+                        j += 1
+                elif top == '"':
+                    if c == '\\':
+                        j += 1
+                    elif c == '"':
+                        stack.pop()
+                elif line.startswith('//', j):
+                    break
+                elif comments and line.startswith('/*', j):
+                    inBlock = True
+                    j += 1
+                elif c == '"':
+                    stack.append('"')
+                elif c == '(':
+                    stack.append(')')
+                elif c == '{':
+                    stack.append('}')
+                elif line.startswith('#{', j):
+                    stack.append('#}')
+                    j += 1
+                elif c in ')}' and top == c:
+                    stack.pop()
+                j += 1
+            if not stack:
+                break
+            k += 1
+            if not canContinue or i + k >= len(self.lines):
+                opener = {')': '(', '}': '{', '"': '"', '#}': '#{'}[stack[0]]
+                userMsg(f"Unclosed '{opener}' in directive '#{keyword}' "
+                        f"starting on line {i+1} of file "
+                        f"{self.filepath}.", "ERROR")
+            line, j = self.lines[i + k].rstrip('\r\n'), 0
+            nets.append(line.count('{') - line.count('}'))
+            cont.append(line[len(indent):] if line.startswith(indent) else line)
+        return k, cont, nets
+
+    def _checkDirectiveBraces(self, i):
+        """
+        Interim guard (removed by T-035, issue #47).
+
+        `_findDictOrListEndLine` counts every '{' and '}' on a line, including
+        those inside quotes, comments and `#{ ... #}` in a directive that is
+        captured verbatim, so the enclosing dictionary would end on the wrong
+        line.  If line `i` starts such a directive and the braces in its
+        captured text do not balance line by line (so the enclosing dictionary
+        would end early or late), raise `FoamKitError` with the file and the
+        line.  Balanced braces (e.g. `${NAME}` in a string) are harmless.
+        Returns the number of extra lines the directive spans.
+        """
+        first = self.lines[i].rstrip('\r\n')
+        stripped = first.lstrip()
+        if not stripped.startswith('#'):
+            return 0
+        token = stripped.split()[0]
+        kind = self._verbatimDirectiveKind(token)
+        if kind is None:
+            return 0
+        k, _, nets = self._scanDirective(
+            i, first, token, kind[0])
+        level = 0
+        for net in nets:
+            level += net
+            if level < 0:
+                break
+        if level != 0:
+            userMsg(f"Directive '#{kind[0]}' on line {i+1} of file "
+                    f"{self.filepath} has an unbalanced '{{' or '}}' inside "
+                    "quotes, a comment or a code block.  This is not "
+                    "supported yet inside a dictionary.", "ERROR")
+        return k
+
+    def _parseVerbatimDirective(self, token, parsingExtraLine=False):
+        """
+        Capture a line-start directive as an `ofVerbatimDirective`.
+
+        Handles directives that are registered as "verbatim" in
+        `OF_DIRECTIVES` and unregistered ones (kept verbatim; a WARNING is
+        issued once per name per file).  Returns None for all others, and for
+        tokens that cannot be a directive word, so the caller keeps its
+        existing handling.
+
+        The capture runs from the '#' to the end of the line.  A '(', '{',
+        '"' or '#{' that opens on that line extends it to its matching close
+        ('#}' for '#{'), which may be on a later line.  Inside a string only
+        the closing quote matters (`\\"` is an escape); inside '#{ ... #}'
+        only '#}' matters; outside them '//' ends the scan of the line.  If
+        the close is never found, `FoamKitError` is raised naming the file
+        and the line of the directive.  The scan is a single pass over the
+        characters, so its cost is linear in the text consumed.
+
+        On return `self.i` is the last line of the capture.
+        """
+        kind = self._verbatimDirectiveKind(token)
+        if kind is None:
+            return None
+        keyword, info = kind
+
+        first = (self.extraLine[0] if parsingExtraLine
+                 else self.lines[self.i]).rstrip('\r\n')
+        col = len(first) - len(first.lstrip())
+        k, cont, _ = self._scanDirective(
+            self.i, first, token, keyword, canContinue=not parsingExtraLine)
+
+        text = first[col:]
+        if k > 0:
+            text += '\n' + '\n'.join(cont)
+
+        if not parsingExtraLine:
+            self.i += k
+            #- `_parseComments` queued this line's `//` comment; it is part
+            #  of the raw text here and must not attach to the next entry.
+            if '//' in first and self.comment:
+                self.comment.pop()
+
+        if info is None and keyword not in self._warnedDirectives:
+            self._warnedDirectives.add(keyword)
+            userMsg(f"Unknown directive '#{keyword}' kept verbatim "
+                    f"(line {self.i+1-k} of file {self.filepath}).",
+                    "WARNING")
+
+        return ofVerbatimDirective(keyword=keyword, text=text)
 
     def _parseVerbatimEntry(self, lineList=None, name=None):
         """
