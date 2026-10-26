@@ -4,6 +4,7 @@
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S. If the parser needs a tokenizer change, split it: T-031a for loss on write, T-031b for parse failures.
 - **Related:** T-020 (keep the layout of unedited entries)
+- **Depends on:** T-035 (#47), which makes the brace scan comment-aware. Build on its scanner, and re-check the "Could not find end of commented block" failure after T-035, since it may share the cause.
 
 ## Goal
 Block comments in the body of a dictionary are written back unchanged, and never make a file fail to load.

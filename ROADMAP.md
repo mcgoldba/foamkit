@@ -38,6 +38,7 @@ None open.
   - T-016 keeps the verbatim framework (`ofVerbatimDirective`, `OF_DIRECTIVES`, `iterDirectives`), unknown-directive handling, and the single-line directives `#print`, `#remove`, `#inputMode`, `#calcInclude`, `#message`, `#codeBlock`, `#endCodeBlock` and `#codeInclude`. Its goal is that stock Foundation 14 pitzDaily loads.
   - Split out: T-026 (`#if`/`#ifeq`/`#else`/`#endif`), T-027 (value-position `#calc`/`#neg`), T-028 (`#codeDict`/`#word`), T-029 (`#includeModel`/`#includeConstraint`).
   - Non-directive blockers found in real files: T-030 (scoped `$` references), T-031 (block comments), T-032 (number formatting), T-033 (`#codeStream` writer).
+- **T-035 (approved by the maintainer in chat, 2026-10-25):** fix the dict/list end scan, which counts braces inside strings, comments and `#{ #}` blocks and silently moves entries to another scope. It is ranked **first after T-016**, and lands before T-031. It removes T-016's interim guard.
 - **T-034 (2026-10-21), a T-025 follow-up:** escape C1 and bidi controls in `userMsg`; `str(FoamKitError)` must never raise.
 - **Fixtures** come from real files only. Source URLs are in `docs/plans/openfoam-compatibility.md`, under References.
 - **`bin/` scripts:** deleted by the maintainer.
@@ -61,6 +62,7 @@ None open.
   - `#includeConstraint` (T-029);
   - block comments (T-031);
   - `#remove`/`#print`/other single-line directives (T-016).
+- **Silent change of meaning (pre-existing):** a `}` inside a string, a `//` or `/* */` comment, or a `( "}" )` list inside a sub-dict moves entries to another scope, and the structure shifts again on every write (T-035, from the T-016 review on PR #46).
 - Other gaps:
   - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
   - writer whitespace churn (T-019, T-020);
@@ -75,15 +77,15 @@ None open.
 ## Next (ranked)
 **In progress:** T-016 verbatim directive framework and single-line directives (#23, narrowed 2026-10-21).
 
-1. **T-016** (M): stock Foundation 14 pitzDaily loads, and the other directive tickets build on its type and registry.
-2. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread load failure, in 100+ files per Foundation 13/14 release, mostly `blockMeshDict`.
-3. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` (for example `cylinder`) and ESI dictionaries. It is less widespread than T-027.
-4. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
-5. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release. It reuses T-015's design.
-6. **T-023** `fk` user errors never show a traceback (S, #32): user-facing, but those commands already exit 1, so real-file load failures come first.
-7. **T-031** block comments (S, #42): comments are lost, or ESI `blockMeshDict` files fail to load.
+1. **T-016** (M, PR #46): stock Foundation 14 pitzDaily loads, and the other directive tickets build on its type and registry.
+2. **T-035** brace scan ignores strings, comments and code blocks (M, #47): silent change of meaning with no error, the worst failure for an editing tool. It is first after T-016 by maintainer decision, and it removes T-016's guard.
+3. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread load failure, in 100+ files per Foundation 13/14 release, mostly `blockMeshDict`.
+4. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` (for example `cylinder`) and ESI dictionaries. It is less widespread than T-027.
+5. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
+6. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release. It reuses T-015's design.
+7. **T-023** `fk` user errors never show a traceback (S, #32): user-facing, but those commands already exit 1, so real-file load failures come first.
 
-After these, the order is T-033 → T-019 → T-021 → T-022 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+After these, the order is T-031 → T-033 → T-019 → T-021 → T-022 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
 - T-033 is next because the file grows on every write.
 - T-021 and T-022 were not seen in the real-tutorial inventory, so they drop below the files that fail today.
 - T-028 affects only 3 files.
