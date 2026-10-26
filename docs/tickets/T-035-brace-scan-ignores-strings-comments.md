@@ -75,3 +75,20 @@ Update T-031's dependency to T-035 when this lands.
 
 ## Ranking rationale
 **First after T-016** (maintainer, 2026-10-25). A file that loads with entries silently moved to another scope, and keeps shifting on every write, is the worst kind of failure for an editing tool: users get no error. It also lets T-016's interim guard be removed.
+
+## Completion notes (implementer, 2026-10-26)
+- **One tokenizer:** `DictFileParser._lex` yields real `( ) { }` and an end-of-line event. Text inside `"..."` (with `\"` escapes), `//`, `/* */` and `#{ #}` is skipped, and strings, block comments and code blocks may span lines. Single pass; a small non-backtracking regex only jumps to the next candidate character.
+- **Users of `_lex`:**
+  - `_findDictOrListEndLine` (all three call sites);
+  - `_scanDirective` (the T-016 capture, now comment-aware too);
+  - `_parseList` (does the list contain a real `{`?);
+  - the open-list/open-dict counter in `_parseLineLenGreaterThanTwo`;
+  - `_checkLexical`.
+- **`_findDictOrListEndIndex` and `_parseListValues`** treat a quoted string as one atom.
+- **Early errors:**
+  - `readDictFile` calls `_checkLexical()`. An unterminated string, `/* */` or `#{` raises `FoamKitError` naming the file and the line where it opened. That also replaces the line-less "Could not find end of commented block" and the `IndexError` for `#{` at top level.
+  - A stray `}` at top level raises, naming the file and line.
+  - An unclosed dict still names the line of its `{`.
+- **Removed:** `_checkDirectiveBraces` and its call, the `comments` parameter, the `inBlock` branch and the stale docstring line in `_scanDirective`.
+- **`note "http://x }";`:** still fails ("Cannot handle single line entry"). The entry parser treats `//` in a string as a comment. Out of scope, now tracked as T-036.
+- **Single-line `/* x */` comments:** `_parseComments` now drops the `/*` as well as the `*/`. Before, each write added another `/*`. It is a T-031-adjacent fix, needed by the single-line block-comment cases here.

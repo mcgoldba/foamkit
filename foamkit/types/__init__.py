@@ -4071,6 +4071,10 @@ class DictFileParser:
 
     def readDictFile(self):
 
+        #- Fail early, naming the file and line, on a string, `/* */` comment
+        #  or `#{ #}` block that is never closed.
+        self._checkLexical()
+
         status = 'start'
         ofType = None
         prevLine = None
@@ -4104,6 +4108,7 @@ class DictFileParser:
         #  Both `FoamFile` + `{` on the next line and `FoamFile {` on one line
         #  are accepted; in the latter `_parseListOrDict` reads the `{` from
         #  the keyword line itself.
+        foamFileEnd = None
         foamFileLine = self.lines[self.i].strip()
         if foamFileLine == 'FoamFile' or re.fullmatch(
                 r'FoamFile\s+\{', foamFileLine):
@@ -4115,6 +4120,7 @@ class DictFileParser:
                 userMsg('Invalid OpenFOAM file specified: '
                         +str(self.filepath), 'ERROR')
             self.dictFile._foamFile = self._parseListOrDict('FoamFile')
+            foamFileEnd = self.i  #- the line with its closing brace
 
         #- Guard against parser bugs that stop consuming input.  Each
         #  `_parseLine` call must advance the line index or consume an extra
@@ -4130,6 +4136,13 @@ class DictFileParser:
                 userMsg("Error reading dictionary file.  Parser made no "
                     f"progress near line {self.i+1} of:\n{self.filepath}",
                     "ERROR")
+
+            if (not self.extraLine and self.i != foamFileEnd
+                    and self._getLinesList(self.lines[self.i])[:1]
+                    in (['}'], ['};'])):
+                #- a closing brace at top level has no dictionary to close
+                userMsg(f"Unexpected '}}' on line {self.i+1} of file "
+                        f"{self.filepath}.", "ERROR")
 
             value = self._parseLine()
 
@@ -4527,10 +4540,9 @@ class DictFileParser:
             list_ = ofList(name=name)
 
         #- check to see if list contains dictionaries:
-        contentStr = ' '.join(self.lines[self.i:i_end+1])
-        # logger.debug(f"content string:\n{contentStr}")
-
-        if '{' in contentStr and '}' in contentStr:
+        #- (a '{' that is real syntax, not inside a string or comment)
+        if any(c == '{' for _, _, c in
+               self._lex(self.lines[self.i:i_end+1], 0)):
             #- found dictionary, parse recursively
             # logger.debug("Found dictionaries within list, parsing recursively...")
             
@@ -4725,12 +4737,18 @@ class DictFileParser:
                 # logger.debug(f"j: {j}")
             else:
                 value_ = ''
-                while not any([values[i] == char for char in delimiters]):
-                    value_+=values[i]
-                    if i == len(values)-1:
-                        break
-                    # logger.debug(f"value_: {value_}")
-                    i+=1
+                while i < len(values) and values[i] not in delimiters:
+                    if values[i] == '"':
+                        #- a quoted string is one value: brackets and spaces
+                        #  inside it are text
+                        j = i+1
+                        while j < len(values) and values[j] != '"':
+                            j += 2 if values[j] == '\\' else 1
+                        value_ += values[i:j+1]
+                        i = j+1
+                    else:
+                        value_ += values[i]
+                        i += 1
                 if value_ != '':
                     type_, v = self._parseValue(value_)
                     if type_ is not None:
@@ -4794,13 +4812,20 @@ class DictFileParser:
                     f"end of list on line {self.i+1} of {self.filepath}.",
                     'WARNING')
                 return None
+            if string[i] == '"':
+                #- skip a quoted string: brackets inside it are text
+                i += 1
+                while i < len(string) and string[i] != '"':
+                    i += 2 if string[i] == '\\' else 1
+                i += 1
+                continue
             if string[i] == openingChar:
                 level+=1
             if string[i] == closingChar:
                 level-=1
             if level == 0:
                 found = True
-                break 
+                break
             i+=1
 
 
@@ -4866,8 +4891,12 @@ class DictFileParser:
 
     def _findDictOrListEndLine(self, type, string=None):
         """
-        Find the line that terminates the dictionary starting on the currently
-        parsed line (i.e. the `self.i'th line)
+        Find the line that terminates the dictionary or list starting on the
+        currently parsed line (i.e. the `self.i'th line).
+
+        Brackets inside double-quoted strings, `//` and `/* */` comments and
+        `#{ #}` code blocks are ignored (see `_lex`).  The scan is a single
+        pass over the lines up to the end.
 
         Parameters:
             type [str]:  The type of object to parse (either 'dict' or 'list')
@@ -4875,73 +4904,29 @@ class DictFileParser:
         Returns:
             i [int]:  The line on which the current list or dictionary ends.
         """
-
-        def searchLine(level, i):
-            line = self.lines[i]
-            for char in line:
-                if char == BRACKET_CHARS[type][0]:
-                    level += 1
-                    # logger.debug(f'found char: {BRACKET_CHARS[type][0]}')
-                    # logger.debug(f"level: {level}")
-                    # logger.debug(f"line: {i}")
-                if char == BRACKET_CHARS[type][1]:
-                    level -= 1 
-                    # logger.debug(f'found char: {BRACKET_CHARS[type][1]}')
-                    # logger.debug(f"level: {level}")
-                    # logger.debug(f"line: {i}")
-            return level
-
-        # check if list begins and ends on single line
-        if self.lines[self.i].count(BRACKET_CHARS[type][0]) \
-        == self.lines[self.i].count(BRACKET_CHARS[type][1]):
-            return self.i
-
+        opening, closing = BRACKET_CHARS[type][:2]  #- (the 'list' entry is
+                                                    #  appended to elsewhere)
         level = 0
+        inside = False
+        for li, lj, c in self._lex(self.lines, self.i):
+            if c == opening:
+                level += 1
+            elif c == closing:
+                level -= 1
+            elif c == '\n':
+                #- level at the end of a line, as the line-based callers expect
+                if level > 0:
+                    inside = True
+                elif level < 0 or inside or li == self.i:
+                    return li
 
-        i_ = self.i
-
-
-        #- Parse to the first opening bracket to initialize second while loop
-        while level == 0:
-            if i_ >= len(self.lines):
-                userMsg(f'Invalid syntax.  Could not locate start of '\
-                    f'{type} from line {self.i+1} in file {self.filepath}.',
-                    'ERROR')
-
-            level = searchLine(level, i_)
-            i_+=1
-
-        # logger.debug("End of initialization loop.")
-
-        skipTo = 0
-        while level > 0:
-            if i_ >= len(self.lines):
-                userMsg(f'Invalid syntax.  Could not locate end of '\
-                    f'{type} starting on line {self.i+1} of file '\
+        if inside:
+            userMsg(f'Invalid syntax.  Could not locate end of '
+                    f'{type} starting on line {self.i+1} of file '
                     f'{self.filepath}.', 'ERROR')
-            if type == 'dict' and i_ >= skipTo:
-                #- Interim guard, removed by T-035 (issue #47)
-                skipTo = i_ + 1 + self._checkDirectiveBraces(i_)
-            line = self.lines[i_]
-            # logger.debug(f"i: {i_}")
-            # logger.debug(f"line: {line}")
-            for char in line:
-                if char == BRACKET_CHARS[type][0]:
-                    level += 1
-                    # logger.debug(f'found char: {BRACKET_CHARS[type][0]}')
-                    # logger.debug(f"level: {level}")
-                    # logger.debug(f"line: {i_+1}")
-                if char == BRACKET_CHARS[type][1]:
-                    level -= 1 
-                    # logger.debug(f'found char: {BRACKET_CHARS[type][1]}')
-                    # logger.debug(f"level: {level}")
-                    # logger.debug(f"line: {i_+1}")
-            i_+=1
-
-        # logger.debug(f"Found {type} entry from lines {self.i+1} to {i_}.")
-
-        return i_-1
-            
+        userMsg(f'Invalid syntax.  Could not locate start of '
+                f'{type} from line {self.i+1} in file {self.filepath}.',
+                'ERROR')
 
     def _parseFoamFile(self):
         foamFile = ofFoamFile()
@@ -5319,7 +5304,8 @@ class DictFileParser:
 
             valueStr = " ".join(lineList[1:])
             # logger.debug(f"valueStr: {valueStr}")
-            for char in valueStr:
+            #- (brackets in strings and comments do not count)
+            for _, _, char in self._lex([valueStr], 0, strict=False):
                 if char == '(':
                     nl+=1
                 if char == ')':
@@ -5501,6 +5487,94 @@ class DictFileParser:
 
         return ofMultilineStatement(name=key, value=value)
 
+    #- Characters that can start something the bracket scanner must look at.
+    _LEX_SIGNIFICANT = re.compile(r'[(){}"/#]')
+    #- In a string: an escape or the closing quote.
+    _LEX_STRING_END = re.compile(r'["\\]')
+
+    def _lex(self, lines, i, j=0, strict=True):
+        """
+        The one tokenizer for "where does this bracket close" (dictionary and
+        list ends, directive captures, and the whole-file check).
+
+        Scans `lines` from `lines[i][j:]` in a single pass and yields
+        `(line index, column, char)`:
+          - for every '(' ')' '{' '}' that is real syntax, i.e. not inside a
+            double-quoted string (with backslash escapes), a `//` comment, a
+            `/* ... */` comment or a `#{ ... #}` code block;
+          - at the end of every line, `'\\n'` if the scanner is back in
+            plain text, or `'\\0'` if a string, `/* */` comment or `#{ #}`
+            block is still open (so the construct continues on the next
+            line).
+
+        Raises `FoamKitError`, naming the file and the line where it opened,
+        if a string, `/* */` comment or `#{ #}` block is still open at the end
+        of `lines` (unless `strict` is false, for text that is only part of
+        the file).  No backtracking: each character is looked at once.
+        """
+        n = len(lines)
+        mode = ''            # '' text, 's' string, 'b' block comment, 'c' code
+        opened = None        # (line, description) of the open construct
+        while i < n:
+            line = lines[i]
+            m = len(line)
+            while j < m:
+                if mode == 's':
+                    hit = self._LEX_STRING_END.search(line, j)
+                    if hit is None:
+                        j = m
+                    elif hit.group() == '\\':
+                        j = hit.end() + 1
+                    else:
+                        mode, j = '', hit.end()
+                elif mode == 'b':
+                    k = line.find('*/', j)
+                    if k < 0:
+                        j = m
+                    else:
+                        mode, j = '', k + 2
+                elif mode == 'c':
+                    k = line.find('#}', j)
+                    if k < 0:
+                        j = m
+                    else:
+                        mode, j = '', k + 2
+                else:
+                    hit = self._LEX_SIGNIFICANT.search(line, j)
+                    if hit is None:
+                        j = m
+                        continue
+                    j = hit.start()
+                    c = line[j]
+                    if c in '(){}':
+                        yield i, j, c
+                        j += 1
+                    elif c == '"':
+                        mode, opened, j = 's', (i, 'string'), j + 1
+                    elif c == '/' and line.startswith('//', j):
+                        j = m
+                    elif c == '/' and line.startswith('/*', j):
+                        mode, opened, j = 'b', (i, 'comment'), j + 2
+                    elif c == '#' and line.startswith('#{', j):
+                        mode, opened, j = 'c', (i, "code block '#{'"), j + 2
+                    else:
+                        j += 1
+            yield i, m, '\n' if mode == '' else '\0'
+            i += 1
+            j = 0
+        if mode != '' and strict:
+            userMsg(f"Unterminated {opened[1]} starting on line "
+                    f"{opened[0]+1} of file {self.filepath}.", "ERROR")
+
+    def _checkLexical(self):
+        """
+        Raise `FoamKitError` if the file has a string, `/* */` comment or
+        `#{ #}` block that is never closed (names the file and the line where
+        it opened).
+        """
+        for _ in self._lex(self.lines, 0):
+            pass
+
     def _verbatimDirectiveKind(self, token):
         """
         Return `(keyword, info)` if the line-start `token` is captured as an
@@ -5519,109 +5593,44 @@ class DictFileParser:
             return None
         return keyword, info
 
-    def _scanDirective(self, i, first, token, keyword, canContinue=True,
-                       comments=False):
+    def _scanDirective(self, i, first, token, keyword, canContinue=True):
         """
         Find the end of the directive on line `i` (text `first`, starting with
-        `token`) using the capture rules of `_parseVerbatimDirective`.
+        `token`) using the scanner `_lex`: the capture ends at the end of the
+        first line on which no '(' or '{' is open and no string, `/* */`
+        comment or `#{ #}` block continues.
 
-        Returns `(k, cont, nets)`: the number of extra lines, the
-        continuation lines (the directive's own indentation removed), and,
-        per captured line, the number of '{' minus the number of '}' on it.
-        If `comments` is true, `/* ... */` is skipped as a comment (used by
-        the interim brace guard only; the capture itself does not do this).
-        Raises `FoamKitError` if the capture is not closed.  No state is
-        changed.
+        Returns `(k, cont)`: the number of extra lines and the continuation
+        lines (the directive's own indentation removed).  Raises
+        `FoamKitError` if the capture is not closed.  No state is changed.
+        With `canContinue` false only `first` is available.
         """
         col = len(first) - len(first.lstrip())
         indent = first[:col]
-        line, j, k = first, col + len(token), 0
-        stack, cont = [], []
-        inBlock = False
-        nets = [first[col:].count('{') - first[col:].count('}')]
-        while True:
-            n = len(line)
-            while j < n:
-                c = line[j]
-                top = stack[-1] if stack else ''
-                if inBlock:
-                    end = line.find('*/', j)
-                    inBlock = end < 0
-                    j = n if end < 0 else end + 1
-                elif top == '#}':
-                    #- code block: only its terminator matters
-                    if line.startswith('#}', j):
-                        stack.pop()
-                        j += 1
-                elif top == '"':
-                    if c == '\\':
-                        j += 1
-                    elif c == '"':
-                        stack.pop()
-                elif line.startswith('//', j):
-                    break
-                elif comments and line.startswith('/*', j):
-                    inBlock = True
-                    j += 1
-                elif c == '"':
-                    stack.append('"')
-                elif c == '(':
-                    stack.append(')')
-                elif c == '{':
-                    stack.append('}')
-                elif line.startswith('#{', j):
-                    stack.append('#}')
-                    j += 1
-                elif c in ')}' and top == c:
+        lines, start = (self.lines, i) if canContinue else ([first], 0)
+        stack = []
+        end = None
+        for li, lj, c in self._lex(lines, start, col + len(token)):
+            if c == '(':
+                stack.append(')')
+            elif c == '{':
+                stack.append('}')
+            elif c in ')}':
+                if stack and stack[-1] == c:
                     stack.pop()
-                j += 1
-            if not stack:
+            elif c == '\n' and not stack:
+                end = li
                 break
-            k += 1
-            if not canContinue or i + k >= len(self.lines):
-                opener = {')': '(', '}': '{', '"': '"', '#}': '#{'}[stack[0]]
-                userMsg(f"Unclosed '{opener}' in directive '#{keyword}' "
-                        f"starting on line {i+1} of file "
-                        f"{self.filepath}.", "ERROR")
-            line, j = self.lines[i + k].rstrip('\r\n'), 0
-            nets.append(line.count('{') - line.count('}'))
+        if end is None:
+            opener = '(' if stack and stack[0] == ')' else '{'
+            userMsg(f"Unclosed '{opener}' in directive '#{keyword}' "
+                    f"starting on line {i+1} of file {self.filepath}.",
+                    "ERROR")
+        cont = []
+        for li in range(start + 1, end + 1):
+            line = lines[li].rstrip('\r\n')
             cont.append(line[len(indent):] if line.startswith(indent) else line)
-        return k, cont, nets
-
-    def _checkDirectiveBraces(self, i):
-        """
-        Interim guard (removed by T-035, issue #47).
-
-        `_findDictOrListEndLine` counts every '{' and '}' on a line, including
-        those inside quotes, comments and `#{ ... #}` in a directive that is
-        captured verbatim, so the enclosing dictionary would end on the wrong
-        line.  If line `i` starts such a directive and the braces in its
-        captured text do not balance line by line (so the enclosing dictionary
-        would end early or late), raise `FoamKitError` with the file and the
-        line.  Balanced braces (e.g. `${NAME}` in a string) are harmless.
-        Returns the number of extra lines the directive spans.
-        """
-        first = self.lines[i].rstrip('\r\n')
-        stripped = first.lstrip()
-        if not stripped.startswith('#'):
-            return 0
-        token = stripped.split()[0]
-        kind = self._verbatimDirectiveKind(token)
-        if kind is None:
-            return 0
-        k, _, nets = self._scanDirective(
-            i, first, token, kind[0])
-        level = 0
-        for net in nets:
-            level += net
-            if level < 0:
-                break
-        if level != 0:
-            userMsg(f"Directive '#{kind[0]}' on line {i+1} of file "
-                    f"{self.filepath} has an unbalanced '{{' or '}}' inside "
-                    "quotes, a comment or a code block.  This is not "
-                    "supported yet inside a dictionary.", "ERROR")
-        return k
+        return end - start, cont
 
     def _parseVerbatimDirective(self, token, parsingExtraLine=False):
         """
@@ -5633,14 +5642,13 @@ class DictFileParser:
         tokens that cannot be a directive word, so the caller keeps its
         existing handling.
 
-        The capture runs from the '#' to the end of the line.  A '(', '{',
-        '"' or '#{' that opens on that line extends it to its matching close
-        ('#}' for '#{'), which may be on a later line.  Inside a string only
-        the closing quote matters (`\\"` is an escape); inside '#{ ... #}'
-        only '#}' matters; outside them '//' ends the scan of the line.  If
-        the close is never found, `FoamKitError` is raised naming the file
-        and the line of the directive.  The scan is a single pass over the
-        characters, so its cost is linear in the text consumed.
+        The capture runs from the '#' to the end of the line.  A '(' or '{'
+        that opens on that line, or a string, `/* */` comment or `#{ #}`
+        block that continues past its end, extends the capture to the end of
+        the line on which everything is closed (see `_lex` for what counts as
+        a bracket).  If the close is never found, `FoamKitError` is raised
+        naming the file and the line of the directive.  The scan is a single
+        pass, so its cost is linear in the text consumed.
 
         On return `self.i` is the last line of the capture.
         """
@@ -5652,7 +5660,7 @@ class DictFileParser:
         first = (self.extraLine[0] if parsingExtraLine
                  else self.lines[self.i]).rstrip('\r\n')
         col = len(first) - len(first.lstrip())
-        k, cont, _ = self._scanDirective(
+        k, cont = self._scanDirective(
             self.i, first, token, keyword, canContinue=not parsingExtraLine)
 
         text = first[col:]
@@ -5863,7 +5871,11 @@ class DictFileParser:
                 if self.i >= len(self.lines):
                     userMsg("Could not find end of commented block in"\
                         f" file {self.filepath}.", 'ERROR')
-            comment_ += self.lines[self.i].strip()[:-2] # remove ending `*/`
+            if firstLine:
+                #- The whole comment is on one line: drop its `/*` too.
+                comment_ = self.lines[self.i].strip()[2:-2]
+            else:
+                comment_ += self.lines[self.i].strip()[:-2] # remove ending `*/`
             return ofComment(comment_, block=True)
 
         if '//' in line:
