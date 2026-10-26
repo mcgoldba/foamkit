@@ -1175,7 +1175,7 @@ def test_unbounded_unknown_directive_raises_with_file_and_line(tmp_path, text, l
         fkt.DictFileParser(path).readDictFile()
     msg = str(err.value)
     assert "unbalancedFile" in msg
-    assert str(header_lines + lineno) in msg
+    assert re.search(rf"\bline {header_lines + lineno}\b", msg), msg
 
 
 def test_unbounded_directive_does_not_consume_the_rest_silently(tmp_path):
@@ -1531,8 +1531,10 @@ def test_brace_in_captured_directive_in_subdict_raises_with_file_and_line(
         fkt.DictFileParser(path).readDictFile()
     msg = str(err.value)
     assert "braceGuard" in msg
-    # the directive is on the fifth line of the body
-    assert str(HEADER.count(chr(10)) + 5) in msg
+    # the directive is on the fifth line of the body; `/* { */` is caught by the
+    # dict-end check instead, which names the line where the enclosing dict opens
+    body_line = 2 if line == "#fooBar /* { */" else 5
+    assert re.search(rf"\bline {HEADER.count(chr(10)) + body_line}\b", msg), msg
 
 
 # - Today `#fooBar /* { */` at top level raises "Unclosed '{'" (the same-line capture
@@ -1593,4 +1595,4 @@ def test_bracket_in_comment_on_directive_line_in_subdict_raises_with_file_and_li
     msg = str(err.value)
     assert "commentGuard" in msg
     # the directive follows `depth` name/brace line pairs
-    assert str(HEADER.count(chr(10)) + 2 * depth + 1) in msg
+    assert re.search(rf"\bline {HEADER.count(chr(10)) + 2 * depth + 1}\b", msg), msg
