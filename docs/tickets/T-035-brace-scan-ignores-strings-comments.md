@@ -30,6 +30,7 @@ None of the 18 real files in `tests/releases/` triggers it. Hand-written comment
 T-016 makes **directive** lines inside a sub-dict whose braces in quotes, comments or code blocks do not balance raise `FoamKitError` instead of reaching this bug. Balanced braces (e.g. `#message "… ${FOAM_API:-unset}"`) load. The guard scans with the same rules as the directive capture. This ticket removes that guard once the scan is fixed, and turns the guard's tests into round-trip tests.
 
 ## Scope
+- Remove the now-unused `comments` parameter of `DictFileParser._scanDirective` (and its unreachable `inBlock` branch and docstring line) when the scanner is made comment-aware for both the capture and the dict-end scan (T-016 round-3 review).
 - Make the end scan (`_findDictOrListEndLine` and the related end-of-dict/list code) skip:
   - double-quoted strings, including escaped quotes;
   - `//` to end of line;
@@ -45,7 +46,7 @@ T-016 makes **directive** lines inside a sub-dict whose braces in quotes, commen
 - Other layout (T-020)
 
 ## Acceptance criteria
-- [ ] **Failing tests first:** each reviewer shape (`note "a } b";`, `// comment }`, `x ( "}" );`) and the `{` variants, for both ordinary entries and directive lines, at nesting depths 1, 2 and 3, in a dict and in a list. Also `/* } */` and `#{ } #}` placed inside a sub-dict, and the directive shapes `#fooBar /* ( */` followed by lines `}` and `)`, and `#fooBar /* " */ x` followed by lines `}` and `"` (from the T-016 round-2 review).
+- [ ] **Failing tests first:** each reviewer shape (`note "a } b";`, `// comment }`, `x ( "}" );`) and the `{` variants, for both ordinary entries and directive lines, at nesting depths 1, 2 and 3, in a dict and in a list. Also `/* } */` and `#{ } #}` placed inside a sub-dict, and the directive shapes `#fooBar /* ( */` followed by lines `}` and `)`, and `#fooBar /* " */ x` followed by lines `}` and `"` (from the T-016 round-2 review). Also `#fooBar /* { */` followed later in the same dict by a compensating `// }` or `note "}";` (T-016 round-3 review): today `inner` disappears into the directive text and `mid` moves into the inner dict.
 - [ ] After the fix, every entry stays in its own scope: `d.e.inner` exists and `d.mid` exists, with no top-level `mid`. Write 1 == write 2 == write 3.
 - [ ] T-016's guard is removed, and its tests now assert a round trip instead of `FoamKitError`.
 - [ ] A really unbalanced brace in code (outside strings, comments and code blocks) raises `FoamKitError` naming the file and the line of the unclosed opener.
