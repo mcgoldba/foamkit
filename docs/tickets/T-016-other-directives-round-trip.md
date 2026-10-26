@@ -105,3 +105,19 @@ Unknown directives are **kept verbatim, with a one-time WARNING** (once per dire
   - `test_real_file_second_write_is_stable[esi-v2606.bendJunction.blockMeshDict]`: fails on the T-031 block-comment bug. A single-line `/* ... */` is read back with its `/*` kept, so each write prepends another `/*`. Suggest a T-031 xfail for this file.
   - `test_iterDirectives_locations_say_where_each_directive_is`: asserts at least 4 distinct locations, but the case has exactly 3 directives (another test requires exactly 3).
 - **Checks:** pytest passes except those three tests (see the report). ruff 190, ruff format 55, mypy 127: no change from the baselines.
+
+### Round 2 (implementer, 2026-10-25)
+- **`OF_DIRECTIVES`** is now `types.MappingProxyType(_OF_DIRECTIVES)`: a `Mapping`, not a `MutableMapping`. Item assignment and deletion, `clear`, `update`, `pop`, `popitem` and `setdefault` raise.
+- **`ofVerbatimDirective`:**
+  - `dataclass(init=False)` with a custom `__init__(self, *, keyword=None, text=None, value=None, _comment=None)`. It works on Python 3.9, where `dataclass(kw_only=True)` does not exist.
+  - Positional arguments raise `TypeError`.
+  - The no-argument constructor followed by `setattr` (the `load.py` JSON reload) still works.
+- **`DirectiveInfo.status`** is annotated `Literal["interpreted", "verbatim", "unsupported"]`. It is not checked at run time.
+- **Interim brace guard** (removed by T-035, issue #47):
+  - `_findDictOrListEndLine('dict')` calls `_checkDirectiveBraces` on each directive line it passes. That is where the wrong end line was chosen.
+  - The guard scans the directive with the capture rules, plus `/* */` skipped as a comment. It sums `{` minus `}` per captured line.
+  - If the running sum ever goes negative, or does not end at 0, it raises `FoamKitError` (via `userMsg`) with the file and the directive's physical line.
+  - Balanced braces such as `${FOAM_API:-unset}` in a string (the real `#message`) stay harmless.
+  - Top-level directives are not guarded, so they keep loading verbatim. The top-level `#fooBar /* { */` still raises "Unclosed '{'".
+- **Conflicting test:** `test_registry_is_a_dict_of_directive_info` asserts `isinstance(OF_DIRECTIVES, dict)`. A `dict` is a `MutableMapping`, so it cannot hold together with the new read-only tests. Not edited; it needs to become `isinstance(..., Mapping)`.
+- **Checks:** pytest on conda and on py39: only that test fails. ruff 190, ruff format 55, mypy 127: no change from the baselines.

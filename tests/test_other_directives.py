@@ -55,8 +55,10 @@ Unknown (unregistered) directives are synthetic: every `#word` found in the real
 dictionaries is in the inventory (see INVENTORY).
 """
 
+import collections.abc
 import re
 import shutil
+import typing
 
 import pytest
 
@@ -327,7 +329,7 @@ def _warnings(capsys, caplog, name):
 
 
 def test_registry_is_a_dict_of_directive_info():
-    assert isinstance(fkt.OF_DIRECTIVES, dict)
+    assert isinstance(fkt.OF_DIRECTIVES, collections.abc.Mapping)
     assert fkt.OF_DIRECTIVES
     assert all(isinstance(v, fkt.DirectiveInfo) for v in fkt.OF_DIRECTIVES.values())
 
@@ -385,6 +387,76 @@ def test_deferred_directive_is_unsupported_and_names_its_ticket(keyword):
     info = fkt.OF_DIRECTIVES[keyword]
     assert info.status == "unsupported"
     assert DEFERRED[keyword] in info.note
+
+
+@pytest.fixture
+def registry_guard():
+    """Undo any mutation of the registry, so a failing read-only test cannot corrupt
+    the other tests while the registry is still a plain dict."""
+    snapshot = dict(fkt.OF_DIRECTIVES)
+    yield
+    if dict(fkt.OF_DIRECTIVES) != snapshot:
+        fkt.OF_DIRECTIVES.clear()
+        fkt.OF_DIRECTIVES.update(snapshot)
+
+
+def test_registry_is_a_read_only_mapping():
+    assert isinstance(fkt.OF_DIRECTIVES, collections.abc.Mapping)
+    assert not isinstance(fkt.OF_DIRECTIVES, collections.abc.MutableMapping)
+
+
+def test_registry_item_assignment_raises(registry_guard):
+    with pytest.raises((TypeError, AttributeError)):
+        fkt.OF_DIRECTIVES["frobnicate"] = fkt.OF_DIRECTIVES["print"]
+    assert "frobnicate" not in fkt.OF_DIRECTIVES
+
+
+def test_registry_item_replacement_raises(registry_guard):
+    before = fkt.OF_DIRECTIVES["print"]
+    with pytest.raises((TypeError, AttributeError)):
+        fkt.OF_DIRECTIVES["print"] = fkt.OF_DIRECTIVES["remove"]
+    assert fkt.OF_DIRECTIVES["print"] is before
+
+
+def test_registry_item_deletion_raises(registry_guard):
+    with pytest.raises((TypeError, AttributeError)):
+        del fkt.OF_DIRECTIVES["print"]
+    assert "print" in fkt.OF_DIRECTIVES
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda d: d.clear(),
+        lambda d: d.update({"frobnicate": d["print"]}),
+        lambda d: d.pop("print"),
+        lambda d: d.popitem(),
+        lambda d: d.setdefault("frobnicate", d["print"]),
+    ],
+    ids=["clear", "update", "pop", "popitem", "setdefault"],
+)
+def test_registry_mutating_methods_raise(call, registry_guard):
+    size = len(fkt.OF_DIRECTIVES)
+    with pytest.raises((TypeError, AttributeError)):
+        call(fkt.OF_DIRECTIVES)
+    assert len(fkt.OF_DIRECTIVES) == size
+
+
+def test_registry_reading_and_iteration_still_work():
+    keys = list(fkt.OF_DIRECTIVES)
+    assert keys and "print" in keys
+    assert len(fkt.OF_DIRECTIVES) == len(keys)
+    assert list(fkt.OF_DIRECTIVES.items())[0][0] == keys[0]
+    assert fkt.OF_DIRECTIVES.get("nope") is None
+    assert fkt.OF_DIRECTIVES["print"] is fkt.OF_DIRECTIVES.get("print")
+
+
+def test_directive_status_is_annotated_as_a_literal():
+    """`DirectiveInfo.status` is `Literal["interpreted", "verbatim", "unsupported"]`
+    (annotation only; nothing is enforced at runtime)."""
+    hint = typing.get_type_hints(fkt.DirectiveInfo)["status"]
+    assert typing.get_origin(hint) is typing.Literal
+    assert set(typing.get_args(hint)) == {"interpreted", "verbatim", "unsupported"}
 
 
 def test_print_is_not_attributed_to_esi():
@@ -515,6 +587,29 @@ def test_verbatim_directive_is_constructible_and_str_round_trips():
     assert d.text == "#print"
     assert d.toString() == "#print"
     assert d.known is True
+
+
+def test_verbatim_directive_keyword_and_text_are_keyword_only():
+    d = fkt.ofVerbatimDirective(keyword="print", text="#print")
+    assert (d.keyword, d.text) == ("print", "#print")
+
+
+@pytest.mark.parametrize(
+    "args",
+    [("print",), ("print", "#print"), ("print", "#print", "extra")],
+    ids=["one", "two", "three"],
+)
+def test_verbatim_directive_positional_arguments_raise_type_error(args):
+    with pytest.raises(TypeError):
+        fkt.ofVerbatimDirective(*args)
+
+
+def test_verbatim_directive_without_arguments_still_constructs():
+    """Needed by the JSON cache, which builds the object empty and then sets attributes."""
+    d = fkt.ofVerbatimDirective()
+    d.keyword = "print"
+    d.text = "#print"
+    assert d.toString() == "#print"
 
 
 def test_verbatim_directive_with_unregistered_keyword_is_not_known():
@@ -1398,3 +1493,69 @@ def test_iterDirectives_lists_the_real_ifeq_blocks(case):
 def test_golden_pitzDaily_case_has_no_directives_to_report(case):
     c = pf.init(path=case)
     assert list(fkt.iterDirectives(c, status="unknown")) == []
+
+
+# === guard: braces in a captured directive inside a sub-dictionary ==============
+# The dict-end scan ignores strings and comments, so a `{` or `}` inside the
+# captured text of a directive can end or open a dictionary by mistake.  Until it is
+# fixed, such a file must fail loudly (as on main) instead of loading wrongly.
+# root-cause ticket: dict-end scan ignores strings/comments (this guard is removed
+# when that ticket lands).
+
+BRACE_LINES = [
+    '#message "a } b"',
+    '#fooBar ( "}" )',
+    "#fooBar // }",
+    "#fooBar /* } */",
+    "#fooBar #{ } #}",
+    '#remove ( "}" )',
+    '#message "a { b"',
+    '#fooBar ( "{" )',
+    "#fooBar // {",
+    "#fooBar /* { */",
+    "#fooBar #{ { #}",
+    '#remove ( "{" )',
+]
+
+
+def _nested(line):
+    return f"d\n{{\n    e\n    {{\n        {line}\n        inner 2;\n    }}\n    mid 3;\n}}\n"
+
+
+@pytest.mark.parametrize("line", BRACE_LINES)
+def test_brace_in_captured_directive_in_subdict_raises_with_file_and_line(
+    tmp_path, line
+):
+    path = _write(tmp_path, _nested(line), "braceGuard")
+    with pytest.raises(FoamKitError) as err:
+        fkt.DictFileParser(path).readDictFile()
+    msg = str(err.value)
+    assert "braceGuard" in msg
+    # the directive is on the fifth line of the body
+    assert str(HEADER.count(chr(10)) + 5) in msg
+
+
+# - Today `#fooBar /* { */` at top level raises "Unclosed '{'" (the same-line capture
+# - counts the brace inside the comment), so it is not pinned as "keeps loading".
+TOP_LEVEL_LINES = [ln for ln in BRACE_LINES if ln != "#fooBar /* { */"]
+
+
+@pytest.mark.parametrize("line", TOP_LEVEL_LINES)
+def test_brace_in_captured_directive_at_top_level_keeps_loading_verbatim(
+    tmp_path, line
+):
+    first, second, text = _roundtrip(tmp_path, f"{line}\n\nx 1;\n")
+    (d,) = _verbatims(first)
+    assert d.text.strip() == line
+    assert first.x.value == 1
+    assert second.toString() == text
+
+
+def test_real_remove_with_regex_parens_in_subdict_keeps_loading(tmp_path):
+    line = _lines("esi-v2606.potentialFoam-cylinder.blockMeshDict", 87, 87, "#remove")
+    assert line == '#remove ( "r(Inner|Outer).*"  "[xy](min|max)" )'
+    first, _, text = _roundtrip(tmp_path, _nested(line))
+    assert [v.keyword for v in _verbatims(first.d.e)] == ["remove"]
+    assert first.d.e.inner.value == 2
+    assert first.d.mid.value == 3
+    assert _contains_run(_norm(text), _norm(line))
