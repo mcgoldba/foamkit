@@ -121,3 +121,9 @@ Unknown directives are **kept verbatim, with a one-time WARNING** (once per dire
   - Top-level directives are not guarded, so they keep loading verbatim. The top-level `#fooBar /* { */` still raises "Unclosed '{'".
 - **Conflicting test:** `test_registry_is_a_dict_of_directive_info` asserts `isinstance(OF_DIRECTIVES, dict)`. A `dict` is a `MutableMapping`, so it cannot hold together with the new read-only tests. Not edited; it needs to become `isinstance(..., Mapping)`.
 - **Checks:** pytest on conda and on py39: only that test fails. ruff 190, ruff format 55, mypy 127: no change from the baselines.
+
+### Round 3 (coordinator, after the round-2 review)
+- The guard now scans each directive with exactly the capture's rules (the `comments=True` option is no longer used by the guard). Before, the guard skipped `/* … */` but the capture did not, so `#fooBar /* ( */` or `#fooBar /* " */ x` followed by `}` lines passed the guard and then mis-scoped silently. Both now raise `FoamKitError` with the file and line (new tests at depths 1–3).
+- With that change, `#fooBar /* { */` in a sub-dict is caught by the existing dict-end check instead of the guard; that error now names the file too ("Could not locate end of dict starting on line N of file …").
+- The test asserting `isinstance(OF_DIRECTIVES, dict)` was changed by the coordinator to `collections.abc.Mapping`.
+- Results: `pytest -q` 1158 passed, 1 skipped, 108 xfailed on Python 3.12 and 3.9; ruff 190, format 55, mypy 127; no golden changes.

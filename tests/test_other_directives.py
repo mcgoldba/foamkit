@@ -1559,3 +1559,38 @@ def test_real_remove_with_regex_parens_in_subdict_keeps_loading(tmp_path):
     assert first.d.e.inner.value == 2
     assert first.d.mid.value == 3
     assert _contains_run(_norm(text), _norm(line))
+
+
+# - A bracket character inside a `/* */` comment on the directive line disagrees
+# - between the capture and the guard: the capture closes at a later line, so the
+# - dict-end scan mis-scopes silently.  Each of these must raise at every depth.
+# - root-cause ticket: dict-end scan ignores strings/comments
+COMMENT_BRACKET_DIRECTIVES = [
+    ("#fooBar /* ( */", ["}", ")"]),
+    ('#fooBar /* " */ x', ["}", '"']),
+]
+
+
+def _nested_at(depth, directive_lines):
+    """`a { b { ... <directive lines> inner 2; } mid 3; }` with `depth` open dicts."""
+    names = ["a", "b", "c"][:depth]
+    head = "".join(f"{n}\n{{\n" for n in names)
+    body = "\n".join(directive_lines) + "\ninner 2;\n"
+    tail = "}\n" * depth
+    return head + body + tail
+
+
+@pytest.mark.parametrize("depth", [1, 2, 3])
+@pytest.mark.parametrize(
+    "first, rest", COMMENT_BRACKET_DIRECTIVES, ids=["paren-comment", "quote-comment"]
+)
+def test_bracket_in_comment_on_directive_line_in_subdict_raises_with_file_and_line(
+    tmp_path, depth, first, rest
+):
+    path = _write(tmp_path, _nested_at(depth, [first, *rest]), "commentGuard")
+    with pytest.raises(FoamKitError) as err:
+        fkt.DictFileParser(path).readDictFile()
+    msg = str(err.value)
+    assert "commentGuard" in msg
+    # the directive follows `depth` name/brace line pairs
+    assert str(HEADER.count(chr(10)) + 2 * depth + 1) in msg

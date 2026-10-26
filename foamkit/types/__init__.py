@@ -4917,7 +4917,8 @@ class DictFileParser:
         while level > 0:
             if i_ >= len(self.lines):
                 userMsg(f'Invalid syntax.  Could not locate end of '\
-                    f'{type} starting on line {self.i+1}.', 'ERROR')
+                    f'{type} starting on line {self.i+1} of file '\
+                    f'{self.filepath}.', 'ERROR')
             if type == 'dict' and i_ >= skipTo:
                 #- Interim guard, removed by T-035 (issue #47)
                 skipTo = i_ + 1 + self._checkDirectiveBraces(i_)
@@ -5609,7 +5610,7 @@ class DictFileParser:
         if kind is None:
             return 0
         k, _, nets = self._scanDirective(
-            i, first, token, kind[0], comments=True)
+            i, first, token, kind[0])
         level = 0
         for net in nets:
             level += net
