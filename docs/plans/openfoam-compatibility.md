@@ -40,6 +40,9 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B15 (2026-10-21) | Number printing | `5e-4` is written as `0.0005`: the source token is not kept. | → T-032 (related to T-020) |
 | B16 (*real files*, 2026-10-21) | `ofCodeStream` writer | It writes `vertices #codeStream{` and adds a blank line per code line on **every** write (F14 floatingBeam, ESI potentialFoam/cylinder `blockMeshDict`). | → T-033 |
 | B17 (2026-10-25, T-016 review on PR #46; pre-existing) | `_findDictOrListEndLine` (`foamkit/types/__init__.py:4852`) and the related end scan | Braces inside quoted strings, `//` and `/* */` comments and `#{ #}` code are counted. With `d { e { note "a } b"; inner 2; } mid 3; }`, `inner` moves into `d` and `mid` moves to the top level, and the structure shifts on every write. A `{` gives "Could not locate end of dict". None of the 18 `tests/releases/` files hit it. | All → T-035 (before T-031) |
+| B18 (2026-10-26, T-035 tester; pre-existing) | Line-comment stripping in the entry and line parser | `//` inside a quoted string starts a "comment": `note "http://x";` fails with "Cannot handle single line entry" (top level and sub-dict), and a list item `"a//b"` is **silently truncated** to `"a`. `/*` inside a string is fine in the entry parser. There are 0 occurrences in Foundation 11-14 tutorials (ESI not re-checked). | All → T-036 (before T-031) |
+| B19 (2026-10-26, found implementing T-035; pre-existing) | `_parseList` `line.endswith(');')` check on a line with its trailing newline | One-line lists (`x ( 1 );`, `x ( ")" );`) read back with an extra empty `ofStr` item, which compounds per cycle. 7 golden/case outputs encode the bug. | All → T-037 |
+| B20 (2026-10-26, found implementing T-035; pre-existing) | `_parseListValues` | `delimiters.append(" ")` mutates the module-level `BRACKET_CHARS['list']`, which grows on every call (state leaks between parses). T-035 works around it with `[:2]`. | All → T-038 |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -133,12 +136,15 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 | — | Done: T-002, T-004, T-005, T-006, T-015, T-017 (PR #34), T-025 (5c10d41) | | | |
 | 1 | T-016 verbatim directive framework + single-line directives. **In progress** | tester → implementer | M | T-004, T-017, T-025 |
 | 1a | T-035 brace scan skips strings, comments and `#{ #}` (#47); removes T-016's guard | tester → implementer | M | T-016 |
+| 1a' | T-037 one-line list gains an empty item; reviewed golden regeneration (#49) | tester → implementer | S | T-035 |
+| 1b | T-036 `//` inside quoted strings is not a comment (#48) | tester → implementer | S | T-035 |
+| 1c | T-038 stop mutating `BRACKET_CHARS` (#50) | tester → implementer | S | — |
 | 2 | T-027 value-position `#calc`/`#neg` (#38) | tester → implementer | S | T-016 |
 | 3 | T-026 conditional blocks (#37) | tester → implementer | M | T-016 |
 | 4 | T-030 scoped `$` references (#41) | tester → implementer | S | — |
 | 5 | T-029 `#includeModel`/`#includeConstraint` (#40) | tester → implementer | S | T-015 |
 | 6 | T-023 CLI user errors without traceback (#32) | tester → implementer | S | T-017, T-025 |
-| 7 | T-031 block comments (#42) | tester → implementer | S | T-035 |
+| 7 | T-031 block comments (#42) | tester → implementer | S | T-035, T-036 |
 | 8 | T-033 `#codeStream` writer (#44) | tester → implementer | S | — |
 | 9 | T-019 no trailing space / extra blank line (B9) | tester → implementer | S | T-006 |
 | 10 | T-021 one-line `FoamFile { ... }` (B10) | tester → implementer | S | T-006 |
