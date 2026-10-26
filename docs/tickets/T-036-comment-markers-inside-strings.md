@@ -39,6 +39,7 @@ An entry or list item whose quoted string contains `//` (for example a URL) load
 - [ ] No golden file changes. All `tests/releases/` files behave as before.
 - [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.
 - [ ] A `fix:` commit whose body describes the user-visible change.
+- [ ] Cosmetic line numbers in the shared scanner (T-035 review on PR #51): an unterminated string in an extra-line directive (`_scanDirective` with `canContinue=False`) reports "line 1" instead of the file line; a stray `#}` without `#{` is reported at the enclosing dict's closing line instead of the `#}` line. Both already raise; fix the reported line.
 
 ## Risks
 - **Unterminated quote on a line:** decide whether it is an error or literal text. Follow T-035's rule (`FoamKitError` with file and line) for consistency.

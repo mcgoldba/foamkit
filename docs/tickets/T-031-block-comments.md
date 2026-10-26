@@ -30,7 +30,9 @@ Block comments in the body of a dictionary are written back unchanged, and never
 ## Acceptance criteria
 - [ ] **Failing tests first:**
   - a multi-line block comment round-trip;
-  - the potentialFoam-cylinder parse failure, isolated to its comment construct (record which construct).
+  - the potentialFoam-cylinder parse failure, isolated to its comment construct (record which construct);
+  - **silent, high priority (T-035 review on PR #51; identical on main):** a block comment after a closing brace on the same line, `d { a 1; } /* c */` followed by `application simpleFoam;`, loads `d = {a, '}'}` with `application` swallowed into `d` (and `e { a 1; } /* c */` + `m 2;` moves `m` into `e`);
+  - **silent data loss (same review):** a block comment before an entry on the same line, `/* a */ b 1;` followed by `c 2;`, drops `b` and `c`, because `_parseComments` reads to the next line ending in `*/`.
 - [ ] After the fix:
   - multi-line block comments round-trip byte-identically at top level, inside a sub-dict and inside a list;
   - the potentialFoam-cylinder file gets past every comment. Other failures in it (`#codeStream` → T-033, `#remove` → T-016) are recorded, not fixed here.
