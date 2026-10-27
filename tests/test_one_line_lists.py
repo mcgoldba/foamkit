@@ -27,6 +27,7 @@ T-037, so it is not tested here.  No sibling `endswith(')` on a raw line exists 
 import pytest
 
 import foamkit.types as fkt
+from foamkit import FoamKitError
 from conftest import TESTS
 from test_directives import HEADER
 from test_golden import DICT_FILES, _id
@@ -327,3 +328,131 @@ def test_fixture_lists_have_no_empty_items(tmp_path, path):
     for d in (first, second):
         for key, items in _lists(d).items():
             assert "" not in items, key
+
+
+# --- trailing comments after a list's `;` (T-037 review) ------------------------------
+# The comment must be written exactly once, unchanged, however many cycles.
+
+
+def _written(tmp_path, raw, n):
+    """Text written after `n` write/read cycles (n >= 1): write 1 is the first read's."""
+    src = tmp_path / "wa"
+    src.write_bytes(raw)
+    text = fkt.DictFileParser(src).readDictFile().toString()
+    for k in range(1, n):
+        out = tmp_path / ("wb", "wc", "wd")[k - 1]
+        out.write_text(text)
+        text = fkt.DictFileParser(out).readDictFile().toString()
+    return text
+
+
+def _sub(line):
+    return "d" + NL + "{" + NL + "    " + line + NL + "    a 1;" + NL + "}" + NL
+
+
+COMMENT_CASES = [
+    pytest.param(
+        _raw("x ( 1 2 ); /* c */" + NL + "after 1;" + NL), "/* c */", id="top-level"
+    ),
+    pytest.param(_raw(_sub("x ( 1 2 ); /* c */")), "/* c */", id="in-subdict"),
+    pytest.param(
+        (HEADER + "after 1;" + NL + "x ( 1 2 ); /* c */").encode(),
+        "/* c */",
+        id="last-line-no-newline",
+    ),
+    pytest.param(
+        _raw("x ( 1 2 ); /* c */" + NL, "\r\n"), "/* c */", id="crlf-last-line"
+    ),
+    pytest.param(
+        _raw("x ( 1 ); /* a; b */" + NL + "after 1;" + NL),
+        "/* a; b */",
+        id="semicolon-in-comment",
+    ),
+    pytest.param(
+        _raw("a 1; /* c */" + NL + "after 1;" + NL), "/* c */", id="ordinary-entry"
+    ),
+    pytest.param(
+        _raw("a 1; /* a; b */" + NL + "after 1;" + NL),
+        "/* a; b */",
+        id="ordinary-entry-semicolon-in-comment",
+    ),
+]
+
+
+@pytest.mark.parametrize("n", [1, 3])
+@pytest.mark.parametrize("raw, comment", COMMENT_CASES)
+def test_trailing_block_comment_is_written_exactly_once(tmp_path, raw, comment, n):
+    text = _written(tmp_path, raw, n)
+    assert text.count(comment) == 1, text
+
+
+@pytest.mark.parametrize("raw, comment", COMMENT_CASES)
+def test_trailing_block_comment_text_is_not_split_or_altered(tmp_path, raw, comment):
+    """No fragment of the comment (e.g. `/* a` without `; b */`) is left behind."""
+    text = _written(tmp_path, raw, 3)
+    inner = comment[2:-2]
+    assert text.count(inner) == 1, text
+    assert text.count("/*") == text.count("*/") == 1 + HEADER.count("/*"), text
+
+
+@pytest.mark.parametrize(
+    "raw, key, items",
+    [
+        pytest.param(
+            _raw("x ( 1 2 ); /* c */" + NL + "after 1;" + NL), ("x",), [1, 2], id="top"
+        ),
+        pytest.param(
+            _raw(_sub("x ( 1 2 ); /* c */")), ("d", "x"), [1, 2], id="subdict"
+        ),
+        pytest.param(
+            (HEADER + "after 1;" + NL + "x ( 1 2 ); /* c */").encode(),
+            ("x",),
+            [1, 2],
+            id="last-line",
+        ),
+    ],
+)
+def test_list_with_trailing_comment_keeps_its_items_over_cycles(
+    tmp_path, raw, key, items
+):
+    assert _items(_cycle(tmp_path, raw, 3), key) == items
+
+
+# --- a second entry after a list's `;` on the same line (T-037 review) ----------------
+# On main `x ( 1 ); y ( 2 );` raised IndexError.  Either outcome below is acceptable:
+# `y` is loaded with the right value and survives a write, or FoamKitError is raised.
+# A successful load without `y` is the failure this guards against.  Plain
+# `x 1; y 2;` (no list) is a separate pre-existing bug and is not tested.
+
+SAME_LINE = [
+    ("list-list", "x ( 1 ); y ( 2 );", [1], ("y", "list", [2])),
+    ("list-entry", "x ( 1 ); y 2;", [1], ("y", "value", 2)),
+]
+
+
+def _y_value(d, path, kind):
+    y = _node(d, path)
+    if y is None:
+        return None
+    return [getattr(i, "value", i) for i in y.value] if kind == "list" else y.value
+
+
+@pytest.mark.parametrize("where", ["top", "subdict"])
+@pytest.mark.parametrize(
+    "ident, line, x_items, y", SAME_LINE, ids=[s[0] for s in SAME_LINE]
+)
+@pytest.mark.parametrize("n", [0, 1, 3])
+def test_second_entry_after_a_list_is_loaded_or_rejected_never_dropped(
+    tmp_path, ident, line, x_items, y, where, n
+):
+    name, kind, expected = y
+    if where == "top":
+        raw, prefix = _raw(line + NL + "after 1;" + NL), ()
+    else:
+        raw, prefix = _raw(_sub(line)), ("d",)
+    try:
+        d = _cycle(tmp_path, raw, n)
+    except FoamKitError:
+        return
+    assert _y_value(d, prefix + (name,), kind) == expected
+    assert _items(d, prefix + ("x",)) == x_items

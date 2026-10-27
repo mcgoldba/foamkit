@@ -56,3 +56,9 @@ The one-line fix (`rstrip()` before the check) changes **7 golden/case outputs**
   - `dicts/pitzDaily/system/setFieldsDict.txt` 2
 
   The ticket said 7. The tester's list of 5 dict goldens plus the case-level golden gives 6, and that is all that changed.
+
+### Review round 1 (implementer, 2026-10-27)
+- **Trailing text queued once.** The text after the `;` of a list entry was queued twice (by `_parseLineLenGreaterThanTwo` and by `_parseList`), so a trailing `/* c */` came out twice. A new `_queueTrailing` queues it once per line. It joins the pieces with `';'`, so `;` characters in the remainder are kept.
+- **End of file.** Extra lines still queued when the loop ends are now handled: a one-line block comment is kept as a comment entry, the rest is dropped.
+- **No silent loss.** Only a comment or closing brackets may follow `);` on the same line. Anything else (`x ( 1 ); y 2;`, `x ( 1 ); y ( 2 );`) raises `FoamKitError` naming the file and the line. Those lines were dropped silently on the earlier T-037 commit, and raised `IndexError` for the second form on main.
+- **`a 1; /* c */`:** the comment is now kept as a separate entry. Main dropped it.
