@@ -1,7 +1,7 @@
 # FoamKit Roadmap
 
 ## Questions for the maintainer
-None open.
+1. **Fold T-022 (#29, approved) into T-040 (#54)?** Both are one-line `{…}` parsing, and on `origin/main` both now silently drop entries (`d { a 1; } e 2;` → `d { }`; `x ( a { v 1; } );` → `x ( );`). One fix, size M, at T-040's priority. If not folded, T-040 lands first and T-022 reuses its parsing.
 
 ## Decisions (2026-10-18, 2026-10-19)
 - **Approved by maintainer:** the ranked order, the T-010 canonical name table and the `case.canonical(...)` accessor.
@@ -69,6 +69,8 @@ None open.
 - **Lists gain a spurious empty item (pre-existing):** one-line lists such as `x ( 1 );` after a write → read cycle, and, per the T-037 tester, **multi-line lists on first read** too. Today's goldens encode this (T-037, in progress).
 - `_parseListValues` appends to the module-level `BRACKET_CHARS['list']` on every call, so state leaks between parses (T-038).
 - **Keyword glued to its bracket (pre-existing):** `x(1);` fails with `AttributeError`, `x{ a 1; }` loses its `}` on write, and Foundation 11's 6 `phaseProperties` files (`f10{dSph 10e-3; value 0.0;}`) fail with `IndexError` (T-039 + T-022). Glued lists occur in 0 Foundation 11-14 tutorial dictionaries.
+- **One-line list of dicts (pre-existing):** `x ( a { v 1; } b { v 2; } );` hung for the T-037 reviewer. On an extracted `origin/main` (bc4af32) the planner saw no hang, but every item was **silently lost** (`x ( );`) (T-040).
+- **A second entry on a line is silently dropped (pre-existing):** `x 1; y 2;` loses `y`. This happens in 2-3 real `blockMeshDict` files per Foundation release, for example F14 `helmholtzResonance:144` `x1 14; x2 6; …` (T-041).
 - Other gaps:
   - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
   - writer whitespace churn (T-019, T-020);
@@ -83,15 +85,17 @@ None open.
 ## Next (ranked)
 **In progress:** T-037 one-line list gains an empty item on re-read (#49).
 
-1. **T-037** one-line list gains an empty item (S, #49): silent data change in a very common construct (`libs (...)`, `fields (...)`), and it compounds on every cycle. The tests are already written as strict-xfail. It goes ahead of T-027 because a loud load failure is noticed, while this corrupts files that appear to work.
-2. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread load failure, in 100+ files per Foundation 13/14 release, mostly `blockMeshDict`.
-3. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` (for example `cylinder`) and ESI dictionaries.
-4. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
-5. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
-6. **T-023** `fk` user errors never show a traceback (S, #32): user-facing, but those commands already exit 1.
-7. **T-022** one-line sub-dicts (S, #29): moved up on new evidence. Foundation 11 (a tested release) has 6 `phaseProperties` files with one-line, keyword-glued sub-dicts that fail with `IndexError`. It is needed by T-039.
+1. **T-037** one-line list gains an empty item (S, #49): silent data change in a very common construct, compounding on every cycle. The tests are already written.
+2. **T-040** one-line list of dicts hangs or silently empties (S, #54; M if T-022 is folded in): untrusted-input DoS (reported) or the loss of every list item (reproduced).
+3. **T-041** second entry on a line silently dropped (S, #55): silent loss of `blockMeshDict` variables in real files of every tested Foundation release.
+4. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
+5. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.
+6. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
+7. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
 
-After these, the order is T-039 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+The silent-loss tickets (T-037, T-040, T-041) come first: a loud load failure is noticed, but these corrupt files that appear to load correctly.
+
+After these, the order is T-022 (unless folded into T-040) → T-039 → T-023 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
 - T-039 (glued `name{`/`name(`) completes the Foundation 11 `phaseProperties` fix with T-022, and it stops `x{ a 1; }` from losing its `}`. Glued lists do not occur in tutorials.
 - T-036 (`//` in strings) silently truncates list items, but has 0 tutorial occurrences, and it lands before T-031.
 - T-038 is a cheap latent-leak fix in the same list code as T-037.

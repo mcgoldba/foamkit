@@ -25,6 +25,9 @@ A dictionary that contains a sub-dictionary written on one line, for example `p 
 ## Real-file evidence (2026-10-26)
 One-line sub-dicts **do** occur in a tested release, glued to their keyword: Foundation 11 `multiphaseEuler/bubblePipe/constant/phaseProperties:65` `f10{dSph 10e-3; value 0.0;}`. That is 6 `phaseProperties` files and 67 lines in Foundation 11; 0 in Foundation 12-14. Today they fail with `IndexError`. The glued `name{` part is T-039 (#52); this ticket provides the one-line parsing it needs. Add the space-separated form `f10 { dSph 10e-3; value 0.0; }` to this ticket's tests.
 
+## Update (2026-10-27)
+On `origin/main` (bc4af32, after T-035) the behaviour has changed from `IndexError` to a **silent drop**: `d { a 1; } e 2;` is written as `d { }`. T-040 (#54, a one-line list of dicts) very likely shares the cause, and the planner proposes folding this ticket into T-040 (a maintainer decision; see ROADMAP).
+
 ## Possible addition (unverified, decide during Step 1)
 - Multi-line `#includeFunc` arguments (`#includeFunc foo(a,\n b)`) fail cleanly with `FoamKitError` today, after T-015.
 - **It is not verified that OpenFOAM accepts this form.** The tester checks the Foundation 11-14 / ESI v2412+ sources or tutorials (plan References).

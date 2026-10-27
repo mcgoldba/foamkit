@@ -44,6 +44,8 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B19 (2026-10-26, found implementing T-035; pre-existing; widened by the T-037 tester) | `_parseList` `line.endswith(');')` check on a line with its trailing newline | Lists read back with an extra empty `ofStr` item: one-line lists (`x ( 1 );`, `x ( ")" );`) after a write → read cycle, **and multi-line lists on first read**. The damage compounds per cycle. 7 golden/case outputs encode the bug. | All → T-037 |
 | B20 (2026-10-26, found implementing T-035; pre-existing) | `_parseListValues` | `delimiters.append(" ")` mutates the module-level `BRACKET_CHARS['list']`, which grows on every call (state leaks between parses). T-035 works around it with `[:2]`. | All → T-038 |
 | B21 (2026-10-26, T-037 tester; pre-existing) | Tokenizing a keyword glued to `{` or `(` | `x(1);` raises `AttributeError`. `fields(p U);` is mis-split. One-line `x{ a 1; }` loses its `}` on write. Multi-line `x{` gives "Invalid syntax". Real Foundation 11 `multiphaseEuler/*/constant/phaseProperties` (6 files; e.g. `bubblePipe:65` `f10{dSph 10e-3; value 0.0;}`) fail with `IndexError`. Foundation 12-14 have 0 glued forms in dictionaries. | F11 → T-039 + T-022 |
+| B22 (2026-10-27, T-037 review on PR #53; pre-existing) | One-line list items that are dicts (`_parseList`/`_parseListValues`) | `x ( a { v 1; } b { v 2; } );` hung for the reviewer (killed at 30 s). On an extracted `origin/main` (bc4af32) the planner saw no hang, but the list was written as `x ( );`: **every item silently lost**. Multi-line lists of one-line dicts lose the dict entries. | All → T-040 (proposed: fold in T-022) |
+| B23 (2026-10-27, T-037 review on PR #53; pre-existing) | Line/entry parser | Entries after the first `;` on a line are silently dropped: `x 1; y 2;`, `a 1; sub { b 2; }`, `a 1; #include "f"`, `a 1; #print`. Real: 2-3 `blockMeshDict` files per Foundation release (F14 `fluid/helmholtzResonance:144-145`, `incompressibleVoF/rotatingCube:76-80`, `mesh/refineMesh/sector:32-38`). | All → T-041 |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -140,6 +142,8 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 | 1a' | T-037 one-line list gains an empty item; reviewed golden regeneration (#49) | tester → implementer | S | T-035 |
 | 1b | T-036 `//` inside quoted strings is not a comment (#48) | tester → implementer | S | T-035 |
 | 1c | T-038 stop mutating `BRACKET_CHARS` (#50) | tester → implementer | S | — |
+| 1a'' | T-040 one-line list of dicts: hang or silent emptying (#54) | tester → implementer | S (M with T-022) | — |
+| 1b'' | T-041 second entry on a line silently dropped (#55) | tester → implementer | S | — (reuse T-035 scanner) |
 | 1d | T-022 one-line sub-dicts (#29), moved up on the Foundation 11 `phaseProperties` evidence | tester → implementer | S | T-021 (shared tokenizing; optional) |
 | 1e | T-039 keyword glued to `{`/`(` (#52) | tester → implementer | S | T-022 |
 | 2 | T-027 value-position `#calc`/`#neg` (#38) | tester → implementer | S | T-016 |
