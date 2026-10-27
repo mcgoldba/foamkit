@@ -52,6 +52,7 @@ None open.
 - **T-017** `FoamKitError` catchable with `except Exception` (dual base for one release) (PR #34)
 - **T-025** `userMsg` prints messages literally; always raises `FoamKitError` at ERROR (5c10d41, PR #36)
 - **T-016** verbatim directive framework (`ofVerbatimDirective`, `OF_DIRECTIVES`, `iterDirectives`); single-line directives kept verbatim; stock Foundation 14 pitzDaily loads (1c10451, PR #46)
+- **T-035** dict/list end scan ignores braces inside strings, comments and `#{ #}` code blocks (bc4af32, PR #51)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
@@ -65,8 +66,9 @@ None open.
   - `#remove`/`#print`/other single-line directives (T-016).
 - **Silent change of meaning (pre-existing):** a `}` inside a string, a `//` or `/* */` comment, or a `( "}" )` list inside a sub-dict moves entries to another scope, and the structure shifts again on every write (T-035, from the T-016 review on PR #46).
 - **`//` inside a quoted string is treated as a comment (pre-existing):** `note "http://x";` fails to load, and a list item `"a//b"` is **silently truncated** to `"a` (T-036, found by the T-035 tester). There are 0 occurrences in Foundation 11-14 tutorials.
-- **One-line lists gain an empty item on every write → read cycle (pre-existing):** `x ( 1 );` reads back with an extra empty item. Today's goldens encode this (T-037, found while implementing T-035).
+- **Lists gain a spurious empty item (pre-existing):** one-line lists such as `x ( 1 );` after a write → read cycle, and, per the T-037 tester, **multi-line lists on first read** too. Today's goldens encode this (T-037, in progress).
 - `_parseListValues` appends to the module-level `BRACKET_CHARS['list']` on every call, so state leaks between parses (T-038).
+- **Keyword glued to its bracket (pre-existing):** `x(1);` fails with `AttributeError`, `x{ a 1; }` loses its `}` on write, and Foundation 11's 6 `phaseProperties` files (`f10{dSph 10e-3; value 0.0;}`) fail with `IndexError` (T-039 + T-022). Glued lists occur in 0 Foundation 11-14 tutorial dictionaries.
 - Other gaps:
   - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
   - writer whitespace churn (T-019, T-020);
@@ -79,21 +81,22 @@ None open.
 - There is no docs site, and the README has broken examples.
 
 ## Next (ranked)
-**In progress:** T-035 brace scan ignores strings, comments and code blocks (#47).
+**In progress:** T-037 one-line list gains an empty item on re-read (#49).
 
-1. **T-035** brace scan ignores strings, comments and code blocks (M, #47): silent change of meaning with no error, the worst failure for an editing tool. It is first after T-016 by maintainer decision, and it removes T-016's guard.
-2. **T-037** one-line list gains an empty item (S, #49): silent data change in a very common construct (`libs (...)`, `fields (...)`), and it compounds on every cycle. The tests are already written as strict-xfail. It goes ahead of T-027 because a loud load failure is noticed, while this corrupts files that appear to work.
-3. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread load failure, in 100+ files per Foundation 13/14 release, mostly `blockMeshDict`.
-4. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` (for example `cylinder`) and ESI dictionaries.
-5. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
-6. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
-7. **T-023** `fk` user errors never show a traceback (S, #32): user-facing, but those commands already exit 1.
+1. **T-037** one-line list gains an empty item (S, #49): silent data change in a very common construct (`libs (...)`, `fields (...)`), and it compounds on every cycle. The tests are already written as strict-xfail. It goes ahead of T-027 because a loud load failure is noticed, while this corrupts files that appear to work.
+2. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread load failure, in 100+ files per Foundation 13/14 release, mostly `blockMeshDict`.
+3. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` (for example `cylinder`) and ESI dictionaries.
+4. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
+5. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
+6. **T-023** `fk` user errors never show a traceback (S, #32): user-facing, but those commands already exit 1.
+7. **T-022** one-line sub-dicts (S, #29): moved up on new evidence. Foundation 11 (a tested release) has 6 `phaseProperties` files with one-line, keyword-glued sub-dicts that fail with `IndexError`. It is needed by T-039.
 
-After these, the order is T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-022 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+After these, the order is T-039 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+- T-039 (glued `name{`/`name(`) completes the Foundation 11 `phaseProperties` fix with T-022, and it stops `x{ a 1; }` from losing its `}`. Glued lists do not occur in tutorials.
 - T-036 (`//` in strings) silently truncates list items, but has 0 tutorial occurrences, and it lands before T-031.
 - T-038 is a cheap latent-leak fix in the same list code as T-037.
 - T-033 follows T-031 because the file grows on every write.
-- T-021 and T-022 were not seen in the real-tutorial inventory, so they drop below the files that fail today.
+- T-021 was not seen in the real-tutorial inventory, so it stays below the files that fail today.
 - T-028 affects only 3 files.
 - T-024 can be picked up any time.
 - T-020 follows T-007, so it can use T-007's test cases as its corpus.

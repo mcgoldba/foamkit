@@ -22,6 +22,9 @@ A dictionary that contains a sub-dictionary written on one line, for example `p 
   - edited one-line sub-dicts may be written multi-line, which is today's style for edited entries.
 - Tests in `tests/test_regressions.py` or a new `tests/test_one_line_dicts.py`.
 
+## Real-file evidence (2026-10-26)
+One-line sub-dicts **do** occur in a tested release, glued to their keyword: Foundation 11 `multiphaseEuler/bubblePipe/constant/phaseProperties:65` `f10{dSph 10e-3; value 0.0;}`. That is 6 `phaseProperties` files and 67 lines in Foundation 11; 0 in Foundation 12-14. Today they fail with `IndexError`. The glued `name{` part is T-039 (#52); this ticket provides the one-line parsing it needs. Add the space-separated form `f10 { dSph 10e-3; value 0.0; }` to this ticket's tests.
+
 ## Possible addition (unverified, decide during Step 1)
 - Multi-line `#includeFunc` arguments (`#includeFunc foo(a,\n b)`) fail cleanly with `FoamKitError` today, after T-015.
 - **It is not verified that OpenFOAM accepts this form.** The tester checks the Foundation 11-14 / ESI v2412+ sources or tutorials (plan References).

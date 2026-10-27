@@ -41,8 +41,9 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B16 (*real files*, 2026-10-21) | `ofCodeStream` writer | It writes `vertices #codeStream{` and adds a blank line per code line on **every** write (F14 floatingBeam, ESI potentialFoam/cylinder `blockMeshDict`). | → T-033 |
 | B17 (2026-10-25, T-016 review on PR #46; pre-existing) | `_findDictOrListEndLine` (`foamkit/types/__init__.py:4852`) and the related end scan | Braces inside quoted strings, `//` and `/* */` comments and `#{ #}` code are counted. With `d { e { note "a } b"; inner 2; } mid 3; }`, `inner` moves into `d` and `mid` moves to the top level, and the structure shifts on every write. A `{` gives "Could not locate end of dict". None of the 18 `tests/releases/` files hit it. | All → T-035 (before T-031) |
 | B18 (2026-10-26, T-035 tester; pre-existing) | Line-comment stripping in the entry and line parser | `//` inside a quoted string starts a "comment": `note "http://x";` fails with "Cannot handle single line entry" (top level and sub-dict), and a list item `"a//b"` is **silently truncated** to `"a`. `/*` inside a string is fine in the entry parser. There are 0 occurrences in Foundation 11-14 tutorials (ESI not re-checked). | All → T-036 (before T-031) |
-| B19 (2026-10-26, found implementing T-035; pre-existing) | `_parseList` `line.endswith(');')` check on a line with its trailing newline | One-line lists (`x ( 1 );`, `x ( ")" );`) read back with an extra empty `ofStr` item, which compounds per cycle. 7 golden/case outputs encode the bug. | All → T-037 |
+| B19 (2026-10-26, found implementing T-035; pre-existing; widened by the T-037 tester) | `_parseList` `line.endswith(');')` check on a line with its trailing newline | Lists read back with an extra empty `ofStr` item: one-line lists (`x ( 1 );`, `x ( ")" );`) after a write → read cycle, **and multi-line lists on first read**. The damage compounds per cycle. 7 golden/case outputs encode the bug. | All → T-037 |
 | B20 (2026-10-26, found implementing T-035; pre-existing) | `_parseListValues` | `delimiters.append(" ")` mutates the module-level `BRACKET_CHARS['list']`, which grows on every call (state leaks between parses). T-035 works around it with `[:2]`. | All → T-038 |
+| B21 (2026-10-26, T-037 tester; pre-existing) | Tokenizing a keyword glued to `{` or `(` | `x(1);` raises `AttributeError`. `fields(p U);` is mis-split. One-line `x{ a 1; }` loses its `}` on write. Multi-line `x{` gives "Invalid syntax". Real Foundation 11 `multiphaseEuler/*/constant/phaseProperties` (6 files; e.g. `bubblePipe:65` `f10{dSph 10e-3; value 0.0;}`) fail with `IndexError`. Foundation 12-14 have 0 glued forms in dictionaries. | F11 → T-039 + T-022 |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -139,6 +140,8 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 | 1a' | T-037 one-line list gains an empty item; reviewed golden regeneration (#49) | tester → implementer | S | T-035 |
 | 1b | T-036 `//` inside quoted strings is not a comment (#48) | tester → implementer | S | T-035 |
 | 1c | T-038 stop mutating `BRACKET_CHARS` (#50) | tester → implementer | S | — |
+| 1d | T-022 one-line sub-dicts (#29), moved up on the Foundation 11 `phaseProperties` evidence | tester → implementer | S | T-021 (shared tokenizing; optional) |
+| 1e | T-039 keyword glued to `{`/`(` (#52) | tester → implementer | S | T-022 |
 | 2 | T-027 value-position `#calc`/`#neg` (#38) | tester → implementer | S | T-016 |
 | 3 | T-026 conditional blocks (#37) | tester → implementer | M | T-016 |
 | 4 | T-030 scoped `$` references (#41) | tester → implementer | S | — |
