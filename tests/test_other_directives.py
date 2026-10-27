@@ -1274,13 +1274,7 @@ def test_real_file_keeps_its_line_start_directives_in_order(name):
     assert out == src
 
 
-@pytest.mark.parametrize(
-    "name",
-    _file_params(
-        ALL_FILES,
-        {**_LOAD_BLOCKERS, "esi-v2606.bendJunction.blockMeshDict": "T-031"},
-    ),
-)
+@pytest.mark.parametrize("name", _file_params(ALL_FILES, _LOAD_BLOCKERS))
 def test_real_file_second_write_is_stable(tmp_path, name):
     text = fkt.DictFileParser(RELEASES / name).readDictFile().toString()
     out = tmp_path / "again"
@@ -1495,12 +1489,11 @@ def test_golden_pitzDaily_case_has_no_directives_to_report(case):
     assert list(fkt.iterDirectives(c, status="unknown")) == []
 
 
-# === guard: braces in a captured directive inside a sub-dictionary ==============
-# The dict-end scan ignores strings and comments, so a `{` or `}` inside the
-# captured text of a directive can end or open a dictionary by mistake.  Until it is
-# fixed, such a file must fail loudly (as on main) instead of loading wrongly.
-# root-cause ticket: dict-end scan ignores strings/comments (this guard is removed
-# when that ticket lands).
+# === braces in a captured directive inside a sub-dictionary =====================
+# T-016 had an interim guard here: such a file raised FoamKitError, because the
+# dict-end scan counted brackets in strings and comments.  T-035 fixed the scan and
+# removed the guard, so these are now round-trip tests (the full matrix is in
+# tests/test_brace_scan.py).
 
 BRACE_LINES = [
     '#message "a } b"',
@@ -1523,30 +1516,22 @@ def _nested(line):
 
 
 @pytest.mark.parametrize("line", BRACE_LINES)
-def test_brace_in_captured_directive_in_subdict_raises_with_file_and_line(
-    tmp_path, line
-):
-    path = _write(tmp_path, _nested(line), "braceGuard")
-    with pytest.raises(FoamKitError) as err:
-        fkt.DictFileParser(path).readDictFile()
-    msg = str(err.value)
-    assert "braceGuard" in msg
-    # the directive is on the fifth line of the body; `/* { */` is caught by the
-    # dict-end check instead, which names the line where the enclosing dict opens
-    body_line = 2 if line == "#fooBar /* { */" else 5
-    assert re.search(rf"\bline {HEADER.count(chr(10)) + body_line}\b", msg), msg
+def test_brace_in_captured_directive_in_subdict_round_trips(tmp_path, line):
+    first, second, text = _roundtrip(tmp_path, _nested(line))
+    (d,) = _verbatims(first)
+    assert d in vars(first.d.e).values()
+    assert d.text.strip() == line
+    assert first.d.e.inner.value == 2
+    assert first.d.mid.value == 3
+    assert "mid" not in vars(first)
+    assert second.toString() == text
 
 
-# - Today `#fooBar /* { */` at top level raises "Unclosed '{'" (the same-line capture
-# - counts the brace inside the comment), so it is not pinned as "keeps loading".
-TOP_LEVEL_LINES = [ln for ln in BRACE_LINES if ln != "#fooBar /* { */"]
-
-
-@pytest.mark.parametrize("line", TOP_LEVEL_LINES)
+@pytest.mark.parametrize("line", BRACE_LINES)
 def test_brace_in_captured_directive_at_top_level_keeps_loading_verbatim(
     tmp_path, line
 ):
-    first, second, text = _roundtrip(tmp_path, f"{line}\n\nx 1;\n")
+    first, second, text = _roundtrip(tmp_path, line + chr(10) * 2 + "x 1;" + chr(10))
     (d,) = _verbatims(first)
     assert d.text.strip() == line
     assert first.x.value == 1
@@ -1563,10 +1548,12 @@ def test_real_remove_with_regex_parens_in_subdict_keeps_loading(tmp_path):
     assert _contains_run(_norm(text), _norm(line))
 
 
-# - A bracket character inside a `/* */` comment on the directive line disagrees
-# - between the capture and the guard: the capture closes at a later line, so the
-# - dict-end scan mis-scopes silently.  Each of these must raise at every depth.
-# - root-cause ticket: dict-end scan ignores strings/comments
+# - A bracket inside a `/* */` comment on the directive line is not an opener, so the
+# - directive ends at its line and the following `}` really closes the dictionary:
+# - these documents are genuinely unbalanced (one `}` too many; a lone `"` is an
+# - unterminated string) and must raise.  Reading the comment bracket as an opener
+# - would swallow the lines and load the file; that reading is not pinned (open
+# - question in tests/test_brace_scan.py).
 COMMENT_BRACKET_DIRECTIVES = [
     ("#fooBar /* ( */", ["}", ")"]),
     ('#fooBar /* " */ x', ["}", '"']),
@@ -1586,13 +1573,10 @@ def _nested_at(depth, directive_lines):
 @pytest.mark.parametrize(
     "first, rest", COMMENT_BRACKET_DIRECTIVES, ids=["paren-comment", "quote-comment"]
 )
-def test_bracket_in_comment_on_directive_line_in_subdict_raises_with_file_and_line(
+def test_bracket_in_comment_on_directive_line_leaves_the_file_unbalanced_and_raises(
     tmp_path, depth, first, rest
 ):
     path = _write(tmp_path, _nested_at(depth, [first, *rest]), "commentGuard")
     with pytest.raises(FoamKitError) as err:
         fkt.DictFileParser(path).readDictFile()
-    msg = str(err.value)
-    assert "commentGuard" in msg
-    # the directive follows `depth` name/brace line pairs
-    assert re.search(rf"\bline {HEADER.count(chr(10)) + 2 * depth + 1}\b", msg), msg
+    assert "commentGuard" in str(err.value)
