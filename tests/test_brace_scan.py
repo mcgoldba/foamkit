@@ -184,12 +184,6 @@ EDGE = [
 ]
 SHAPES = [pytest.param(ln, ex, id=i) for i, ln, ex in ORDINARY + EDGE]
 WRITE_SHAPES = [pytest.param(ln, ex, id=i) for i, ln, ex in ORDINARY + EDGE]
-# - A one-line list `x ( ... );` gains an empty item on every re-read, because
-# - `_parseList` tests `line.endswith(");")` on a line that still has its newline.
-# - Pre-existing; its fix changes 7 goldens.
-XF_LIST_EMPTY_ITEM = pytest.mark.xfail(
-    strict=True, reason="T-037: one-line list ');' gains an empty item"
-)
 _ONE_LINE_LISTS = {
     "list-string-close",
     "list-string-open",
@@ -197,8 +191,7 @@ _ONE_LINE_LISTS = {
     "list-string-rparen",
 }
 THREE_WRITE_SHAPES = [
-    pytest.param(ln, ex, id=i, marks=XF_LIST_EMPTY_ITEM if i in _ONE_LINE_LISTS else [])
-    for i, ln, ex in ORDINARY + EDGE
+    pytest.param(ln, ex, id=i, marks=[]) for i, ln, ex in ORDINARY + EDGE
 ]
 
 
@@ -269,7 +262,6 @@ def test_single_line_shape_text_is_written_back(tmp_path, lines):
     assert _contains_run(_norm(texts[0]), _norm(NL.join(lines)))
 
 
-@XF_LIST_EMPTY_ITEM
 def test_one_line_list_read_write_read_gains_an_empty_item(tmp_path):
     """Characterization of the pre-existing bug behind XF_LIST_EMPTY_ITEM: no brackets
     in strings or comments are involved."""

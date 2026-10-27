@@ -48,7 +48,6 @@ runTimeModifiable	true;
 cacheTemporaryObjects
 (
     kEpsilon:G
-    
 );
 
 functions
@@ -76,7 +75,6 @@ functions
         (
             (0.0254 0.0253 0)
             (0.1 0.0 0)
-            
         );
         
     

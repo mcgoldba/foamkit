@@ -4224,6 +4224,11 @@ class DictFileParser:
         logger.debug("filepath: %s; lineList: %s", self.filepath, lineList)
 
         try:
+            extra = self.extraLine[0].strip() if parsingExtraLine else ''
+            if (len(extra) >= 4 and extra.startswith('/*')
+                    and extra.endswith('*/')):
+                #- text left after e.g. `x ( 1 );`: a one-line block comment
+                return ofComment(extra[2:-2], block=True)
             parsedComment = self._parseComments()
             if parsedComment is not None:
                 return parsedComment
@@ -4591,8 +4596,11 @@ class DictFileParser:
                 #- store extra characters as a new line to be parsed later
                 self._addExtraLine(''.join(line.split(';')[1:]))
                 #- ignore last );
-                if line.endswith(');'):
-                    line = line[:-2] 
+                #  (`line` still has its line ending, and may have a comment
+                #  after the ';', so look at the text before the first ';')
+                head = line.split(';')[0].rstrip()
+                if head.endswith(')'):
+                    line = head[:-1]
 
             # logger.debug(f"line[{self.i+1}]: {line}")
 

@@ -41,3 +41,18 @@ The one-line fix (`rstrip()` before the check) changes **7 golden/case outputs**
 - It silently changes data in one of the most common constructs, with no error, and the change compounds on every cycle.
 - T-027 is a loud load failure that users notice. This bug corrupts files they think FoamKit handled correctly.
 - The fix is small, and the tests are already written (strict-xfail).
+
+## Completion notes (implementer, 2026-10-26)
+- **Fix** (`_parseList`): the closer check now looks at the text before the first `;`, right-stripped. If it ends with `)`, that `)` is removed. This works with the line ending still attached (LF or CRLF) and with a trailing `// c` or `/* c */` after `);`. It also fixes multi-line lists, whose closing `);` line carried the same newline and so gained `''` on the first read.
+- **Trailing `/* c */` after `);`:** the text after the `;` is re-parsed as an extra line. `_parseLine` did not recognise a one-line block comment there and raised `IndexError`. It now returns an `ofComment`, so the comment is kept as its own entry after the list. A trailing `// c` is still dropped, as before.
+- **Siblings:** no other `endswith(` on a raw line has the problem. The remaining ones are on stripped text or filenames.
+- **Tests:** the 13 `T-037` strict-xfail markers were removed, and nothing else (plus the `wrong_today` variable that became dead). `ruff format` touched those two test files.
+- **Goldens:** regenerated with `FOAMKIT_UPDATE_GOLDEN=1`. 6 files changed, 14 lines removed, 0 added; every removed line is a whitespace-only list item before `)` or `);`:
+  - `case/controlDict.written.txt` 2
+  - `dicts/headers/foam-extend-4.1.controlDict.txt` 1
+  - `dicts/headers/foam-extend-5.0.controlDict.txt` 1
+  - `dicts/pitzDaily/system/blockMeshDict.txt` 6
+  - `dicts/pitzDaily/system/controlDict.txt` 2
+  - `dicts/pitzDaily/system/setFieldsDict.txt` 2
+
+  The ticket said 7. The tester's list of 5 dict goldens plus the case-level golden gives 6, and that is all that changed.
