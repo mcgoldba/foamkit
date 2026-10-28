@@ -41,7 +41,7 @@ None open.
 - **T-035 (approved by the maintainer in chat, 2026-10-25):** fix the dict/list end scan, which counts braces inside strings, comments and `#{ #}` blocks and silently moves entries to another scope. It is ranked **first after T-016**, and lands before T-031. It removes T-016's interim guard.
 - **T-034 (2026-10-21), a T-025 follow-up:** escape C1 and bidi controls in `userMsg`; `str(FoamKitError)` must never raise.
 - **T-022 merged into T-040 (maintainer, 2026-10-27).** T-040 (#54, size M) now covers all one-line `{…}` blocks: sub-dicts and lists of dicts. That includes the post-T-035 regression where `d { a 1; } e 2;` silently drops entries, and the Foundation 11 `phaseProperties` evidence. #29 is closed as not planned, and T-039 now depends on T-040. T-039, T-040 and T-041 are approved.
-- **T-037 option (b) (maintainer, 2026-10-27):** until T-041 lands, a second entry on the same line after **any** entry raises `FoamKitError` instead of being silently dropped. The consequence: some real tutorials that loaded on main, while silently losing data, now fail to load until T-041 lands. These include Foundation 11-14 `fluid/helmholtzResonance/system/blockMeshDict:144-145`, and banner files with a one-line `FoamFile { … }` (T-021). The affected files are listed in T-041.
+- **T-037 option (b) (maintainer, 2026-10-27):** until T-041 lands, a second entry on the same line after **any** entry raises `FoamKitError` instead of being silently dropped. Real tutorials with a second entry on a line, such as Foundation 11-14 `fluid/helmholtzResonance/system/blockMeshDict:144-145` and banner files with a one-line `FoamFile { … }` (T-021), fail to load until T-041 lands. None of them loaded on main either (they hit `IndexError` or "Parser made no progress"); they now get a clear error. The affected files are listed in T-041.
 - **Fixtures** come from real files only. Source URLs are in `docs/plans/openfoam-compatibility.md`, under References.
 - **`bin/` scripts:** deleted by the maintainer.
 
@@ -72,7 +72,7 @@ None open.
 - `_parseListValues` appends to the module-level `BRACKET_CHARS['list']` on every call, so state leaks between parses (T-038).
 - **Keyword glued to its bracket (pre-existing):** `x(1);` fails with `AttributeError`, `x{ a 1; }` loses its `}` on write, and Foundation 11's 6 `phaseProperties` files (`f10{dSph 10e-3; value 0.0;}`) fail with `IndexError` (T-039 + T-040). Glued lists occur in 0 Foundation 11-14 tutorial dictionaries.
 - **One-line `{…}` blocks (pre-existing):** real Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` **hang** (>25 s). One-line lists of dicts silently lose every item (`x ( );`), and one-line sub-dicts lose their entries (T-040).
-- **A second entry on a line** (`x 1; y 2;`) was silently dropped on main. Since T-037 (option (b)) it raises `FoamKitError`, so 3 real files per Foundation release (`helmholtzResonance`, `rotatingCube` and `refineMesh` `blockMeshDict`; `damBreak` `fvSchemes` in F11) and banner files with a one-line `FoamFile { … }` **now fail to load** until T-041 lands.
+- **A second entry on a line** (`x 1; y 2;`) was silently dropped on main. Since T-037 (option (b)) it raises `FoamKitError`, so 3 real files per Foundation release (`helmholtzResonance`, `rotatingCube` and `refineMesh` `blockMeshDict`; `damBreak` `fvSchemes` in F11) and banner files with a one-line `FoamFile { … }` fail to load until T-041 lands. They also failed on main, with `IndexError` or "Parser made no progress"; the error is now clear.
 - Other gaps:
   - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
   - writer whitespace churn (T-019, T-020);
@@ -88,7 +88,7 @@ None open.
 **In progress:** T-037 one-line list gains an empty item on re-read (#49).
 
 1. **T-037** one-line list gains an empty item (S, #49): silent data change in a very common construct, compounding on every cycle. The tests are already written.
-2. **T-041** second entry on a line (S, #55): since T-037's option (b), a second entry raises `FoamKitError`, so category A tutorials that loaded on main (3 files per Foundation release, e.g. stock `helmholtzResonance`) now fail to load. It reverses that deliberate regression quickly (S, tests already written).
+2. **T-041** second entry on a line (S, #55): since T-037's option (b), a second entry raises `FoamKitError`, so category A tutorials (3 files per Foundation release, e.g. stock `helmholtzResonance`) fail to load with a clear error; they also failed on main, less clearly. It makes them load (S, tests already written).
 3. **T-040** one-line `{…}` blocks (M, #54; absorbed T-022): **confirmed hangs** on real Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` (untrusted-input DoS), plus silent loss in lists of dicts and one-line sub-dicts (category B: 4-12 files per release). The hangs pre-date T-037, so it goes just after T-041.
 4. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
 5. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.

@@ -65,8 +65,9 @@ The one-line fix (`rstrip()` before the check) changes **7 golden/case outputs**
 
 ### Review round 2 (implementer, 2026-10-27)
 - **Maintainer decision, option (b):** keep raising `FoamKitError` for a second entry on the same line after ANY entry, not only after a list, until T-041 (#55) parses it properly. The error now reads "Line N of file F has more than one entry ('<remainder>'); only one entry per line is supported (T-041)." `N` is the 1-based physical line. Behaviour is otherwise unchanged.
-- **User-visible effect:** real tutorials that loaded on main with silent data loss now raise.
+- **User-visible effect:** a second entry on a line now raises a clear `FoamKitError` instead of being silently dropped.
   - Foundation 11-14 `fluid/helmholtzResonance/system/blockMeshDict`, lines 144-145.
   - Per the planner's rescan of the Foundation 11-14 tutorials (code blocks, comments and strings excluded): 3 files per release, 12 file-instances and 48 lines, where a second entry follows a top-level `;` (`helmholtzResonance`, `rotatingCube` and `refineMesh/sector` `blockMeshDict` in 12-14; `helmholtzResonance`, `damBreak` `fvSchemes` and `refineMesh/refineFieldDirs` `blockMeshDict` in 11). The reviewer's looser grep counted 95 lines in 31 files. Several entries inside a one-line `{ … }` are T-040's case.
   - A banner file with a one-line `FoamFile { … }` block: `pf.init` now fails for that case.
+- **Checked against `origin/main` (bc4af32), 2026-10-28** (review round 3, note 1): none of the real files above loaded on main. helmholtzResonance raised "Parser made no progress at line 145"; `sector`, `refineFieldDirs`, F11 `damBreak` `fvSchemes` and the one-line `FoamFile` banner raised `IndexError`; `rotatingCube` fails on T-027 first on both. So T-037 breaks no file that loaded; it replaces crashes with an error naming the line.
 - **T-041** will make these load.

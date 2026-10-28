@@ -18,10 +18,12 @@ Every entry on a line is parsed, in order, or the file is rejected with `FoamKit
 | `a 1; #print` | `a 1;`, so **the directive is lost** |
 | `d { a 1; } e 2;` | `d { }`, so `a` and `e` are lost (this overlaps T-040: T-040 keeps `a`; this ticket keeps `e`) |
 
-## Option (b): now a load failure, not only silent loss (maintainer decision, 2026-10-27)
-Since T-037 (PR #53), a second entry on the same line after **any** entry raises `FoamKitError` instead of being silently dropped, until this ticket lands. So real tutorials that **loaded on main** (silently losing data) **now fail to load**:
+## Option (b): a load failure with a clear error, not silent loss (maintainer decision, 2026-10-27)
+Since T-037 (PR #53), a second entry on the same line after **any** entry raises `FoamKitError` naming the file and line, instead of being silently dropped, until this ticket lands. These real files fail to load until then:
 - Foundation 11-14 `fluid/helmholtzResonance/system/blockMeshDict:144-145`, and the other files in category A below;
-- banner files with a one-line `FoamFile { … }` block (the T-021 shape): `pf.init` now fails for the whole case.
+- banner files with a one-line `FoamFile { … }` block (the T-021 shape): `pf.init` fails for the whole case.
+
+Checked per file against `origin/main` at bc4af32 (2026-10-28): none of these files loaded on main. helmholtzResonance (F11-14) already raised "Parser made no progress at line 145"; `refineMesh/sector` (F12-14), `refineFieldDirs` (F11), `damBreak` `fvSchemes` (F11) and the one-line `FoamFile` banner raised `IndexError`; `rotatingCube` (F12-14) fails earlier on value-position `#calc` (T-027) on both. So T-037 turns crashes and an unhelpful error into a clear one; it does not break a file that loaded.
 
 The T-037 tester adds characterization tests marked `xfail(strict=True, reason="T-041: second entry on a line")`; this ticket flips them.
 
@@ -74,6 +76,6 @@ Some of these hang (T-040), and others now raise under option (b). Loading them 
 
 ## Ranking rationale
 **Second, right after T-037, and ahead of T-040** (re-ranked 2026-10-27 after option (b)).
-- **It reverses a regression that T-037 introduces on purpose.** Category A tutorials (3 files per Foundation release, including stock `helmholtzResonance`) loaded on main and now fail to load. Users will see this as a new breakage.
+- **It makes stock tutorials load.** Category A tutorials (3 files per Foundation release, including stock `helmholtzResonance`) fail to load today. On main they failed with `IndexError` or "Parser made no progress"; since T-037 the error names the line and this ticket. (Corrected 2026-10-28: an earlier version said these loaded on main; a per-file check showed none did.)
 - **Small and contained:** size S, a single code path, with the tests already written by the T-037 tester. It can land quickly behind PR #53.
 - **Why T-040 stays close behind:** T-040 covers confirmed **hangs** on real Foundation 11 files (`rotorDisk`, `heatedDuct`), which are an untrusted-input DoS, and more files (category B). But those hangs **pre-date** T-037 and are not a new regression, and T-040 is size M. If the maintainer prefers DoS-first, swap them; the two tickets do not depend on each other.
