@@ -62,3 +62,11 @@ The one-line fix (`rstrip()` before the check) changes **7 golden/case outputs**
 - **End of file.** Extra lines still queued when the loop ends are now handled: a one-line block comment is kept as a comment entry, the rest is dropped.
 - **No silent loss.** Only a comment or closing brackets may follow `);` on the same line. Anything else (`x ( 1 ); y 2;`, `x ( 1 ); y ( 2 );`) raises `FoamKitError` naming the file and the line. Those lines were dropped silently on the earlier T-037 commit, and raised `IndexError` for the second form on main.
 - **`a 1; /* c */`:** the comment is now kept as a separate entry. Main dropped it.
+
+### Review round 2 (implementer, 2026-10-27)
+- **Maintainer decision, option (b):** keep raising `FoamKitError` for a second entry on the same line after ANY entry, not only after a list, until T-041 (#55) parses it properly. The error now reads "Line N of file F has more than one entry ('<remainder>'); only one entry per line is supported (T-041)." `N` is the 1-based physical line. Behaviour is otherwise unchanged.
+- **User-visible effect:** real tutorials that loaded on main with silent data loss now raise.
+  - Foundation 11-14 `fluid/helmholtzResonance/system/blockMeshDict`, lines 144-145.
+  - Per the planner's rescan of the Foundation 11-14 tutorials (code blocks, comments and strings excluded): 3 files per release, 12 file-instances and 48 lines, where a second entry follows a top-level `;` (`helmholtzResonance`, `rotatingCube` and `refineMesh/sector` `blockMeshDict` in 12-14; `helmholtzResonance`, `damBreak` `fvSchemes` and `refineMesh/refineFieldDirs` `blockMeshDict` in 11). The reviewer's looser grep counted 95 lines in 31 files. Several entries inside a one-line `{ … }` are T-040's case.
+  - A banner file with a one-line `FoamFile { … }` block: `pf.init` now fails for that case.
+- **T-041** will make these load.

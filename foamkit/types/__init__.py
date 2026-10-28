@@ -4043,10 +4043,11 @@ class DictFileParser:
 
     def _queueTrailing(self, text):
         """
-        Queue the text after the ';' that ends a list entry, once per line, to
+        Queue the text after the ';' that ends an entry, once per line, to
         be parsed as an extra line.  Only a comment (`// c`, `/* c */`) or
         closing brackets can follow; any other entry on the same line would
-        be lost, so it raises `FoamKitError` naming the file and line.
+        be lost, so it raises `FoamKitError` naming the file and line
+        (interim, until T-041 parses several entries per line).
         """
         if self._trailingQueuedAt == self.i:
             return
@@ -4058,9 +4059,9 @@ class DictFileParser:
                 or all(c in '});)' or c.isspace() for c in rest)):
             self._addExtraLine(text)
         else:
-            userMsg(f"Cannot parse '{rest}' after ';' on line {self.i+1} of "
-                    f"file {self.filepath}: only one entry per line is "
-                    "supported after a list.", "ERROR")
+            userMsg(f"Line {self.i+1} of file {self.filepath} has more than "
+                    f"one entry ('{rest}'); only one entry per line is "
+                    "supported (T-041).", "ERROR")
 
     def _getLinesList(self, line):
         """

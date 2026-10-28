@@ -588,6 +588,7 @@ REAL_OUTCOMES = {
     "foundation-14.cylinder.fvSchemes": FoamKitError,
     "foundation-14.engine2Valve2D.fvConstraints": FoamKitError,
     "foundation-14.floatingBeam.blockMeshDict": ValueError,
+    "foundation-14.helmholtzResonance.blockMeshDict": FoamKitError,
     "foundation-14.trayedPipe.createZonesDict": FoamKitError,
 }
 
