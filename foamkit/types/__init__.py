@@ -4024,6 +4024,9 @@ class DictFileParser:
         self.nComments = 0
         self.nFeTypes = {t: 0 for t in OF_FUNCTION_ENTRIES.keys()}
         self.needSemicolon = True
+        #- Line index whose text after ';' is already queued (see
+        #  `_queueTrailing`)
+        self._trailingQueuedAt = None
         #- Names of unknown directives already warned about (once per file)
         self._warnedDirectives = set()
 
@@ -4037,6 +4040,28 @@ class DictFileParser:
             # logger.debug(f"Adding extra text:  {line}")
             self.extraLine.append(line)
     
+
+    def _queueTrailing(self, text):
+        """
+        Queue the text after the ';' that ends an entry, once per line, to
+        be parsed as an extra line.  Only a comment (`// c`, `/* c */`) or
+        closing brackets can follow; any other entry on the same line would
+        be lost, so it raises `FoamKitError` naming the file and line
+        (interim, until T-041 parses several entries per line).
+        """
+        if self._trailingQueuedAt == self.i:
+            return
+        self._trailingQueuedAt = self.i
+        text = text.replace('\n', '').replace('\r', '')
+        rest = text.strip()
+        if (rest == '' or rest.startswith('//')
+                or (rest.startswith('/*') and rest.endswith('*/'))
+                or all(c in '});)' or c.isspace() for c in rest)):
+            self._addExtraLine(text)
+        else:
+            userMsg(f"Line {self.i+1} of file {self.filepath} has more than "
+                    f"one entry ('{rest}'); only one entry per line is "
+                    "supported (T-041).", "ERROR")
 
     def _getLinesList(self, line):
         """
@@ -4198,7 +4223,16 @@ class DictFileParser:
         #                 #filename=Path(file).name
         #                 )
         
-        # logger.debug(f"dictFile name = {self.dictFile._name} ")
+        #- Text queued from the last line (e.g. `x ( 1 ); /* c */` at the end
+        #  of the file) is never reached by the loop above.
+        for text in self.extraLine:
+            rest = text.strip()
+            if len(rest) >= 4 and rest.startswith('/*') \
+                    and rest.endswith('*/'):
+                self.dictFile.update({COMMENT_TAG+str(self.nComments):
+                                      ofComment(rest[2:-2], block=True)})
+                self.nComments += 1
+        self.extraLine = []
 
         return self.dictFile
 
@@ -4224,6 +4258,11 @@ class DictFileParser:
         logger.debug("filepath: %s; lineList: %s", self.filepath, lineList)
 
         try:
+            extra = self.extraLine[0].strip() if parsingExtraLine else ''
+            if (len(extra) >= 4 and extra.startswith('/*')
+                    and extra.endswith('*/')):
+                #- text left after e.g. `x ( 1 );`: a one-line block comment
+                return ofComment(extra[2:-2], block=True)
             parsedComment = self._parseComments()
             if parsedComment is not None:
                 return parsedComment
@@ -4589,10 +4628,13 @@ class DictFileParser:
                 if self.i != i_end:
                     userMsg("Unhandled pattern found!", "ERROR")
                 #- store extra characters as a new line to be parsed later
-                self._addExtraLine(''.join(line.split(';')[1:]))
+                self._queueTrailing(';'.join(line.split(';')[1:]))
                 #- ignore last );
-                if line.endswith(');'):
-                    line = line[:-2] 
+                #  (`line` still has its line ending, and may have a comment
+                #  after the ';', so look at the text before the first ';')
+                head = line.split(';')[0].rstrip()
+                if head.endswith(')'):
+                    line = head[:-1]
 
             # logger.debug(f"line[{self.i+1}]: {line}")
 
@@ -5351,8 +5393,7 @@ class DictFileParser:
             # (e.g dimensioned types) should be handled prior to this point in 
             # the method.
             # logger.debug(f"line[{self.i+1}]: {line}")
-            extraText = ''.join(line.split(';')[1:]).replace('\n', '')
-            self._addExtraLine(extraText)
+            self._queueTrailing(';'.join(line.split(';')[1:]))
             #line = line.split(';')[0][:-1] 
             line = line.split(';')[0]+';' # do not remove last ')' or '}'
             # logger.debug(f"line[{self.i+1}]: {line}")

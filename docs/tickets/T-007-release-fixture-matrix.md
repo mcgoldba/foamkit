@@ -4,7 +4,7 @@
 - **Type:** code, tests only (owner: `tester`; `implementer` only for the `pyproject.toml` marker registration)
 - **Size:** M
 - **Plan:** docs/plans/openfoam-compatibility.md, section 3
-- **Depends on:** T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021, T-022. T-020 is **not** a dependency: remaining entry padding/layout differences are marked `xfail(strict=True, reason="T-020")`, and these fixtures become T-020's test corpus.
+- **Depends on:** T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021, T-040 (absorbed T-022). T-020 is **not** a dependency: remaining entry padding/layout differences are marked `xfail(strict=True, reason="T-020")`, and these fixtures become T-020's test corpus.
 
 ## Goal
 CI demonstrates, without OpenFOAM installed, that FoamKit reads, edits and writes representative cases from each **tested** release.

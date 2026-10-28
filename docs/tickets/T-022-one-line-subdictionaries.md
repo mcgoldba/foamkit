@@ -1,4 +1,6 @@
-# T-022: Parse one-line sub-dictionaries (`p { type probes; }`) instead of raising IndexError
+# T-022 (merged into T-040): Parse one-line sub-dictionaries (`p { type probes; }`) instead of raising IndexError
+
+> **Merged into T-040 (#54) by maintainer decision (2026-10-27).** Issue #29 is closed as not planned. T-040 now carries this ticket's scope, evidence and acceptance criteria. This file is kept for history only; do not work from it.
 
 - **Issue:** [#29](https://github.com/mcgoldba/foamkit/issues/29)
 - **Type:** code (owner: `tester` first, then `implementer`)
@@ -21,6 +23,12 @@ A dictionary that contains a sub-dictionary written on one line, for example `p 
   - if that needs T-020, write it multi-line but keep every entry and value, and add a strict xfail for byte-identity that references T-020;
   - edited one-line sub-dicts may be written multi-line, which is today's style for edited entries.
 - Tests in `tests/test_regressions.py` or a new `tests/test_one_line_dicts.py`.
+
+## Real-file evidence (2026-10-26)
+One-line sub-dicts **do** occur in a tested release, glued to their keyword: Foundation 11 `multiphaseEuler/bubblePipe/constant/phaseProperties:65` `f10{dSph 10e-3; value 0.0;}`. That is 6 `phaseProperties` files and 67 lines in Foundation 11; 0 in Foundation 12-14. Today they fail with `IndexError`. The glued `name{` part is T-039 (#52); this ticket provides the one-line parsing it needs. Add the space-separated form `f10 { dSph 10e-3; value 0.0; }` to this ticket's tests.
+
+## Update (2026-10-27)
+On `origin/main` (bc4af32, after T-035) the behaviour has changed from `IndexError` to a **silent drop**: `d { a 1; } e 2;` is written as `d { }`. T-040 (#54, a one-line list of dicts) very likely shares the cause, and the planner proposes folding this ticket into T-040 (a maintainer decision; see ROADMAP).
 
 ## Possible addition (unverified, decide during Step 1)
 - Multi-line `#includeFunc` arguments (`#includeFunc foo(a,\n b)`) fail cleanly with `FoamKitError` today, after T-015.

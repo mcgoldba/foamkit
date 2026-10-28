@@ -13,6 +13,7 @@ Python package providing a Pythonic interface to OpenFOAM case editing (FoamKit,
 - Public API changes need a deprecation path (keep old name as an alias with a warning)
 - No `shell=True`, `eval`, or unchecked path joins; treat case files as untrusted input
 - Tests must not require an OpenFOAM install; mark ones that do with `@pytest.mark.openfoam`
+- Errors never pass silently (Zen of Python): never silently drop, change or skip data. When a case can't be handled yet, raise `FoamKitError` naming the file and line (no traceback for user errors) rather than guess. Treat any change from a loud error to silent loss as a regression, and make the explicit-error option the default recommendation
 
 ## Team workflow
 Agents live in `.claude/agents/`. Hand-offs happen through files, not chat history. Each ticket is tracked on GitHub (`mcgoldba/foamkit`) as one issue and lands as one pull request.
