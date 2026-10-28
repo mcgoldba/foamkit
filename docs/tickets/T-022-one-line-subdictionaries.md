@@ -1,4 +1,6 @@
-# T-022: Parse one-line sub-dictionaries (`p { type probes; }`) instead of raising IndexError
+# T-022 (merged into T-040): Parse one-line sub-dictionaries (`p { type probes; }`) instead of raising IndexError
+
+> **Merged into T-040 (#54) by maintainer decision (2026-10-27).** Issue #29 is closed as not planned. T-040 now carries this ticket's scope, evidence and acceptance criteria. This file is kept for history only; do not work from it.
 
 - **Issue:** [#29](https://github.com/mcgoldba/foamkit/issues/29)
 - **Type:** code (owner: `tester` first, then `implementer`)

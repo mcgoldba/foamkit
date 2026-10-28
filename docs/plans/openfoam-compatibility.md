@@ -34,7 +34,7 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B8 | `ofIncludeFunc` | `#includeFunc f(U)` is written quoted. `#includeFunc f(U, name=s)` fails to parse. | Tested. *Real file, 2026-10-19:* Foundation 11 `controlDict` `#includeFunc patchAverage(patch=inlet, fields=(p U))` fails, so **stock Foundation 11 pitzDaily cannot load**. → T-015 |
 | B9 (*real file*, 2026-10-19) | Dict-file writer | An unedited read → write of the real ESI v2606 `controlDict` adds a trailing space after `;`, re-aligns key/value padding and adds a blank line after the FoamFile block. | All → T-019 (whitespace), T-020 (padding/layout) |
 | B10 (2026-10-19) | `FoamFile` block parsing in `DictFileParser` | A one-line `FoamFile { ... }` block: with entries after it, `IndexError` (whole case fails); alone, written back as `FoamFile\n{\n}\n`, so its entries are **lost**. Header-less files with a one-line block, content after `{` on its line, `}` not at the start of its line, or content after `}` on its line are skipped for now (T-005 rule). A related issue: a same-line `FoamFile {` is stored as an ordinary entry (`_foamFile` is `None`), so the first two writes differ by a blank line. | All → T-021 (one-line form), T-006 (same-line form) |
-| B12 (2026-10-19, T-015 review) | `_parseLineLenTwo` `foamkit/types/__init__.py:4143` | A one-line sub-dict (`p { type probes; }`) raises `IndexError` at top level, inside `functions {}`, and after `#include`, so `pf.init` fails for the whole case. | All → T-022 |
+| B12 (2026-10-19, T-015 review) | `_parseLineLenTwo` `foamkit/types/__init__.py:4143` | A one-line sub-dict (`p { type probes; }`) raises `IndexError` at top level, inside `functions {}`, and after `#include`, so `pf.init` fails for the whole case. | All → T-040 (absorbed T-022). *2026-10-27:* after T-035 this is a **silent drop** (`d { a 1; } e 2;` → `d { }`). |
 | B13 (*real files*, 2026-10-21) | `$` reference validation (`ofVar`) | Scoped references `$/a/b`, `$file!a/b` and `$../file!a/b` raise `ValueError: ... is not a valid key` (ESI freePiston `0/U:21`, Foundation 14 cylinder `fvSolution:55`, floatingBeam `blockMeshDict:17`). | → T-030 |
 | B14 (*real files*, 2026-10-21) | Block-comment parsing and writing | Multi-line `/* … */` comments lose their newlines on write (ESI bendJunction `blockMeshDict`). ESI potentialFoam/cylinder `blockMeshDict` fails with "Could not find end of commented block". | → T-031 |
 | B15 (2026-10-21) | Number printing | `5e-4` is written as `0.0005`: the source token is not kept. | → T-032 (related to T-020) |
@@ -43,9 +43,9 @@ Reproduced on 2026-10-18 with scratch files; no code was changed.
 | B18 (2026-10-26, T-035 tester; pre-existing) | Line-comment stripping in the entry and line parser | `//` inside a quoted string starts a "comment": `note "http://x";` fails with "Cannot handle single line entry" (top level and sub-dict), and a list item `"a//b"` is **silently truncated** to `"a`. `/*` inside a string is fine in the entry parser. There are 0 occurrences in Foundation 11-14 tutorials (ESI not re-checked). | All → T-036 (before T-031) |
 | B19 (2026-10-26, found implementing T-035; pre-existing; widened by the T-037 tester) | `_parseList` `line.endswith(');')` check on a line with its trailing newline | Lists read back with an extra empty `ofStr` item: one-line lists (`x ( 1 );`, `x ( ")" );`) after a write → read cycle, **and multi-line lists on first read**. The damage compounds per cycle. 7 golden/case outputs encode the bug. | All → T-037 |
 | B20 (2026-10-26, found implementing T-035; pre-existing) | `_parseListValues` | `delimiters.append(" ")` mutates the module-level `BRACKET_CHARS['list']`, which grows on every call (state leaks between parses). T-035 works around it with `[:2]`. | All → T-038 |
-| B21 (2026-10-26, T-037 tester; pre-existing) | Tokenizing a keyword glued to `{` or `(` | `x(1);` raises `AttributeError`. `fields(p U);` is mis-split. One-line `x{ a 1; }` loses its `}` on write. Multi-line `x{` gives "Invalid syntax". Real Foundation 11 `multiphaseEuler/*/constant/phaseProperties` (6 files; e.g. `bubblePipe:65` `f10{dSph 10e-3; value 0.0;}`) fail with `IndexError`. Foundation 12-14 have 0 glued forms in dictionaries. | F11 → T-039 + T-022 |
-| B22 (2026-10-27, T-037 review on PR #53; pre-existing) | One-line list items that are dicts (`_parseList`/`_parseListValues`) | `x ( a { v 1; } b { v 2; } );` hung for the reviewer (killed at 30 s). On an extracted `origin/main` (bc4af32) the planner saw no hang, but the list was written as `x ( );`: **every item silently lost**. Multi-line lists of one-line dicts lose the dict entries. | All → T-040 (proposed: fold in T-022) |
-| B23 (2026-10-27, T-037 review on PR #53; pre-existing) | Line/entry parser | Entries after the first `;` on a line are silently dropped: `x 1; y 2;`, `a 1; sub { b 2; }`, `a 1; #include "f"`, `a 1; #print`. Real: 2-3 `blockMeshDict` files per Foundation release (F14 `fluid/helmholtzResonance:144-145`, `incompressibleVoF/rotatingCube:76-80`, `mesh/refineMesh/sector:32-38`). | All → T-041 |
+| B21 (2026-10-26, T-037 tester; pre-existing) | Tokenizing a keyword glued to `{` or `(` | `x(1);` raises `AttributeError`. `fields(p U);` is mis-split. One-line `x{ a 1; }` loses its `}` on write. Multi-line `x{` gives "Invalid syntax". Real Foundation 11 `multiphaseEuler/*/constant/phaseProperties` (6 files; e.g. `bubblePipe:65` `f10{dSph 10e-3; value 0.0;}`) fail with `IndexError`. Foundation 12-14 have 0 glued forms in dictionaries. | F11 → T-039 + T-040 |
+| B22 (2026-10-27, T-037 review on PR #53; pre-existing) | One-line list items that are dicts (`_parseList`/`_parseListValues`) | `x ( a { v 1; } b { v 2; } );` hung for the reviewer (killed at 30 s). On an extracted `origin/main` (bc4af32) the planner saw no hang, but the list was written as `x ( );`: **every item silently lost**. Multi-line lists of one-line dicts lose the dict entries. | All → T-040 (absorbed T-022) *Confirmed hang:* real F11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` do not finish within 25 s (T-037 reviewer). |
+| B23 (2026-10-27, T-037 review on PR #53; pre-existing) | Line/entry parser | Entries after the first `;` on a line are silently dropped: `x 1; y 2;`, `a 1; sub { b 2; }`, `a 1; #include "f"`, `a 1; #print`. Real: 2-3 `blockMeshDict` files per Foundation release (F14 `fluid/helmholtzResonance:144-145`, `incompressibleVoF/rotatingCube:76-80`, `mesh/refineMesh/sector:32-38`). | All → T-041 *Since T-037 option (b), 2026-10-27:* these raise `FoamKitError` instead of being dropped, so 3 files per Foundation release now fail to load until T-041 lands (rescan: 12 file-instances, 48 lines, F11-F14). |
 
 ### Version-sensitive assumptions (no failure observed yet)
 
@@ -142,10 +142,9 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 | 1a' | T-037 one-line list gains an empty item; reviewed golden regeneration (#49) | tester → implementer | S | T-035 |
 | 1b | T-036 `//` inside quoted strings is not a comment (#48) | tester → implementer | S | T-035 |
 | 1c | T-038 stop mutating `BRACKET_CHARS` (#50) | tester → implementer | S | — |
-| 1a'' | T-040 one-line list of dicts: hang or silent emptying (#54) | tester → implementer | S (M with T-022) | — |
-| 1b'' | T-041 second entry on a line silently dropped (#55) | tester → implementer | S | — (reuse T-035 scanner) |
-| 1d | T-022 one-line sub-dicts (#29), moved up on the Foundation 11 `phaseProperties` evidence | tester → implementer | S | T-021 (shared tokenizing; optional) |
-| 1e | T-039 keyword glued to `{`/`(` (#52) | tester → implementer | S | T-022 |
+| 1a'' | T-041 second entry on a line dropped, now rejected under T-037 option (b) (#55); ranked before T-040 | tester → implementer | S | — (reuse T-035 scanner) |
+| 1b'' | T-040 one-line `{…}` blocks: sub-dicts + lists of dicts (#54; absorbed T-022 by maintainer decision 2026-10-27) | tester → implementer | M | — |
+| 1e | T-039 keyword glued to `{`/`(` (#52) | tester → implementer | S | T-040 |
 | 2 | T-027 value-position `#calc`/`#neg` (#38) | tester → implementer | S | T-016 |
 | 3 | T-026 conditional blocks (#37) | tester → implementer | M | T-016 |
 | 4 | T-030 scoped `$` references (#41) | tester → implementer | S | — |
@@ -155,7 +154,6 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 | 8 | T-033 `#codeStream` writer (#44) | tester → implementer | S | — |
 | 9 | T-019 no trailing space / extra blank line (B9) | tester → implementer | S | T-006 |
 | 10 | T-021 one-line `FoamFile { ... }` (B10) | tester → implementer | S | T-006 |
-| 11 | T-022 one-line sub-dictionaries (B12) | tester → implementer | S | T-021 |
 | 12 | T-013 named dimension sets (B11) + unit annotations (B5; `0 [deg]` now confirmed) | tester → implementer | M | T-002 |
 | 13 | T-034 `userMsg` C1/bidi escaping, `str(FoamKitError)` (#45) | tester → implementer | S | T-025 |
 | 14 | T-032 number formatting kept (#43) | tester → implementer | S | — (overlaps T-020) |
@@ -177,17 +175,17 @@ T-012 adds the Supported versions page. It depends on T-001 and T-007. It lists 
 - foam-extend name mapping in T-010, and full foam-extend case fixtures
 
 ## Known gaps (not ticketed yet)
-- **One-line `vertices 10;` reported by the T-016 tester:** the planner could **not** reproduce it at top level on 2026-10-21 (`vertices 10;` round-trips). If the tester has the file and line, add it to T-022 (one-line forms), or open a ticket.
+- **One-line `vertices 10;` reported by the T-016 tester:** the planner could **not** reproduce it at top level on 2026-10-21 (`vertices 10;` round-trips). If the tester has the file and line, add it to T-040 (one-line forms; absorbed T-022), or open a ticket.
 - **Bare `except:` blocks swallow errors** (found during T-017, 2026-10-20). There are 13:
   - `foamkit/types/__init__.py` ×9 (`:452, 4866, 4891, 4898, 4904, 4910, 4937, 5646, 5685` as of the T-017 audit; the line numbers drift);
   - `foamkit/functions/dictUtil.py` ×3 (`:224, 282, 504`);
   - `foamkit/functions/_unitDecoder.py:63`.
 
   They catch everything, including `FoamKitError`, `KeyboardInterrupt` and real bugs, and often turn them into `None` or a fallback parse. T-017 leaves them alone.
-- **Proposal:** yes, one ticket, but **after T-016 and T-022**. Those tickets rewrite the same parser paths in `types/__init__.py`, so narrowing the handlers first would churn twice.
+- **Proposal:** yes, one ticket, but **after T-016 and T-040**. Those tickets rewrite the same parser paths in `types/__init__.py`, so narrowing the handlers first would churn twice.
   - Shape: tester-first, one test per site showing what each handler is meant to catch, then narrow it to that exception (usually `ValueError`/`KeyError`/`TypeError`). No behaviour change for valid input.
   - Size: S/M, split by file if needed (`types` vs `functions`).
-  - Not opened as an issue yet. The planner writes it when T-022 lands.
+  - Not opened as an issue yet. The planner writes it when T-040 lands.
 
 ## References: real-file sources (fetch with `curl -sfL` when exact bytes matter)
 - **ESI (openfoam.com), GitLab raw:**

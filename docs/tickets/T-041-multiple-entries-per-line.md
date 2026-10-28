@@ -1,9 +1,9 @@
-# T-041: A second entry on the same line is silently dropped (`x 1; y 2;`)
+# T-041: A second entry on the same line is dropped or (since T-037) rejected (`x 1; y 2;`)
 
 - **Issue:** [#55](https://github.com/mcgoldba/foamkit/issues/55)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
-- **Related:** T-037 makes the list case (`x ( 1 ); y ( 2 );`, `x ( 1 ); y 2;`) stop being silent; this ticket covers everything else. T-040/T-022 cover one-line `{…}`.
+- **Related:** T-037 makes the list case (`x ( 1 ); y ( 2 );`, `x ( 1 ); y 2;`) stop being silent; this ticket covers everything else. T-040 covers one-line `{…}` (it absorbed T-022).
 - **Found by:** the T-037 review (PR #53). It is pre-existing on main.
 
 ## Goal
@@ -16,24 +16,37 @@ Every entry on a line is parsed, in order, or the file is rejected with `FoamKit
 | `a 1; sub { b 2; }` | `a 1;`, so **`sub` is lost** |
 | `a 1; #include "f"` | `a 1;`, so **the include is lost** |
 | `a 1; #print` | `a 1;`, so **the directive is lost** |
-| `d { a 1; } e 2;` | `d { }`, so `a` and `e` are lost (this overlaps T-040/T-022) |
+| `d { a 1; } e 2;` | `d { }`, so `a` and `e` are lost (this overlaps T-040: T-040 keeps `a`; this ticket keeps `e`) |
 
-## Real tutorial occurrences (Foundation clones, `git grep -I`, 2026-10-27)
-These are dictionary lines with two or more `;`-terminated entries. C++ inside code blocks was excluded.
+## Option (b): now a load failure, not only silent loss (maintainer decision, 2026-10-27)
+Since T-037 (PR #53), a second entry on the same line after **any** entry raises `FoamKitError` instead of being silently dropped, until this ticket lands. So real tutorials that **loaded on main** (silently losing data) **now fail to load**:
+- Foundation 11-14 `fluid/helmholtzResonance/system/blockMeshDict:144-145`, and the other files in category A below;
+- banner files with a one-line `FoamFile { … }` block (the T-021 shape): `pf.init` now fails for the whole case.
 
-| Release | Files | Lines |
-|---|---|---|
-| F11 | 2 | 8 |
-| F12 | 3 | 13 |
-| F13 | 3 | 13 |
-| F14 | 3 | 13 |
+The T-037 tester adds characterization tests marked `xfail(strict=True, reason="T-041: second entry on a line")`; this ticket flips them.
 
-Foundation 14 examples:
-- `fluid/helmholtzResonance/system/blockMeshDict:144-145`: `x1 14; x2 6; x3 20; x4 6; x5 4;` and `yc 6; ys 12; zc $yc; zs $ys;`;
-- `incompressibleVoF/rotatingCube/system/blockMeshDict:76-80`: `nIn 7; fIn 0.4;`;
-- `mesh/refineMesh/sector/system/blockMeshDict:32-38`: `Ax 0.438912; Ay 0.000000;`.
+## Real tutorial occurrences (Foundation 11-14 clones, planner rescan 2026-10-27)
+**Method:** every `FoamFile` dictionary under `tutorials/`, skipping `#{ … #}` code blocks, `/* */` and `//` comments, strings, `polyMesh`, `triSurface`/`geometry` and scripts. A line counts when, after its first `;`, it continues with another word-starting token. The scan script is in the session scratchpad (`second_entry_scan2.py`). The T-037 reviewer's grep reported "95 lines in 31 files" across OF11-14 with a looser pattern; the categories below are the precise split.
 
-These are `blockMeshDict` variables that later lines reference (`$yc`). Dropping them changes the mesh, or breaks references when OpenFOAM reads the written file. ESI was not checked (its clone has no checked-out tutorials).
+**Category A, this ticket (a second entry after a top-level `;`):**
+
+| Release | Files | Lines | Files |
+|---|---|---|---|
+| F11 | 3 | 9 | `compressibleVoF/damBreak/system/fvSchemes:31` (`div(rhoPhi,U) Gauss linearUpwind grad(U);Gauss upwind;`), `fluid/helmholtzResonance/system/blockMeshDict:144-145`, `mesh/refineMesh/refineFieldDirs/system/blockMeshDict:34…` |
+| F12 | 3 | 13 | `fluid/helmholtzResonance/system/blockMeshDict:144-145`, `incompressibleVoF/rotatingCube/system/blockMeshDict:76-80`, `mesh/refineMesh/sector/system/blockMeshDict:32-38` |
+| F13 | 3 | 13 | same three as F12 |
+| F14 | 3 | 13 | same three as F12 |
+
+In total, 12 file-instances (48 lines) across the four releases. The `damBreak` line's second entry has the keyword `Gauss` and value `upwind`. The tester confirms how OpenFOAM reads it and keeps it verbatim either way.
+
+**Category B, owned by T-040 (several entries inside a one-line `{ … }`, or text after a one-line dict):** 12/9/7/4 files (193/98/96/36 lines) in F11/F12/F13/F14. Examples:
+- `incompressibleFluid/impeller/system/createNonConformalCouplesDict:34` (20 lines);
+- `multiRegion/CHT/heatedDuct/system/snappyHexMeshDict:65`;
+- `incompressibleFluid/rotorDisk/system/snappyHexMeshDict:46` (F11-F13);
+- `windAroundBuildings`, `shellAndTubeHeatExchanger` (`snappyHexMeshDict.orig`);
+- the `multiphaseEuler/*/constant/phaseProperties` files (`f1 {dSph 1e-3; value 1.0;}`).
+
+Some of these hang (T-040), and others now raise under option (b). Loading them fully needs T-040's one-line `{…}` parsing **plus** this ticket's multi-entry splitting. Coordinate: whichever lands second covers the combination.
 
 ## Scope
 - The line/entry parser in `DictFileParser`: after one entry ends with `;` (outside strings, comments and brackets, using T-035's scanner), parse the rest of the line as further entries, at top level and in sub-dicts. This covers ordinary entries, sub-dicts and directives.
@@ -41,11 +54,15 @@ These are `blockMeshDict` variables that later lines reference (`$yc`). Dropping
 - Writing keeps entries in order. Keeping them on one line is T-020's concern; separate lines are acceptable here, but say so in the PR.
 
 ## Out of scope
-- One-line `{…}` parsing itself (T-040/T-022)
+- One-line `{…}` parsing itself (T-040)
 - List cases (T-037)
 
 ## Acceptance criteria
-- [ ] **Failing tests first:** every row of the reproduction table, plus the three real Foundation 14 `blockMeshDict` files copied byte-exact into `tests/releases/` with their sources.
+- [ ] **Failing tests first:** every row of the reproduction table, plus these real files copied byte-exact into `tests/releases/` with their sources:
+  - the three Foundation 14 `blockMeshDict` files (`helmholtzResonance`, `rotatingCube`, `refineMesh/sector`);
+  - Foundation 11 `refineMesh/refineFieldDirs/system/blockMeshDict`;
+  - Foundation 11 `damBreak/system/fvSchemes`.
+- [ ] **Every category A file loads with every entry.** The T-037 characterization tests marked `xfail(strict=True, reason="T-041: second entry on a line")` pass with their markers removed. Option (b)'s `FoamKitError` is no longer raised for these inputs.
 - [ ] After the fix, every entry is present with the right value (`d.yc`, `d.zs` …). Written files re-read to the same entries, and write 1 == write 2.
 - [ ] `x 1; y` (an incomplete trailing entry) raises `FoamKitError` naming the file and line.
 - [ ] No golden file changes. Any golden that turns out to encode a dropped entry is listed and regenerated deliberately.
@@ -56,4 +73,7 @@ These are `blockMeshDict` variables that later lines reference (`$yc`). Dropping
 - **`;` inside `#{ #}` code or strings must not split entries.** Reuse T-035's scanner, and test it.
 
 ## Ranking rationale
-**Third, right after T-040.** It silently loses data in real `blockMeshDict` files of every tested Foundation release. That outranks the loud load failures (T-027 …), which users at least notice.
+**Second, right after T-037, and ahead of T-040** (re-ranked 2026-10-27 after option (b)).
+- **It reverses a regression that T-037 introduces on purpose.** Category A tutorials (3 files per Foundation release, including stock `helmholtzResonance`) loaded on main and now fail to load. Users will see this as a new breakage.
+- **Small and contained:** size S, a single code path, with the tests already written by the T-037 tester. It can land quickly behind PR #53.
+- **Why T-040 stays close behind:** T-040 covers confirmed **hangs** on real Foundation 11 files (`rotorDisk`, `heatedDuct`), which are an untrusted-input DoS, and more files (category B). But those hangs **pre-date** T-037 and are not a new regression, and T-040 is size M. If the maintainer prefers DoS-first, swap them; the two tickets do not depend on each other.

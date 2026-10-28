@@ -12,6 +12,7 @@ A dictionary whose `FoamFile` block is written on one line, for example `FoamFil
 ## Bug on HEAD (data loss, found while doing T-005)
 - **Banner file, one-line block, entries after it:** `DictFileParser` raises `IndexError`, so `pf.init` fails for the whole case.
 - **Banner file, only the one-line block:** it is written back as `FoamFile\n{\n}\n`. `version`, `format`, `class` and `object` are **lost**.
+- **Change from T-037 (option (b), maintainer decision 2026-10-27):** a banner file with a one-line `FoamFile { … }` block now **raises `FoamKitError`** ("second entry on the same line") instead of loading with its `FoamFile` entries lost, so `pf.init` fails for the whole case until this ticket or T-041 lands. That is loud instead of silent, which is better, but the urgency is higher. Acceptance here: such files load with every `FoamFile` entry kept, and the T-037 characterization test for this shape flips.
 - **Header-less file:** skipped by `_isDictFile` since the T-005 rule decision. The one-line test is a strict xfail pointing here.
 - **Related shapes, same parser limitation:** content after `{` on its line (`FoamFile { format ascii;\n    class dictionary;\n}`), `}` not at the start of its line (`FoamFile {\n format ascii; class dictionary; }`), and content after the closing `}` on its line (`FoamFile\n{\n    format ascii;\n    class dictionary;\n} application simpleFoam;`, which loads with a bogus `}` key and is written back with a stray `}`), and whitespace between `}` and `;` (`} ;`, which raises `ValueError: String cannot be converted to a word.`). With a banner they raise `IndexError` or corrupt on write on HEAD; header-less they are skipped by the T-005 rule and have strict xfails pointing here.
 - **Direct `DictFileParser` use on a header-less one-line block** (bypassing `_isDictFile`): returns a dict with the `FoamFile` entries lost, where HEAD raised "Invalid OpenFOAM file specified". Normal `pf.init` use is gated by `_isDictFile`.
@@ -33,7 +34,7 @@ A dictionary whose `FoamFile` block is written on one line, for example `FoamFil
   - Add to the T-005 invariant test's generator: brace line `FoamFile\n{ `, closing line ` }`, and an "inner lines" dimension with `    #inputMode merge` and `    /*\n}\n    */`.
 
 ## Out of scope
-- One-line forms of other sub-dictionaries (`p { type probes; }`): **T-022**
+- One-line forms of other sub-dictionaries (`p { type probes; }`): **T-040** (absorbed T-022)
 - Header banner handling (T-006)
 
 ## Acceptance criteria

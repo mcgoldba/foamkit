@@ -1,7 +1,7 @@
 # FoamKit Roadmap
 
 ## Questions for the maintainer
-1. **Fold T-022 (#29, approved) into T-040 (#54)?** Both are one-line `{…}` parsing, and on `origin/main` both now silently drop entries (`d { a 1; } e 2;` → `d { }`; `x ( a { v 1; } );` → `x ( );`). One fix, size M, at T-040's priority. If not folded, T-040 lands first and T-022 reuses its parsing.
+None open.
 
 ## Decisions (2026-10-18, 2026-10-19)
 - **Approved by maintainer:** the ranked order, the T-010 canonical name table and the `case.canonical(...)` accessor.
@@ -40,6 +40,8 @@
   - Non-directive blockers found in real files: T-030 (scoped `$` references), T-031 (block comments), T-032 (number formatting), T-033 (`#codeStream` writer).
 - **T-035 (approved by the maintainer in chat, 2026-10-25):** fix the dict/list end scan, which counts braces inside strings, comments and `#{ #}` blocks and silently moves entries to another scope. It is ranked **first after T-016**, and lands before T-031. It removes T-016's interim guard.
 - **T-034 (2026-10-21), a T-025 follow-up:** escape C1 and bidi controls in `userMsg`; `str(FoamKitError)` must never raise.
+- **T-022 merged into T-040 (maintainer, 2026-10-27).** T-040 (#54, size M) now covers all one-line `{…}` blocks: sub-dicts and lists of dicts. That includes the post-T-035 regression where `d { a 1; } e 2;` silently drops entries, and the Foundation 11 `phaseProperties` evidence. #29 is closed as not planned, and T-039 now depends on T-040. T-039, T-040 and T-041 are approved.
+- **T-037 option (b) (maintainer, 2026-10-27):** until T-041 lands, a second entry on the same line after **any** entry raises `FoamKitError` instead of being silently dropped. The consequence: some real tutorials that loaded on main, while silently losing data, now fail to load until T-041 lands. These include Foundation 11-14 `fluid/helmholtzResonance/system/blockMeshDict:144-145`, and banner files with a one-line `FoamFile { … }` (T-021). The affected files are listed in T-041.
 - **Fixtures** come from real files only. Source URLs are in `docs/plans/openfoam-compatibility.md`, under References.
 - **`bin/` scripts:** deleted by the maintainer.
 
@@ -68,14 +70,14 @@
 - **`//` inside a quoted string is treated as a comment (pre-existing):** `note "http://x";` fails to load, and a list item `"a//b"` is **silently truncated** to `"a` (T-036, found by the T-035 tester). There are 0 occurrences in Foundation 11-14 tutorials.
 - **Lists gain a spurious empty item (pre-existing):** one-line lists such as `x ( 1 );` after a write → read cycle, and, per the T-037 tester, **multi-line lists on first read** too. Today's goldens encode this (T-037, in progress).
 - `_parseListValues` appends to the module-level `BRACKET_CHARS['list']` on every call, so state leaks between parses (T-038).
-- **Keyword glued to its bracket (pre-existing):** `x(1);` fails with `AttributeError`, `x{ a 1; }` loses its `}` on write, and Foundation 11's 6 `phaseProperties` files (`f10{dSph 10e-3; value 0.0;}`) fail with `IndexError` (T-039 + T-022). Glued lists occur in 0 Foundation 11-14 tutorial dictionaries.
-- **One-line list of dicts (pre-existing):** `x ( a { v 1; } b { v 2; } );` hung for the T-037 reviewer. On an extracted `origin/main` (bc4af32) the planner saw no hang, but every item was **silently lost** (`x ( );`) (T-040).
-- **A second entry on a line is silently dropped (pre-existing):** `x 1; y 2;` loses `y`. This happens in 2-3 real `blockMeshDict` files per Foundation release, for example F14 `helmholtzResonance:144` `x1 14; x2 6; …` (T-041).
+- **Keyword glued to its bracket (pre-existing):** `x(1);` fails with `AttributeError`, `x{ a 1; }` loses its `}` on write, and Foundation 11's 6 `phaseProperties` files (`f10{dSph 10e-3; value 0.0;}`) fail with `IndexError` (T-039 + T-040). Glued lists occur in 0 Foundation 11-14 tutorial dictionaries.
+- **One-line `{…}` blocks (pre-existing):** real Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` **hang** (>25 s). One-line lists of dicts silently lose every item (`x ( );`), and one-line sub-dicts lose their entries (T-040).
+- **A second entry on a line** (`x 1; y 2;`) was silently dropped on main. Since T-037 (option (b)) it raises `FoamKitError`, so 3 real files per Foundation release (`helmholtzResonance`, `rotatingCube` and `refineMesh` `blockMeshDict`; `damBreak` `fvSchemes` in F11) and banner files with a one-line `FoamFile { … }` **now fail to load** until T-041 lands.
 - Other gaps:
   - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
   - writer whitespace churn (T-019, T-020);
   - one-line `FoamFile { ... }` (T-021);
-  - one-line sub-dicts (`p { type probes; }`) raise `IndexError`, so the whole case fails (T-022);
+  - one-line sub-dicts (`p { type probes; }`) now silently lose their entries after T-035 (T-040, absorbed T-022);
   - Foundation 14 named dimension sets read as strings (T-013).
 - `fk init` / `write` / `plot` / `edit` on a non-case path crash with a traceback, or open a console with no case, instead of printing a clean `ERROR:` (T-023).
 - `userMsg` does not escape C1 or bidi control characters, and `str(FoamKitError(42))` raises (T-034).
@@ -86,17 +88,17 @@
 **In progress:** T-037 one-line list gains an empty item on re-read (#49).
 
 1. **T-037** one-line list gains an empty item (S, #49): silent data change in a very common construct, compounding on every cycle. The tests are already written.
-2. **T-040** one-line list of dicts hangs or silently empties (S, #54; M if T-022 is folded in): untrusted-input DoS (reported) or the loss of every list item (reproduced).
-3. **T-041** second entry on a line silently dropped (S, #55): silent loss of `blockMeshDict` variables in real files of every tested Foundation release.
+2. **T-041** second entry on a line (S, #55): since T-037's option (b), a second entry raises `FoamKitError`, so category A tutorials that loaded on main (3 files per Foundation release, e.g. stock `helmholtzResonance`) now fail to load. It reverses that deliberate regression quickly (S, tests already written).
+3. **T-040** one-line `{…}` blocks (M, #54; absorbed T-022): **confirmed hangs** on real Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` (untrusted-input DoS), plus silent loss in lists of dicts and one-line sub-dicts (category B: 4-12 files per release). The hangs pre-date T-037, so it goes just after T-041.
 4. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
 5. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.
 6. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
 7. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
 
-The silent-loss tickets (T-037, T-040, T-041) come first: a loud load failure is noticed, but these corrupt files that appear to load correctly.
+T-037, T-041 and T-040 come first: silent loss, hangs, and the files option (b) turned into load failures.
 
-After these, the order is T-022 (unless folded into T-040) → T-039 → T-023 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
-- T-039 (glued `name{`/`name(`) completes the Foundation 11 `phaseProperties` fix with T-022, and it stops `x{ a 1; }` from losing its `}`. Glued lists do not occur in tutorials.
+After these, the order is T-039 → T-023 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+- T-039 (glued `name{`/`name(`) completes the Foundation 11 `phaseProperties` fix with T-040, and it stops `x{ a 1; }` from losing its `}`. Glued lists do not occur in tutorials.
 - T-036 (`//` in strings) silently truncates list items, but has 0 tutorial occurrences, and it lands before T-031.
 - T-038 is a cheap latent-leak fix in the same list code as T-037.
 - T-033 follows T-031 because the file grows on every write.
@@ -107,7 +109,7 @@ After these, the order is T-022 (unless folded into T-040) → T-039 → T-023 �
 
 ## Deferred
 - **Removing `SystemExit` from `FoamKitError`:** the release after T-017 ships.
-- **Narrowing the 13 bare `except:` handlers:** they swallow `FoamKitError`, `KeyboardInterrupt` and real bugs. A ticket is proposed for **after T-016 and T-022**, which rewrite the same parser paths. Sites and proposed shape are under Known gaps in `docs/plans/openfoam-compatibility.md`.
+- **Narrowing the 13 bare `except:` handlers:** they swallow `FoamKitError`, `KeyboardInterrupt` and real bugs. A ticket is proposed for **after T-016 and T-040**, which rewrite the same parser paths. Sites and proposed shape are under Known gaps in `docs/plans/openfoam-compatibility.md`.
 - **foam-extend name mapping (T-010) and full foam-extend case fixtures:** only if users need them.
 - **API reference:** after T-010 stabilises the API. Use autodoc2 or an env-clean autodoc (see T-001 risks).
 - **Repo-wide `ruff format` and a zero-finding lint gate:** after the bug-fix tickets above, as one dedicated diff. Until then CI (`ci.yml`) only blocks new findings above the T-002 baseline.

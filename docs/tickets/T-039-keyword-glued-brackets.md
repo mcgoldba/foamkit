@@ -3,7 +3,7 @@
 - **Issue:** [#52](https://github.com/mcgoldba/foamkit/issues/52)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S
-- **Depends on:** T-022 (one-line sub-dicts). The real Foundation 11 files below are glued **and** one-line, so they load only after both tickets.
+- **Depends on:** T-040 (#54; one-line `{…}` blocks, which absorbed T-022). The real Foundation 11 files below are glued **and** one-line, so they load only after both tickets.
 - **Found by:** the T-037 tester (2026-10-26). It is pre-existing on main.
 
 ## Goal
@@ -41,13 +41,13 @@ OpenFOAM word tokens may contain balanced parentheses (scheme keywords such as `
 - Unsupported glued forms raise `FoamKitError` (file, line) instead of `AttributeError`/`IndexError`.
 
 ## Out of scope
-- One-line sub-dict parsing in general (T-022)
+- One-line sub-dict parsing in general (T-040)
 - Layout (T-020)
 
 ## Acceptance criteria
 - [ ] The Step 1 finding (OpenFOAM's reading of each input) is recorded in this ticket with source file and line.
 - [ ] **Failing tests first:** each row of the reproduction table at top level, inside a sub-dict and (for `(`) as a list item.
-- [ ] After the fix (with T-022 landed), the real Foundation 11 `multiphaseEuler/bubblePipe/constant/phaseProperties` loads. Copy it byte-exact into `tests/releases/` with its source recorded, then `g.f10.dSph` reads `10e-3` and the file round-trips with write 1 == write 2.
+- [ ] After the fix (with T-040 landed), the real Foundation 11 `multiphaseEuler/bubblePipe/constant/phaseProperties` loads. Copy it byte-exact into `tests/releases/` with its source recorded, then `g.f10.dSph` reads `10e-3` and the file round-trips with write 1 == write 2.
 - [ ] `x{ a 1; }` keeps its closing `}`. No glued form loses or reorders tokens.
 - [ ] No input in the table raises anything other than `FoamKitError`.
 - [ ] No golden file changes. All other `tests/releases/` files behave as before.
@@ -58,7 +58,7 @@ OpenFOAM word tokens may contain balanced parentheses (scheme keywords such as `
 - **Scheme keywords must stay single words:** splitting `name(` naively would break `div(phi,U)`, `laplacian(nuEff,U)` and other `fvSchemes` keywords. The existing `fvSchemes` goldens guard against that; add one explicit test.
 
 ## Ranking rationale
-After T-022, which it depends on, in the follow-on list.
+After T-040, which it depends on, in the follow-on list.
 - **The glued dict blocks 6 tested-release files,** but only in Foundation 11, the oldest tested release.
 - **The glued list form does not occur in tutorial dictionaries.**
 - **The silent corruption cases matter even without tutorial evidence:** `x{ a 1; }` loses its `}`, and `fields(p U)` is mis-split. Hence it ranks above the formatting-only tickets.
