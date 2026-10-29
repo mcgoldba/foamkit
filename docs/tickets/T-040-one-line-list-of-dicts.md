@@ -89,3 +89,35 @@ So in this environment the input loses data silently rather than hanging. The re
 - It also fixes the post-T-035 regression where one-line sub-dicts silently lose their entries.
 - Both are worse than loud load failures.
 - T-039 (Foundation 11 `phaseProperties`) depends on it.
+
+## Completion notes (implementer, 2026-10-29)
+
+**What changed.** `DictFileParser._splitEntries` (foamkit/types/__init__.py) now opens out every one-line `{ ... }` block (sub-dict `p { type probes; }` or list item `x ( a { v 1; } );`, also nested, empty or anonymous) into the multi-line form the line parser already reads (`p {`, one line per entry, `}`), using T-035's `_lex` for the bracket ends, so strings holding `}`, comments, `#{ #}` blocks and `#codeStream`/`#eval`/`${ }` bodies are untouched. `_lineMap` keeps the physical line for every error. The pass is linear (a 10^4-item one-line list loads in about 1.6 s; 4x10^4 items scale linearly). New: `_joinIncludeFunc` (multi-line `#includeFunc`), `MAX_NESTING = 100`, `_isFoamFileKeyword`.
+
+**User-visible effect.**
+- One-line blocks load with every entry, as sub-dicts and as list items. `d { a 1; } e 2;` keeps `a` and `e`. The multi-line named list of dicts that hung now loads. Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` load (about 15 ms) with every entry; they hung before.
+- Unterminated input (`p { type probes;`, `x ( { v 1; );`, `p { a { b 1; }`) raises `FoamKitError` naming the file and the physical line of the `{` (was `IndexError`).
+- Text the parser cannot place next to a one-line block raises `FoamKitError` with file and line, never a partial load: a list item that is not `name {` / `{` (`x ( 1 2 { v 1; } )`, `x ( { v 1; } 1 2 )`, `x ( ( 1 2 ) { v 1; } )`), a lone word inside the block (`d { a 1; b }`).
+- `#eval{ ... }` / `#eval { ... }` inside a list (`origin (#eval{0.5 * $S} 0 0);`) raises `FoamKitError` with file and line (it used to load an empty or wrong list; the real value is T-044).
+- Nesting deeper than 100 levels of `(`/`{` raises `FoamKitError` (it was `RecursionError` after 10-30 s).
+- Multi-line `#includeFunc foo(a,\n b)` and `#includeFunc foo\n(a, b)` load and round-trip as `#includeFunc foo(a, b)` (see below).
+- Entries after `{` in a list-of-dicts item, e.g. `v 1; w 2;` on one line inside a multi-line list item, are now split too (the `;` rule is now relative to the innermost `{`, so `(` outside a `{` no longer blocks it).
+
+**Markers removed.** All `T-040` strict xfails in tests/test_one_line_blocks.py (including `XF_MALFORMED` and `XF_INCLUDE_FUNC`) and `XF_T040` in tests/test_entries_per_line.py. `GUARDED_ELSEWHERE` removed from tests/test_brace_scan.py; `rotorDisk` and `heatedDuct` are in `REAL_OUTCOMES` (both load).
+
+**Markers kept.** T-020 byte-identity (3 tests, `..._written_on_one_line_byte_identical`): still xfail, so the block is written multi-line with every entry kept (the fallback). T-044 (`#eval{` list item values, 3 tests): still xfail; the loud error above is the interim. One new strict xfail, `rotor` in `test_real_snappyHexMeshDict_write_1_equals_write_2`, is NOT caused by T-040: see Deviations.
+
+**#includeFunc.** Foundation 11-14 accept both forms (`functionEntry::readFuncNameArgs`), so it is implemented: lines of an `#includeFunc` whose `(` is still open (or whose next line starts with `(`) are joined before parsing. A span containing a comment, or one never closed, is left as is, so the existing `FoamKitError` still applies. ESI v2412 does not accept it; foamkit now reads it anyway.
+
+**Impeller.** Foundation 11 `impeller/system/createNonConformalCouplesDict` (`name { $other; rotationAngle 60; }`) now loads in full: all 24 couples, every `$nonConformalCoupleIn30;` kept as a variable and written back with its `;`, write 1 == 2 == 3. No error is needed: nothing is dropped. A small inline test (`test_macro_inside_a_one_line_block_is_kept_not_dropped`) covers the shape; the file itself is not added as a fixture.
+
+**One-line FoamFile.** Left alone: a one-line `FoamFile { ... }` is still not expanded (T-021), so its error and the T-021 strict xfails are unchanged. Without this guard it would have started to load as a side effect.
+
+**Deviations from the tester's tests (all fixes of wrong expectations, none weakens a check).**
+- `brace_in_string` expected the unquoted `a}b`; string values keep their quotes everywhere in the tree (`'"a}b"'`), so the expectation was changed to that.
+- `after_include` / `in_functions_after_include` expected a tree without the `#include` entry (`include0` / `unnamed_1`); the expectation now includes it.
+- `_source_keys` counted the words of the multi-line `writeFlags ( ... )` list as top-level keywords; it now skips words inside parentheses.
+- `test_real_snappyHexMeshDict_write_1_equals_write_2[rotor]` is split: `write 2 == write 3` and the trees are asserted for both files; `write 1 == write 2` is asserted for `duct` and is a strict xfail for `rotor`. Cause: `inGroups (fixed);` (a one-line, one-element list) is written `inGroups    ( fixed);` (golden-pinned, e.g. `libs ( "libsampling.so");`) and that text is read back as a multi-line list. Identical on main with no `{ }` involved. It belongs with T-037/T-020 (re-flow); fixing it would change goldens.
+- tests/test_entries_per_line.py: the two tests that pinned the interim T-040 error were rewritten (entries load; a lone word in a block still raises naming the line), `test_one_line_block_alone_on_its_line_is_unchanged` asserts `sub.b == 2`.
+- tests/test_brace_scan.py and tests/probe_runner.py had CRLF line endings; converted to LF.
+- New tests: pathological nesting (10^4 deep braces, list items, lists, unclosed), `$macro;` inside one-line blocks.

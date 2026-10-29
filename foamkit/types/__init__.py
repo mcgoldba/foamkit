@@ -64,6 +64,10 @@ BRACKET_CHARS = {
     ]
 }
 
+#- Deepest nesting of '(' and '{' that is read.  The parser recurses once per
+#  level, so deeper input from an untrusted file would end in a
+#  RecursionError; real case files are a few levels deep.
+MAX_NESTING = 100
 COMMENT_TAG = "_comment_"
 UNNAMED_TAG = "unnamed_"
 TIME_PREFIX = "t_"
@@ -4069,12 +4073,9 @@ class DictFileParser:
                 or all(c in '});)' or c.isspace() for c in rest)):
             self._addExtraLine(text)
         else:
-            why = ("one-line '{ ... }' blocks with several entries are not "
-                   "supported yet (T-040)" if '{' in line else
-                   "it cannot be parsed as a further entry")
             userMsg(f"Line {self._ln(self.i)} of file {self.filepath} has "
-                    f"text after the end of an entry ('{rest}'): {why}.",
-                    "ERROR")
+                    f"text after the end of an entry ('{rest}'): it cannot "
+                    "be parsed as a further entry.", "ERROR")
 
     def _entryEnd(self, text):
         """
@@ -4112,7 +4113,7 @@ class DictFileParser:
                 k = end + 2
                 continue
             break
-        if k >= tail or line.startswith('//', k):
+        if k >= tail or k >= m or line.startswith('//', k):
             return None
         return k
 
@@ -4127,10 +4128,11 @@ class DictFileParser:
             m = re.compile(r'\S').search(line, stop + 2, end)
         return m is not None
 
-    def _checkPiece(self, piece, li):
+    def _checkPiece(self, piece, li, afterEntry=True):
         """
         Raise `FoamKitError` (naming file and line `li`, 0-based) if `piece`,
-        split off after another entry, is a lone word or an empty statement.
+        split off from a line, is a lone word or an empty statement.
+        `afterEntry` is false if the piece follows a bracket, not an entry.
         """
         word = re.sub(r'//.*', '', piece).strip()
         tokens = word.split()
@@ -4147,14 +4149,26 @@ class DictFileParser:
             what = f"an entry without a value ('{word}')"
         else:
             return
-        userMsg(f"Line {li+1} of file {self.filepath} has {what} after "
-                "another entry.", "ERROR")
+        where = ("after another entry" if afterEntry
+                 else "in a one-line '{ ... }' block")
+        userMsg(f"Line {self._ln(li)} of file {self.filepath} has {what} {where}.",
+                "ERROR")
+
+    @staticmethod
+    def _isFoamFileKeyword(line, column):
+        """True if the word before column `column` of `line` is `FoamFile`."""
+        seg = line[max(0, column - 64):column].rstrip()
+        if not seg.endswith('FoamFile'):
+            return False
+        if len(seg) > 8:
+            return seg[-9].isspace()
+        return line[:column].strip() == 'FoamFile'
 
     def _precedingToken(self, li, lj, ws):
         """
         First character of the last whitespace-delimited token before column
         `lj` of line `li` (looking back over earlier lines if this one has
-        none), or ''.  `ws` is the sorted list of whitespace columns of the
+        none), or ''.  Opening parentheses glued to the token are skipped.  `ws` is the sorted list of whitespace columns of the
         line.
         """
         line = self.lines[li]
@@ -4163,7 +4177,10 @@ class DictFileParser:
             j -= 1
         if j > 0:
             w = bisect_left(ws, j)
-            return line[ws[w-1] + 1 if w else 0]
+            start = ws[w-1] + 1 if w else 0
+            while line[start] == '(' and start < j - 1:
+                start += 1      #- (a directive glued to a list, `(#eval{`)
+            return line[start]
         while li > 0:
             li -= 1
             words = self.lines[li].split('//')[0].split()
@@ -4174,97 +4191,169 @@ class DictFileParser:
     def _splitEntries(self):
         """
         Put every entry that follows another one on its line onto a line of
-        its own (T-041), so that the line-based parser sees one entry per
-        line.  An entry ends at a ';' (or at the '}' of a dictionary) that is
-        real syntax per `_lex`: not inside a string, comment, `#{ #}` block,
-        or parentheses.  Brackets opened and not yet closed on the same line
-        (a one-line `{ ... }`, T-040) are left alone, and so is the body of a
-        `{ ... }` that follows a directive (`#codeStream`, `#eval`), which is
-        kept verbatim.  Order is kept, a trailing comment stays with the last
-        entry, and `_lineMap` records the original line of every new line
-        (for error messages).  The work is linear in the length of the file.
+        its own (T-041), and open out every one-line `{ ... }` block (T-040),
+        so that the line-based parser sees one entry per line.  An entry ends
+        at a ';' (or at the '}' of a dictionary) that is real syntax per
+        `_lex`: not inside a string, comment, `#{ #}` block, or parentheses.
+
+        A `{ ... }` that opens and closes on one line (a sub-dictionary
+        `p { type probes; }` or an item of a list, `x ( a { v 1; } );`, also
+        nested or empty) is written out as the multi-line form the parser
+        already reads: `p {`, one line per entry, `}`.  The body of a
+        `{ ... }` that follows a directive (`#codeStream`, `#eval`) and of a
+        `${ ... }` macro is kept verbatim.  Order is kept, a trailing comment
+        stays with the last entry, and `_lineMap` records the original line
+        of every new line (for error messages).  The work is linear in the
+        length of the file.
 
         Raises `FoamKitError`, naming the file and line, if a lone word or
-        an empty statement is left after another entry (`x 1; y`), or if a
-        non-empty one-line `{ ... }` block is on a line that is split.
+        an empty statement is left after another entry (`x 1; y`), if a
+        `{` that opens in the middle of a line is never closed, or if a
+        directive body `#eval{ ... }` is inside a list (T-044).
         """
+        #- line -> {column: True if the piece starting there is an entry
+        #  after another entry, False if it only follows a bracket}
         cuts = {}
-        oneLine = set() #- lines with a non-empty one-line `{ ... }` block
-        stack = []      #- per open '{': (kind, line, column); kind 'd'
-                        #  dictionary, 'v' verbatim body (after a directive),
-                        #  'm' macro (`${`)
-        verbatim = 0    #- number of 'v' in `stack`
-        paren = 0
+        stack = []      #- per open '{': (kind, line, column, parens); kind
+                        #  'd' dictionary, 'v' verbatim body (after a
+                        #  directive), 'm' macro (`${`); parens: the '(' that
+                        #  were open outside this '{' (restored on '}')
+        blocked = 0     #- number of 'v' and 'm' in `stack`
+        paren = 0       #- '(' open inside the innermost '{'
+        openParens = [] #- (line, column after) of the '(' open on this line
+        pending = []    #- (depth, column) of cuts after a ';' inside a '{'
+                        #  that may turn out to be a one-line block
+        openers = []    #- (line, column) of each '{' of a one-line block
+        itemEnds = {}   #- line -> columns after the '}' of a list item
         base = 0        #- len(stack) at the start of the line, or lower
         cached = -1     #- line whose column lists below are filled in
         ws, bnd, hashes, tail = [], [], [], 0
+        inf = 0
+        first = 0       #- column of the first non-blank character of the line
+        nesting = 0     #- number of open '(' and '{'
+
+        def cut(li, column, entry):
+            #- (a cut with only whitespace before it would make an empty line)
+            if column is not None and column > first:
+                cuts.setdefault(li, {})
+                cuts[li][column] = cuts[li].get(column, False) or entry
+
         for li, lj, c in self._lex(self.lines, 0, semis=True):
             if c in '\n\0':
                 base = len(stack)
+                if c == '\n':
+                    pending = []
+                    openParens = []
                 continue
             line = self.lines[li]
-            if c == '(':
-                paren += 1
-                continue
-            if c == ')':
-                paren = max(0, paren - 1)
-                continue
             if cached != li:
                 cached = li
                 ws = [m.start() for m in re.finditer(r'\s', line)]
                 bnd = [m.start() for m in re.finditer(r'[\s;]', line)]
                 hashes = [m.start() for m in re.finditer('#', line)]
                 tail = len(line.rstrip('});) \t\r\n'))
+                inf = len(line) + 1
+                first = len(line) - len(line.lstrip())
+            if c in '({':
+                nesting += 1
+                if nesting > MAX_NESTING:
+                    userMsg(f"Line {self._ln(li)} of file {self.filepath} "
+                            f"is nested deeper than {MAX_NESTING} levels of "
+                            "brackets: not supported.", "ERROR")
+            elif c in ')}':
+                nesting = max(0, nesting - 1)
+            if c == '(':
+                paren += 1
+                openParens.append((li, self._cutAfter(line, lj + 1, inf)))
+                continue
+            if c == ')':
+                paren = max(0, paren - 1)
+                if openParens:
+                    openParens.pop()
+                continue
             if c == '{':
                 if lj > 0 and line[lj-1] == '$':
                     kind = 'm'
                 elif self._precedingToken(li, lj, ws) == '#':
                     kind = 'v'
-                    verbatim += 1
+                    if paren > 0:
+                        userMsg(f"Line {self._ln(li)} of file {self.filepath} has a "
+                                "directive body '{ ... }' inside a list: "
+                                "not supported yet (T-044).", "ERROR")
                 else:
                     kind = 'd'
-                stack.append((kind, li, lj))
+                if kind != 'd':
+                    blocked += 1
+                stack.append((kind, li, lj, paren))
+                paren = 0
             elif c == '}':
-                kind, openLine, openCol = stack.pop() if stack else ('', -1, 0)
-                if kind == 'v':
-                    verbatim -= 1
-                elif (kind == 'd' and openLine == li
-                        and self._hasContent(line, openCol + 1, lj)):
-                    oneLine.add(li)     #- a one-line `{ x ... }`
+                if stack:
+                    kind, openLine, openCol, paren = stack.pop()
+                else:
+                    kind, openLine, openCol, paren = '', -1, 0, 0
+                if kind in ('v', 'm'):
+                    blocked -= 1
                 base = min(base, len(stack))
-                if kind == 'd' and paren == 0 and len(stack) <= base:
+                if kind == 'd' and blocked == 0:
                     k = lj + 1
                     while k < len(line) and line[k].isspace():
                         k += 1
-                    if line[k:k+1] == ';':
-                        lj = k
-                    cut = self._cutAfter(line, lj + 1, tail)
-                    if cut is not None:
-                        cuts.setdefault(li, set()).add(cut)
-            elif paren == 0 and len(stack) <= base and verbatim == 0:  # ';'
+                    end = k if line[k:k+1] == ';' else lj
+                    if (openLine == li and not stack
+                            and self._isFoamFileKeyword(line, openCol)):
+                        #- a one-line `FoamFile { ... }` is T-021's: it keeps
+                        #  its error
+                        pending = []
+                    elif openLine == li:
+                        #- a one-line `{ ... }`: open it out
+                        depth = len(stack)
+                        openers.append((li, openCol))
+                        cut(li, self._cutAfter(line, openCol + 1, inf), False)
+                        cut(li, lj, False)
+                        after = self._cutAfter(line, end + 1, inf)
+                        cut(li, after, False)
+                        if paren > 0 and after is not None:
+                            itemEnds.setdefault(li, set()).add(after)
+                        if openParens and openParens[-1][0] == li:
+                            cut(li, openParens[-1][1], False)
+                        for d, column in pending:
+                            if d > depth:
+                                cut(li, column, True)
+                        pending = [(d, x) for d, x in pending if d <= depth]
+                    elif paren == 0 and len(stack) <= base:
+                        cut(li, self._cutAfter(line, end + 1, tail), True)
+            elif paren == 0 and blocked == 0:  # ';'
                 #- (a ';' glued to a directive word is malformed, not an
                 #  entry end: the directive parser reports it)
                 w = bisect_left(bnd, lj)
                 h = bisect_left(hashes, bnd[w-1] + 1 if w else 0)
                 if h < len(hashes) and hashes[h] < lj:
                     continue
-                cut = self._cutAfter(line, lj + 1, tail)
-                if cut is not None:
-                    cuts.setdefault(li, set()).add(cut)
+                column = self._cutAfter(line, lj + 1, tail)
+                if column is None:
+                    continue
+                if len(stack) <= base:
+                    cut(li, column, True)
+                else:
+                    pending.append((len(stack), column))
+        #- A '{' that opens in the middle of a line (`p { type probes;`) and
+        #  is never closed would swallow the rest of the file.
+        for kind, li, lj, _ in stack:
+            if kind == 'd' and self._hasContent(
+                    self.lines[li], lj + 1, len(self.lines[li])):
+                userMsg(f"Unclosed '{{' on line {self._ln(li)} of file "
+                        f"{self.filepath}.", "ERROR")
         if not cuts:
             return
-        for li in sorted(oneLine.intersection(cuts)):
-            #- the block's entries would be dropped silently (T-040)
-            userMsg(f"Line {li+1} of file {self.filepath} has a one-line "
-                    "'{ ... }' block next to other entries: one-line "
-                    "'{ ... }' blocks with several entries are not "
-                    "supported yet (T-040).", "ERROR")
+        openAt = {}
+        for li, lj in sorted(openers):
+            openAt.setdefault(li, []).append(lj)
         lines, lineMap = [], []
         for li, line in enumerate(self.lines):
             columns = sorted(cuts.get(li, ()))
             if not columns:
                 lines.append(line)
-                lineMap.append(li + 1)
+                lineMap.append(self._ln(li))
                 continue
             body = line.rstrip('\r\n')
             eol = line[len(body):] or '\n'
@@ -4272,14 +4361,103 @@ class DictFileParser:
             bounds = [0] + columns + [len(body)]
             for n in range(len(bounds) - 1):
                 piece = body[bounds[n]:bounds[n+1]].rstrip()
+                opens = openAt.get(li, ())
+                for lj in opens[bisect_left(opens, bounds[n]):
+                                bisect_left(opens, bounds[n+1])]:
+                    #- only a name may stand before the '{' of a block
+                    if len(body[bounds[n]:lj].split()) > 1:
+                        userMsg(f"Line {self._ln(li)} of file {self.filepath} has a "
+                                "one-line '{ ... }' block after other text "
+                                "than its name: it cannot be parsed.",
+                                "ERROR")
+                if bounds[n] in itemEnds.get(li, ()):
+                    #- only the next item or the end of the list may follow
+                    #  the '}' of a list item
+                    text = re.sub(r'//.*', '', piece).strip()
+                    if not (text.endswith('{') or (
+                            text.startswith(')') and all(
+                                ch in ');' or ch.isspace() for ch in text))):
+                        userMsg(f"Line {self._ln(li)} of file {self.filepath} has "
+                                f"text ('{text}') after a one-line '{{ ... }}'"
+                                " item of a list: it cannot be parsed.",
+                                "ERROR")
                 if n > 0:
                     piece = indent + piece.lstrip()
-                    self._checkPiece(piece, li)
+                    self._checkPiece(piece, li, cuts[li][bounds[n]])
                 last = n == len(bounds) - 2
                 lines.append(piece + (line[len(body):] if last else eol))
-                lineMap.append(li + 1)
+                lineMap.append(self._ln(li))
         self.lines = lines
         self._lineMap = lineMap
+
+    def _joinIncludeFunc(self):
+        """
+        Join the lines of a multi-line `#includeFunc` into one (T-040):
+        `#includeFunc foo(a,` + `b)`, and `#includeFunc foo` + `(a, b)`,
+        which OpenFOAM Foundation 11-14 accept.  The arguments end at the
+        ')' that closes the first '(' (brackets in strings and comments do
+        not count, see `_lex`).  A span with a comment in it, or one that is
+        not closed, is left as it is for the directive parser to report.
+        `_lineMap` records the first line of each joined directive.  The
+        work is linear in the length of the file.
+        """
+        lines, lineMap = [], []
+        i, n = 0, len(self.lines)
+        joined = False
+        while i < n:
+            line = self.lines[i]
+            word = line.split(None, 1)[:1]
+            end = i
+            if word == ['#includeFunc']:
+                end = self._includeFuncEnd(i)
+            lineMap.append(self._ln(i))
+            if end == i:
+                lines.append(line)
+                i += 1
+                continue
+            joined = True
+            text = line.rstrip('\r\n')
+            for k in range(i + 1, end + 1):
+                part = self.lines[k].strip()
+                #- (`foo` + `(a, b)`: no space between the name and '(')
+                text += part if part.startswith('(') else ' ' + part
+            lines.append(text + line[len(line.rstrip('\r\n')):])
+            i = end + 1
+        if joined:
+            self.lines = lines
+            self._lineMap = lineMap
+
+    def _includeFuncEnd(self, i):
+        """
+        Index of the last line of the `#includeFunc` that starts on line `i`,
+        or `i` if it is on one line (or cannot be joined, see
+        `_joinIncludeFunc`).
+        """
+        start = self.lines[i].index('#includeFunc') + len('#includeFunc')
+        depth, seen = 0, False
+        for li, lj, c in self._lex(self.lines, i, start, strict=False):
+            if c == '(':
+                depth += 1
+                seen = True
+            elif c == ')':
+                depth -= 1
+            elif c in '\n\0':
+                text = self.lines[li]
+                if c == '\0' or ('//' in text or '/*' in text) and li > i:
+                    return i
+                if depth > 0:
+                    if '//' in text or '/*' in text:
+                        return i
+                elif seen:
+                    return li
+                elif li == i and self.lines[li + 1:li + 2] and (
+                        self.lines[li + 1].lstrip().startswith('(')):
+                    #- `#includeFunc foo`, the arguments on the next line
+                    if '//' in text or '/*' in text:
+                        return i
+                else:
+                    return i
+        return i
 
     def _getLinesList(self, line):
         """
@@ -4317,6 +4495,7 @@ class DictFileParser:
         #- Fail early, naming the file and line, on a string, `/* */` comment
         #  or `#{ #}` block that is never closed.
         self._checkLexical()
+        self._joinIncludeFunc()
         self._splitEntries()
 
         status = 'start'
@@ -4573,8 +4752,7 @@ class DictFileParser:
             #  `{ ... }` block) is parsed against the current line and fails.
             at = self.i if self._extraLineAt is None else self._extraLineAt
             userMsg(f"Line {self._ln(at)} of file {self.filepath} has text "
-                    "that cannot be parsed: one-line '{ ... }' blocks with "
-                    "several entries are not supported yet (T-040).", "ERROR")
+                    "that cannot be parsed.", "ERROR")
         finally:
             if parsingExtraLine:
                 self.extraLine =  self.extraLine[1:] #- remove the line that was 
