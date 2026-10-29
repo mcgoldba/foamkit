@@ -503,8 +503,14 @@ def test_semicolons_inside_a_code_block_are_written_back(tmp_path):
 
 @pytest.mark.parametrize(
     "line",
-    ['x 1; "y"', "x 1; y", "a 1;; b 2;", "a 1; ; b 2;"],
-    ids=["quoted-word", "bare-word", "empty-statement", "spaced-empty-statement"],
+    ['x 1; "y"', "x 1; y", "x 1; y;", "a 1;; b 2;", "a 1; ; b 2;"],
+    ids=[
+        "quoted-word",
+        "bare-word",
+        "keyword-without-value",
+        "empty-statement",
+        "spaced-empty-statement",
+    ],
 )
 @NESTING
 def test_malformed_leftover_after_an_entry_raises_naming_file_and_line(

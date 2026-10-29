@@ -4142,6 +4142,9 @@ class DictFileParser:
         elif (tok[-1] != ';' and tok[0] not in '#{}()'
                 and not any(c in tok for c in '(){}')):
             what = f"an incomplete entry ('{word}')"
+        elif (tok[0] not in '#$' and tok.rstrip(';').strip('"') != ''
+                and not any(c in tok for c in '(){}')):
+            what = f"an entry without a value ('{word}')"
         else:
             return
         userMsg(f"Line {li+1} of file {self.filepath} has {what} after "
