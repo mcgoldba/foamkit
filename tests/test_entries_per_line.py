@@ -354,22 +354,8 @@ def test_three_entries_on_a_line_keep_their_order(tmp_path):
     assert d.z.value == 3
 
 
-@pytest.mark.parametrize(
-    "nested",
-    [
-        False,
-        # - A one-line `sub { b 2; }` inside a dict raises IndexError on main too (its
-        # - queued text is parsed against the wrong line); that is T-040's block parsing.
-        pytest.param(
-            True,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="T-040: one-line {} block inside a dict (IndexError)",
-            ),
-        ),
-    ],
-    ids=["top", "subdict"],
-)
+@NESTING
+@XF_T040
 def test_entry_then_sub_dict_on_one_line_keeps_the_sub_dict(tmp_path, nested):
     path = _write(tmp_path, HEADER + _where("a 1; sub { b 2; }", nested))
     node = _node(_load(path), nested)
@@ -416,13 +402,15 @@ def test_entry_then_print_directive_on_one_line_keeps_it_verbatim(tmp_path, nest
     assert text1 == text2
 
 
+@XF_T040
 def test_entry_after_a_one_line_sub_dict_is_kept(tmp_path):
-    """`d { a 1; } e 2;`: T-041 keeps `e` (the content of `d` is T-040's)."""
+    """`d { a 1; } e 2;` loads with `e` once T-040 keeps the content of `d`; until then it raises."""
     d = _load(_write(tmp_path, HEADER + "d { a 1; } e 2;" + NL))
     assert _keys(d) == ["d", "e"]
     assert d.e.value == 2
 
 
+@XF_T040
 def test_entry_after_a_one_line_sub_dict_survives_a_write(tmp_path):
     path = _write(tmp_path, HEADER + "d { a 1; } e 2;" + NL)
     first, second, text1, text2 = _cycle(tmp_path, path)
@@ -508,6 +496,128 @@ def test_semicolons_inside_a_code_block_are_written_back(tmp_path):
     assert "foo(); bar();" in text1
     assert second.d.z.value == 3
     assert text1 == text2
+
+
+# --- malformed leftovers raise FoamKitError naming file and line (review round 1) -----------
+
+
+@pytest.mark.parametrize(
+    "line",
+    ['x 1; "y"', "x 1; y", "a 1;; b 2;", "a 1; ; b 2;"],
+    ids=["quoted-word", "bare-word", "empty-statement", "spaced-empty-statement"],
+)
+@NESTING
+def test_malformed_leftover_after_an_entry_raises_naming_file_and_line(
+    tmp_path, line, nested
+):
+    msg = _read_error(_write(tmp_path, HEADER + _where(line, nested)))
+    assert "entryLine" in msg
+    assert _line(msg, HL + (3 if nested else 1)), msg
+
+
+def test_a_doubled_semicolon_at_the_end_of_an_entry_still_loads(tmp_path):
+    d = _load(_write(tmp_path, HEADER + "a 1;;" + NL + "b 2;" + NL))
+    assert (d.a.value, d.b.value) == (1, 2)
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["a 1; sub { b 2; }", "d { a 1; } e 2;", "x 1; d { a 1; b 2; }"],
+    ids=["entry-then-block", "block-then-entry", "entry-then-two-entry-block"],
+)
+@NESTING
+def test_one_line_block_with_content_next_to_other_entries_raises_until_t040(
+    tmp_path, line, nested
+):
+    """The block's entries would be dropped silently, so it is an error (not a load)."""
+    msg = _read_error(_write(tmp_path, HEADER + _where(line, nested)))
+    assert "entryLine" in msg
+    assert _line(msg, HL + (3 if nested else 1)), msg
+    assert "one-line '{ ... }' blocks with several entries are not supported yet" in msg
+    assert "T-040" in msg
+
+
+def test_empty_one_line_block_next_to_other_entries_loads(tmp_path):
+    d = _load(_write(tmp_path, HEADER + "d { } e 2;" + NL))
+    assert _keys(d) == ["d", "e"]
+    assert d.e.value == 2
+
+
+def test_one_line_block_alone_on_its_line_is_unchanged(tmp_path):
+    """T-040's pre-existing behaviour: not a T-041 change."""
+    d = _load(_write(tmp_path, HEADER + "sub { b 2; }" + NL + "z 3;" + NL))
+    assert d.z.value == 3
+
+
+def test_text_inside_a_one_line_block_error_names_the_block(tmp_path):
+    msg = _read_error(_write(tmp_path, HEADER + "d { a 1; b 2; }" + NL))
+    assert "entryLine" in msg
+    assert _line(msg, HL + 1), msg
+    assert "one-line" in msg
+    assert "T-040" in msg
+
+
+# --- verbatim directive bodies are not split ---------------------------------------------
+CODE_STREAM = (
+    "d"
+    + NL
+    + "{"
+    + NL
+    + "    a 1;"
+    + NL
+    + "    #codeStream"
+    + NL
+    + "    {"
+    + NL
+    + '        codeOptions "-I."; codeLibs "-lm";'
+    + NL
+    + "    };"
+    + NL
+    + "    z 3;"
+    + NL
+    + "}"
+    + NL
+)
+
+
+def test_code_stream_body_with_several_entries_per_line_stays_verbatim(tmp_path):
+    d = _load(_write(tmp_path, HEADER + CODE_STREAM))
+    assert 'codeOptions "-I."; codeLibs "-lm";' in d.toString()
+    assert (d.d.a.value, d.d.z.value) == (1, 3)
+
+
+def test_multi_line_eval_body_with_a_semicolon_is_not_split(tmp_path):
+    body = "a 1;" + NL + "b #eval" + NL + "{" + NL + "    $a * 2; c" + NL + "};" + NL
+    d = _load(_write(tmp_path, HEADER + body + "z 3;" + NL))
+    assert type(d.b).__name__ == "ofEval"
+    assert "$a * 2; c" in d.b.value
+    assert (d.a.value, d.z.value) == (1, 3)
+
+
+def test_one_line_eval_body_with_a_semicolon_is_not_split(tmp_path):
+    d = _load(_write(tmp_path, HEADER + "b #eval { $a * 2; c };" + NL + "z 3;" + NL))
+    assert d.z.value == 3
+    assert "b" in vars(d)
+
+
+# --- the split is linear in the length of a line ----------------------------------------------
+
+
+def test_one_line_with_many_entries_is_split_in_linear_time(tmp_path):
+    import time
+
+    def split(n):
+        text = HEADER + " ".join(f"x{i} {i};" for i in range(n)) + NL
+        parser = fkt.DictFileParser(_write(tmp_path, text, f"long{n}"))
+        start = time.perf_counter()
+        parser._splitEntries()
+        return time.perf_counter() - start, parser
+
+    small, _ = split(5000)
+    big, parser = split(20000)
+    assert len(parser.lines) == HL + 20000
+    assert big < 5
+    assert big < 12 * small + 0.5
 
 
 # --- one-line FoamFile ----------------------------------------------------------------------

@@ -18,6 +18,7 @@ import subprocess
 import numpy as np
 import shutil
 from math import isclose
+from bisect import bisect_left
 
 from inspect import signature #- just for debugging
 
@@ -4030,6 +4031,8 @@ class DictFileParser:
         #- Original line number of every line, once `_splitEntries` has
         #  split lines (None while the lines are as read)
         self._lineMap = None
+        #- Line index the last queued extra line came from
+        self._extraLineAt = None
         #- Names of unknown directives already warned about (once per file)
         self._warnedDirectives = set()
 
@@ -4042,6 +4045,7 @@ class DictFileParser:
         if line != "":
             # logger.debug(f"Adding extra text:  {line}")
             self.extraLine.append(line)
+            self._extraLineAt = self.i
     
 
     def _queueTrailing(self, line):
@@ -4065,9 +4069,12 @@ class DictFileParser:
                 or all(c in '});)' or c.isspace() for c in rest)):
             self._addExtraLine(text)
         else:
+            why = ("one-line '{ ... }' blocks with several entries are not "
+                   "supported yet (T-040)" if '{' in line else
+                   "it cannot be parsed as a further entry")
             userMsg(f"Line {self._ln(self.i)} of file {self.filepath} has "
-                    f"text after the end of an entry ('{rest}') that cannot "
-                    "be parsed as further entries.", "ERROR")
+                    f"text after the end of an entry ('{rest}'): {why}.",
+                    "ERROR")
 
     def _entryEnd(self, text):
         """
@@ -4086,14 +4093,12 @@ class DictFileParser:
             return i + 1
         return self._lineMap[min(i, len(self._lineMap) - 1)]
 
-    #- A trailing word that cannot be a complete entry.
-    _INCOMPLETE_ENTRY = re.compile(r'[A-Za-z_$][^\s;(){}"]*')
-
-    def _cutAfter(self, line, pos):
+    def _cutAfter(self, line, pos, tail):
         """
         Return the column where the next entry starts in `line`, looking
         from `pos` (just after a ';' or '}' that may end an entry), or None
-        if only whitespace, comments or closing brackets follow.
+        if only whitespace, comments or closing brackets follow.  `tail` is
+        the column from which only closing brackets and whitespace remain.
         """
         m = len(line)
         k = pos
@@ -4107,11 +4112,61 @@ class DictFileParser:
                 k = end + 2
                 continue
             break
-        rest = line[k:]
-        if (rest == '' or rest.startswith('//')
-                or all(c in '});)' or c.isspace() for c in rest)):
+        if k >= tail or line.startswith('//', k):
             return None
         return k
+
+    @staticmethod
+    def _hasContent(line, start, end):
+        """True if `line[start:end]` has more than whitespace and `/* */`."""
+        m = re.compile(r'\S').search(line, start, end)
+        while m is not None and line.startswith('/*', m.start()):
+            stop = line.find('*/', m.start() + 2, end)
+            if stop < 0:
+                return True
+            m = re.compile(r'\S').search(line, stop + 2, end)
+        return m is not None
+
+    def _checkPiece(self, piece, li):
+        """
+        Raise `FoamKitError` (naming file and line `li`, 0-based) if `piece`,
+        split off after another entry, is a lone word or an empty statement.
+        """
+        word = re.sub(r'//.*', '', piece).strip()
+        tokens = word.split()
+        if len(tokens) != 1:
+            return
+        tok = tokens[0]
+        if tok.strip(';') == '':
+            what = "an empty entry"
+        elif (tok[-1] != ';' and tok[0] not in '#{}()'
+                and not any(c in tok for c in '(){}')):
+            what = f"an incomplete entry ('{word}')"
+        else:
+            return
+        userMsg(f"Line {li+1} of file {self.filepath} has {what} after "
+                "another entry.", "ERROR")
+
+    def _precedingToken(self, li, lj, ws):
+        """
+        First character of the last whitespace-delimited token before column
+        `lj` of line `li` (looking back over earlier lines if this one has
+        none), or ''.  `ws` is the sorted list of whitespace columns of the
+        line.
+        """
+        line = self.lines[li]
+        j = lj
+        while j > 0 and line[j-1].isspace():
+            j -= 1
+        if j > 0:
+            w = bisect_left(ws, j)
+            return line[ws[w-1] + 1 if w else 0]
+        while li > 0:
+            li -= 1
+            words = self.lines[li].split('//')[0].split()
+            if words:
+                return words[-1][0]
+        return ''
 
     def _splitEntries(self):
         """
@@ -4120,17 +4175,26 @@ class DictFileParser:
         line.  An entry ends at a ';' (or at the '}' of a dictionary) that is
         real syntax per `_lex`: not inside a string, comment, `#{ #}` block,
         or parentheses.  Brackets opened and not yet closed on the same line
-        (a one-line `{ ... }`, T-040) are left alone.  Order is kept, a
-        trailing comment stays with the last entry, and `_lineMap` records
-        the original line of every new line (for error messages).
+        (a one-line `{ ... }`, T-040) are left alone, and so is the body of a
+        `{ ... }` that follows a directive (`#codeStream`, `#eval`), which is
+        kept verbatim.  Order is kept, a trailing comment stays with the last
+        entry, and `_lineMap` records the original line of every new line
+        (for error messages).  The work is linear in the length of the file.
 
-        Raises `FoamKitError`, naming the file and line, if a bare word
-        (`x 1; y`) is left after the last ';'.
+        Raises `FoamKitError`, naming the file and line, if a lone word or
+        an empty statement is left after another entry (`x 1; y`), or if a
+        non-empty one-line `{ ... }` block is on a line that is split.
         """
         cuts = {}
-        stack = []      #- one flag per open '{': a dictionary (not `${`/`#`)
+        oneLine = set() #- lines with a non-empty one-line `{ ... }` block
+        stack = []      #- per open '{': (kind, line, column); kind 'd'
+                        #  dictionary, 'v' verbatim body (after a directive),
+                        #  'm' macro (`${`)
+        verbatim = 0    #- number of 'v' in `stack`
         paren = 0
         base = 0        #- len(stack) at the start of the line, or lower
+        cached = -1     #- line whose column lists below are filled in
+        ws, bnd, hashes, tail = [], [], [], 0
         for li, lj, c in self._lex(self.lines, 0, semis=True):
             if c in '\n\0':
                 base = len(stack)
@@ -4138,33 +4202,60 @@ class DictFileParser:
             line = self.lines[li]
             if c == '(':
                 paren += 1
-            elif c == ')':
+                continue
+            if c == ')':
                 paren = max(0, paren - 1)
-            elif c == '{':
-                before = line[:lj].split()
-                stack.append(not line[:lj].endswith('$')
-                             and not (before and before[-1].startswith('#')))
+                continue
+            if cached != li:
+                cached = li
+                ws = [m.start() for m in re.finditer(r'\s', line)]
+                bnd = [m.start() for m in re.finditer(r'[\s;]', line)]
+                hashes = [m.start() for m in re.finditer('#', line)]
+                tail = len(line.rstrip('});) \t\r\n'))
+            if c == '{':
+                if lj > 0 and line[lj-1] == '$':
+                    kind = 'm'
+                elif self._precedingToken(li, lj, ws) == '#':
+                    kind = 'v'
+                    verbatim += 1
+                else:
+                    kind = 'd'
+                stack.append((kind, li, lj))
             elif c == '}':
-                plain = stack.pop() if stack else False
+                kind, openLine, openCol = stack.pop() if stack else ('', -1, 0)
+                if kind == 'v':
+                    verbatim -= 1
+                elif (kind == 'd' and openLine == li
+                        and self._hasContent(line, openCol + 1, lj)):
+                    oneLine.add(li)     #- a one-line `{ x ... }`
                 base = min(base, len(stack))
-                if plain and paren == 0 and len(stack) <= base:
+                if kind == 'd' and paren == 0 and len(stack) <= base:
                     k = lj + 1
                     while k < len(line) and line[k].isspace():
                         k += 1
                     if line[k:k+1] == ';':
                         lj = k
-                    cut = self._cutAfter(line, lj + 1)
+                    cut = self._cutAfter(line, lj + 1, tail)
                     if cut is not None:
                         cuts.setdefault(li, set()).add(cut)
-            elif (paren == 0 and len(stack) <= base    # ';'
-                  and not re.search(r'#[^\s;]*$', line[:lj])):
+            elif paren == 0 and len(stack) <= base and verbatim == 0:  # ';'
                 #- (a ';' glued to a directive word is malformed, not an
                 #  entry end: the directive parser reports it)
-                cut = self._cutAfter(line, lj + 1)
+                w = bisect_left(bnd, lj)
+                h = bisect_left(hashes, bnd[w-1] + 1 if w else 0)
+                if h < len(hashes) and hashes[h] < lj:
+                    continue
+                cut = self._cutAfter(line, lj + 1, tail)
                 if cut is not None:
                     cuts.setdefault(li, set()).add(cut)
         if not cuts:
             return
+        for li in sorted(oneLine.intersection(cuts)):
+            #- the block's entries would be dropped silently (T-040)
+            userMsg(f"Line {li+1} of file {self.filepath} has a one-line "
+                    "'{ ... }' block next to other entries: one-line "
+                    "'{ ... }' blocks with several entries are not "
+                    "supported yet (T-040).", "ERROR")
         lines, lineMap = [], []
         for li, line in enumerate(self.lines):
             columns = sorted(cuts.get(li, ()))
@@ -4180,11 +4271,7 @@ class DictFileParser:
                 piece = body[bounds[n]:bounds[n+1]].rstrip()
                 if n > 0:
                     piece = indent + piece.lstrip()
-                    word = re.sub(r'//.*', '', piece).strip()
-                    if self._INCOMPLETE_ENTRY.fullmatch(word):
-                        userMsg(f"Line {li+1} of file {self.filepath} has "
-                                f"an incomplete entry ('{word}') after "
-                                "another entry.", "ERROR")
+                    self._checkPiece(piece, li)
                 last = n == len(bounds) - 2
                 lines.append(piece + (line[len(body):] if last else eol))
                 lineMap.append(li + 1)
@@ -4476,8 +4563,15 @@ class DictFileParser:
                     return value
                 else:
                     return self._parseLineLenGreaterThanTwo()
-        except Exception as e:
-            raise e
+        except (IndexError, AttributeError):
+            if not parsingExtraLine:
+                raise
+            #- Text queued from an earlier line (the rest of a one-line
+            #  `{ ... }` block) is parsed against the current line and fails.
+            at = self.i if self._extraLineAt is None else self._extraLineAt
+            userMsg(f"Line {self._ln(at)} of file {self.filepath} has text "
+                    "that cannot be parsed: one-line '{ ... }' blocks with "
+                    "several entries are not supported yet (T-040).", "ERROR")
         finally:
             if parsingExtraLine:
                 self.extraLine =  self.extraLine[1:] #- remove the line that was 
