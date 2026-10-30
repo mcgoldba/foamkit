@@ -136,3 +136,11 @@ Fixes for the reviewer's REQUEST CHANGES on PR #60.
 - **Note 3.** `_isFoamFileKeyword` only matches `FoamFile` as the first word of the line.
 - **Note 4.** Braces inside `#includeFunc` arguments (`foo(a={b 1;})`) are left verbatim again, as on main.
 - Tests: new groups in tests/test_one_line_blocks.py for each item, plus ratio-based linear-time tests for the three adversarial inputs.
+
+## Review round 2 (implementer, 2026-10-29)
+
+- **Names ending in a number (blocking 1).** The digits before a `{` count as a uniform-list size only when they are a whole word (preceded by whitespace or `>`). `inlet_1 { type patch; }`, `wall_0`, `region-1`, `a.1`, the real ESI `STI_YEH_Index-0 { name STI_YEH_Index-0; }`, top-level, nested and the multi-line `inlet_1 {` / `type patch; inGroups (a);` / `}` all load with their entries.
+- **Consecutive multi-line `#includeFunc` (blocking 2).** The "next line is another `#includeFunc`" stop now applies only while a `(` is still open, so a directive that closed on its `)` line is joined. Both forms, one after the other, load with their arguments and round-trip. Still linear.
+- **Uniform list or numbered block inside a list (notes 4 and 5).** `x ( 1 2{0} );`, `x ( a 2{0} b );`, `x ( a 3 { v 1; } );`, `x (2{0});`, `x ( 2{0} 3{1} );` raise `FoamKitError` with file and line, saying a uniform list or numbered block inside a list is not supported yet (they loaded as `x ( )`, or gave "incomplete entry"). `x ( 0 { v 1; } 1 { v 2; } )` still loads.
+- **`d { "k" 3 { a 1; } }` (note 3).** A `;` inside an `N{ ... }` raises `FoamKitError`.
+- Braces in `#includeFunc` arguments now use the macro (verbatim) kind, so they are not mistaken for uniform lists.

@@ -344,6 +344,39 @@ REFUSED_IN_BLOCK = {
     "semicolon_in_parens": "d { a (1;2); b 2; }",
     "keyword_before_foamfile": "x FoamFile { a 1; }",
 }
+# - Dict names that end in a number are names, not uniform lists (review round 2).
+NUMBERED_NAMES = {
+    "underscore": ("inlet_1 { type patch; }", {"inlet_1": {"type": "patch"}}),
+    "wall_0": ("wall_0 { a 1; }", {"wall_0": {"a": 1}}),
+    "dash": ("region-1 { a 1; }", {"region_1": {"a": 1}}),
+    "dot": ("a.1 { a 1; }", {"a_1": {"a": 1}}),
+    "esi_propeller1": (
+        "STI_YEH_Index-0 { name STI_YEH_Index-0; }",
+        {"STI_YEH_Index_0": {"name": "STI_YEH_Index-0"}},
+    ),
+    "nested": ("d { inlet_1 { type patch; } }", {"d": {"inlet_1": {"type": "patch"}}}),
+    "multi_line_second_entry": (
+        "inlet_1 {\n    type patch; inGroups (a);\n}",
+        {"inlet_1": {"type": "patch", "inGroups": ["a"]}},
+    ),
+}
+# - Uniform lists / numbered blocks inside a list are not read yet: refused, never `x ( )`.
+UNIFORM_IN_LIST = {
+    "after_number": "x ( 1 2{0} );",
+    "after_word": "x ( a 2{0} b );",
+    "spaced_block": "x ( a 3 { v 1; } );",
+    "glued_first": "x (2{0});",
+    "two_glued": "x ( 2{0} 3{1} );",
+    "quoted_key_number_block": 'd { "k" 3 { a 1; } }',
+}
+MULTI_INCLUDE_FUNC = {
+    "paren_next_line_then_args_open": (
+        "#includeFunc a\n(\n    name x;\n)\n#includeFunc b(p,\n    q)\nz 1;"
+    ),
+    "args_open_then_paren_next_line": (
+        "#includeFunc a(x,\n    y)\n#includeFunc b\n(p, q)\nz 1;"
+    ),
+}
 INCLUDE_FUNC = {
     "args_on_two_lines": "#includeFunc foo(a,\n    b)\nz 1;",
     "args_open_paren_on_next_line": "#includeFunc foo\n(a, b)\nz 1;",
@@ -406,6 +439,12 @@ def res(tmp_path_factory):
     cases["includeFunc_braces"] = case("#includeFunc foo(a={b 1;})")
     for k, (body, _) in COMMENT_AFTER_BRACE.items():
         cases[f"comment:{k}"] = case(body)
+    for k, (body, _) in NUMBERED_NAMES.items():
+        cases[f"numbered:{k}"] = case(body)
+    for k, body in UNIFORM_IN_LIST.items():
+        cases[f"uniform_in_list:{k}"] = case(body)
+    for k, body in MULTI_INCLUDE_FUNC.items():
+        cases[f"multiincl:{k}"] = case(body)
     for k, body in REFUSED_IN_BLOCK.items():
         cases[f"refused:{k}"] = case(body)
     for k, body in DEEP_INPUTS.items():
@@ -698,6 +737,32 @@ def test_unreadable_block_content_raises_foamkit_error_naming_the_line(res, name
     assert r["etype"] == "FoamKitError", f"{r['etype']}: {r['msg']}"
     assert FILE in r["msg"]
     assert line_of(r["msg"], HL + 1), r["msg"]
+
+
+@pytest.mark.parametrize("name", sorted(NUMBERED_NAMES))
+def test_dict_name_ending_in_a_number_keeps_its_entries(res, name):
+    r = loaded(res[f"numbered:{name}"])
+    assert r["tree1"] == NUMBERED_NAMES[name][1]
+
+
+@pytest.mark.parametrize("name", sorted(UNIFORM_IN_LIST))
+def test_uniform_list_inside_a_list_raises_naming_the_line(res, name):
+    r = failed(res[f"uniform_in_list:{name}"])
+    assert r["etype"] == "FoamKitError", f"{r['etype']}: {r['msg']}"
+    assert line_of(r["msg"], HL + 1), r["msg"]
+
+
+def test_uniform_list_inside_a_list_message_says_so(res):
+    assert "uniform list" in res["uniform_in_list:glued_first"]["msg"]
+
+
+@pytest.mark.parametrize("name", sorted(MULTI_INCLUDE_FUNC))
+def test_consecutive_multi_line_includeFunc_are_both_joined(res, name):
+    r = loaded(res[f"multiincl:{name}"])
+    assert r["w1"] == r["w2"] == r["w3"]
+    t = r["tree1"]
+    assert t["z"] == 1
+    assert set(t) == {"includeFunc0", "includeFunc1", "z"}, t  # no `unnamed_N` list
 
 
 # --- linear time on adversarial lines ------------------------------------------------------

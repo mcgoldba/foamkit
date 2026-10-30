@@ -4177,11 +4177,20 @@ class DictFileParser:
         k = j
         while k > 0 and line[k-1].isdigit():
             k -= 1
-        if k == j or (k > 0 and line[k-1].isalnum()):
+        if k == j or (k > 0 and not (line[k-1].isspace()
+                                     or line[k-1] == '>')):
             return False
         while k > 0 and line[k-1].isspace():
             k -= 1
         return k > 0 and line[k-1] not in ';{}('
+
+    @staticmethod
+    def _isGluedCount(line, column):
+        """True if the '{' at `column` follows digits glued to it (`2{`)."""
+        k = column
+        while k > 0 and line[k-1].isdigit():
+            k -= 1
+        return k < column and (k == 0 or not line[k-1].isalnum())
 
     def _checkDirectivePiece(self, piece, li):
         """
@@ -4326,9 +4335,16 @@ class DictFileParser:
             if c == '{':
                 if lj > 0 and line[lj-1] == '$':
                     kind = 'm'
-                elif self._isUniformList(line, lj) or (
-                        paren > 0 and line.lstrip().startswith('#includeFunc')):
-                    kind = 'u'      #- `3{0}`, or braces in `#includeFunc` args
+                elif paren > 0 and line.lstrip().startswith('#includeFunc'):
+                    kind = 'm'      #- braces in `#includeFunc` arguments
+                elif (self._isUniformList(line, lj)
+                        or (paren > 0 and self._isGluedCount(line, lj))):
+                    kind = 'u'      #- a uniform list `3{0}`
+                    if paren > 0:
+                        userMsg(f"Line {self._ln(li)} of file {self.filepath} "
+                                "has a uniform list ('N{...}') or a numbered "
+                                "block inside a list: not supported yet.",
+                                "ERROR")
                 elif self._precedingToken(li, lj, ws) == '#':
                     kind = 'v'
                     if paren > 0 and paren <= len(openParens):
@@ -4396,6 +4412,11 @@ class DictFileParser:
                             cut(li, column, True)
                     elif paren == 0 and len(stack) <= base:
                         cut(li, self._cutAfter(line, end + 1, tail), True)
+            elif stack and stack[-1][0] == 'u':  # ';'
+                userMsg(f"Line {self._ln(li)} of file {self.filepath} has a "
+                        "';' inside 'N{ ... }': a dictionary after a number "
+                        "that follows another word cannot be parsed.",
+                        "ERROR")
             elif paren > 0 and blocked == 0 and len(stack) > base:  # ';'
                 pending.append((len(stack), None, True))
             elif paren == 0 and blocked == 0:  # ';'
@@ -4524,8 +4545,9 @@ class DictFileParser:
                 text = self.lines[li]
                 if c == '\0' or ('//' in text or '/*' in text) and li > i:
                     return i
-                if li + 1 < len(self.lines) and self.lines[li + 1].split(
-                        None, 1)[:1] == ['#includeFunc']:
+                if depth > 0 and li + 1 < len(self.lines) and (
+                        self.lines[li + 1].split(None, 1)[:1]
+                        == ['#includeFunc']):
                     return i    #- (another directive: this one is not closed)
                 if depth > 0:
                     if '//' in text or '/*' in text:
