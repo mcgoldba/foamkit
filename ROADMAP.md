@@ -73,13 +73,13 @@ None open.
 - **Lists gain a spurious empty item (pre-existing):** one-line lists such as `x ( 1 );` after a write → read cycle, and, per the T-037 tester, **multi-line lists on first read** too. Fixed in T-037 (PR #53).
 - `_parseListValues` appends to the module-level `BRACKET_CHARS['list']` on every call, so state leaks between parses (T-038).
 - **Keyword glued to its bracket (pre-existing):** `x(1);` fails with `AttributeError`, `x{ a 1; }` loses its `}` on write, and Foundation 11's 6 `phaseProperties` files (`f10{dSph 10e-3; value 0.0;}`) fail with `IndexError` (T-039 + T-040). Glued lists occur in 0 Foundation 11-14 tutorial dictionaries.
-- **One-line `{…}` blocks (pre-existing):** real Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` **hang** (>25 s). One-line lists of dicts silently lose every item (`x ( );`), and one-line sub-dicts lose their entries (T-040).
-- **A second entry on a line** (`x 1; y 2;`) is parsed since T-041. A one-line `{ … }` block with content next to another entry raises `FoamKitError` naming T-040; a one-line block alone on its line (`sub { b 2; }`) still loads as an empty dict, silently (T-040).
+- **One-line `{…}` blocks:** fixed by T-040 (PR #60): sub-dicts and lists of dicts load with every entry, and the Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` hangs are gone. Unedited one-line blocks are written multi-line (one-line layout is T-020).
+- **A second entry on a line** (`x 1; y 2;`) is parsed since T-041, including next to one-line `{ … }` blocks since T-040.
 - Other gaps:
   - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
   - writer whitespace churn (T-019, T-020);
   - one-line `FoamFile { ... }` (T-021);
-  - one-line sub-dicts (`p { type probes; }`) now silently lose their entries after T-035 (T-040, absorbed T-022);
+  - one-line sub-dicts (`p { type probes; }`) lost their entries after T-035; fixed by T-040;
   - Foundation 14 named dimension sets read as strings (T-013).
 - `fk init` / `write` / `plot` / `edit` on a non-case path crash with a traceback, or open a console with no case, instead of printing a clean `ERROR:` (T-023).
 - `userMsg` does not escape C1 or bidi control characters, and `str(FoamKitError(42))` raises (T-034).
