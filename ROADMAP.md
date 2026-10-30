@@ -42,6 +42,11 @@ None open.
 - **T-034 (2026-10-21), a T-025 follow-up:** escape C1 and bidi controls in `userMsg`; `str(FoamKitError)` must never raise.
 - **T-022 merged into T-040 (maintainer, 2026-10-27).** T-040 (#54, size M) now covers all one-line `{…}` blocks: sub-dicts and lists of dicts. That includes the post-T-035 regression where `d { a 1; } e 2;` silently drops entries, and the Foundation 11 `phaseProperties` evidence. #29 is closed as not planned, and T-039 now depends on T-040. T-039, T-040 and T-041 are approved.
 - **T-037 option (b) (maintainer, 2026-10-27):** until T-041 lands, a second entry on the same line after **any** entry raises `FoamKitError` instead of being silently dropped. Real tutorials with a second entry on a line, such as Foundation 11-14 `fluid/helmholtzResonance/system/blockMeshDict:144-145` and banner files with a one-line `FoamFile { … }` (T-021), fail to load until T-041 lands. None of them loaded on main either (they hit `IndexError` or "Parser made no progress"); they now get a clear error. The affected files are listed in T-041.
+- **Write layout (maintainer, 2026-10-30):** "lets keep the original layout as default, and have a format command the reformats the whole file. Lets also add a user specifiable option to reformat files on write by default."
+  - The default is policy (a): unedited entries keep their layout, and only edited or new entries are written in the standard style (T-020).
+  - Policy (b), reformatting the whole file, is an explicit command: `fk format` and `fkf.formatDictFile`/`fkf.formatCase` (T-050, #67).
+  - An opt-in `format_on_write` config key (default off, set with `fk setConfig`), plus `case.write(format=...)`, makes (b) the write default and bypasses T-020.
+  - Tabs and spaces are never mixed. Formatting changes whitespace only; anything else raises `FoamKitError` with file and line, and nothing is written. The docs page is T-051 (#68).
 - **Fixtures** come from real files only. Source URLs are in `docs/plans/openfoam-compatibility.md`, under References.
 - **`bin/` scripts:** deleted by the maintainer.
 
@@ -109,7 +114,7 @@ None open.
 
 T-042 comes first: it loses an edit at the last step on a stock tutorial. T-048 and T-046 follow because a write silently changes meaning or produces an unreadable file, which outranks the loud load failures below.
 
-After these, the order is T-043 → T-047 → T-045 → T-044 → T-039 → T-023 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+After these, the order is T-043 → T-047 → T-045 → T-044 → T-039 → T-023 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-020 → T-050 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
 - T-043 (`#{ … #}` code entries, #58) moved out of the ranked seven to make room for T-048 and T-046; it is loud.
 - T-047 (`${name}`, #63) blocks 28 ESI and 1-2 Foundation 13/14 files per release with a bare `ValueError`; it follows T-030, which fixes the same check.
 - T-045 (one-element lists, #61): a `TypeError` in 16-25 files per release, and a second-write type change in hundreds (no data loss). It clears the unticketed T-040 xfail.
@@ -123,6 +128,8 @@ After these, the order is T-043 → T-047 → T-045 → T-044 → T-039 → T-02
 - T-049 (`N{…}` list items, #65) is valid syntax with 0 tutorial files and already fails loudly with file and line.
 - T-024 can be picked up any time.
 - T-020 follows T-007, so it can use T-007's test cases as its corpus.
+- T-050 (`fk format` and `format_on_write`, #67) is a feature, not a data-loss fix, so it ranks below every load and write bug. It goes right after T-020 because, until T-020 lands, every write already reformats the whole file and the option would do almost nothing. T-050 plugs into T-020's preserve-or-regenerate split. Its whitespace-only safety check also refuses files that the earlier writer fixes (T-019, T-031, T-032, T-033, T-045) would otherwise make it reject.
+- T-051 (formatting docs page, #68) waits for T-001, T-020 and T-050, so it documents a stable API.
 
 ## Deferred
 - **Removing `SystemExit` from `FoamKitError`:** the release after T-017 ships.
