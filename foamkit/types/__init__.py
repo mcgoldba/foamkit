@@ -5393,6 +5393,14 @@ class DictFileParser:
                         value_ += values[i]
                         i += 1
                 incl = None
+                if re.search(r'\S\s+#\S*include', value_):
+                    #- a tab-separated item before the directive: it can't
+                    #  be split here, so refuse rather than lose its text
+                    userMsg(f"Line {self._ln(self.i)} of file "
+                            f"{self.filepath} has an include directive "
+                            f"after another list item separated by a tab "
+                            f"('{value_.strip()}'); separate them with a "
+                            f"space.", 'ERROR')
                 directive = re.match(r'\s*(#\S*include\S*)', value_)
                 if directive is not None:
                     #- (a tab may precede the keyword or separate it from
@@ -5988,6 +5996,11 @@ class DictFileParser:
                 line_ += self.lines[self.i]
             if nd > 0:
                 # logger.debug("Found open dictionary...")
+                if self.i + 1 >= len(self.lines):
+                    userMsg(f"Invalid syntax.  Could not locate the end of "
+                            f"'{entryName}' (unbalanced brackets) starting on "
+                            f"line {self._ln(startLine)} of file "
+                            f"{self.filepath}.", 'ERROR')
                 self.i += 1
                 line_ += self.lines[self.i]
 

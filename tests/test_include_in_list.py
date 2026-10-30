@@ -430,3 +430,29 @@ def test_a_tab_before_a_directive_in_a_one_line_list(tmp_path, text):
     assert len(_in_lists(first)) == 1
     assert text1 == text2
     assert "mag U" not in text1
+
+
+@pytest.mark.parametrize(
+    "item",
+    ["#includeFunc mag(U)", '#include "f"'],
+    ids=["includeFunc", "include"],
+)
+def test_a_directive_after_a_tab_separated_item_raises_instead_of_losing_text(
+    tmp_path, item
+):
+    """T-042 review round 2: `1<TAB>#includeFunc mag(U)` must not lose `( )`."""
+    path = tmp_path / "tabItem"
+    path.write_text(HEADER + "x" + NL + "(" + NL + "\t1\t" + item + NL + ");" + NL)
+    with pytest.raises(FoamKitError) as err:
+        _load(path)
+    assert "tabItem" in str(err.value)
+    assert re.search(rf"\bline {HL + 3}\b", str(err.value), re.IGNORECASE)
+
+
+def test_a_directive_after_a_space_separated_item_still_loads(tmp_path):
+    first, _, text1, text2 = _cycle(
+        tmp_path,
+        HEADER + "x" + NL + "(" + NL + "\t1 #includeFunc mag(U)" + NL + ");" + NL,
+    )
+    assert len(_in_lists(first)) == 1
+    assert text1 == text2
