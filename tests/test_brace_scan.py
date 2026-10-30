@@ -588,9 +588,22 @@ REAL_OUTCOMES = {
     "foundation-14.cylinder.fvSchemes": FoamKitError,
     "foundation-14.engine2Valve2D.fvConstraints": FoamKitError,
     "foundation-14.floatingBeam.blockMeshDict": ValueError,
-    # - Loads since T-041; the whole-file write still fails on the `#include` inside
-    # - the `blocks` list (unticketed: ofInclude.toString() takes no indent).
-    "foundation-14.helmholtzResonance.blockMeshDict": TypeError,
+    # - Load since T-041 and write since T-042 (an `#include` inside the `blocks` and
+    # - `boundary` lists is one include item).
+    "foundation-14.helmholtzResonance.blockMeshDict": [
+        "scale",
+        "vertices",
+        "x1",
+        "x2",
+        "x3",
+    ],
+    "esi-v2606.helmholtzResonance.blockMeshDict": [
+        "scale",
+        "vertices",
+        "x1",
+        "x2",
+        "x3",
+    ],
     "foundation-14.trayedPipe.createZonesDict": FoamKitError,
     # - Added with T-041: the multi-entry-line files load (rotatingCube stops earlier on
     # - value-position `#calc`, T-027).

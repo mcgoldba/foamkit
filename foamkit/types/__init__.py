@@ -1524,6 +1524,9 @@ class ofList(_ofNamedTypeBase):
                 elif isinstance(v, ofStr):
                     # dStr += f'"{v}"'
                     dStr+= v.toString(indent=False, ofRep=False).rstrip('\n')+" "
+                elif isinstance(v, ofInclude):
+                    #- a directive item is a line of its own
+                    dStr += "\n"+indentStr+v.toListString()+"\n"+indentStr
                 elif hasattr(v, 'toString') and callable(getattr(v, 'toString')):
                     dStr += v.toString(ofRep=False, indent=False).strip()+" "
                 else:
@@ -1577,6 +1580,8 @@ class ofSplitList(ofList):
                     # else:
                     #     dStr += TAB_STR+ofList(value=v).toString()
 
+                elif isinstance(v, ofInclude):
+                    dStr += TAB_STR+v.toListString()+'\n'
                 elif hasattr(v, 'toString') and callable(getattr(v, 'toString')):
                     # dStr :qa+= printNameStr(TAB_STR+k)+v.toString()
                     dStr += TAB_STR+v.toString(ofRep=False, indent=False)
@@ -2853,6 +2858,10 @@ class ofInclude(_ofFunctionEntry):
     def toString(self, ofRep=False) -> str:
         return printNameStr(f"#{self.feType}")+'"'+str(self.value)+'"\n\n'
 
+    def toListString(self) -> str:
+        """The directive on one line, as written inside a list."""
+        return f'#{self.feType} "{self.value}"'
+
     def __str__(self):
         return self.toString().rstrip('\n')
 
@@ -2888,6 +2897,11 @@ class ofIncludeFunc(ofInclude):
     def toString(self, ofRep=False) -> str:
         v = f'"{self.value}"' if self._quoted else str(self.value)
         return printNameStr(f"#{self.feType}")+v+'\n\n'
+
+    def toListString(self) -> str:
+        """The directive on one line, as written inside a list."""
+        v = f'"{self.value}"' if self._quoted else str(self.value)
+        return f'#{self.feType} {v}'
 
 @dataclass
 class ofEval(_ofFunctionEntry, _ofNamedTypeBase):
@@ -5207,6 +5221,81 @@ class DictFileParser:
 
         return list_
 
+    def _parseListInclude(self, keyword, values, start):
+        """
+        Read the argument of an include-family directive inside a list.
+
+        `keyword` (e.g. `#include`) was just read from `values`, which
+        continues at index `start`.  Returns `(item, end)`: the include item
+        and the index just past its argument.  Returns `(None, start)` if the
+        word is not a directive or its argument is not a quoted string (or,
+        for `#includeFunc`, a name with optional balanced arguments): the
+        caller then keeps the words as separate tokens, as before.  Raises
+        `FoamKitError` if an `#includeFunc` argument is unbalanced or
+        unterminated.
+        """
+        if INCLUDE_KEYWORD_RE.fullmatch(keyword) is None:
+            return None, start
+        n = len(values)
+        j = start
+        while j < n and values[j].isspace():
+            j += 1
+        if j >= n:
+            return None, start
+        if values[j] == '"':
+            k = j+1
+            while k < n and values[k] != '"':
+                k += 2 if values[k] == '\\' else 1
+            if k >= n:
+                if keyword == '#includeFunc':
+                    userMsg(f"Unterminated quote in #includeFunc on line "
+                            f"{self._ln(self.i)} of file {self.filepath}.",
+                            "ERROR")
+                return None, start
+            token, quoted, end = values[j+1:k], True, k+1
+            if '"' in token or '\\' in token:
+                return None, start
+        elif keyword == '#includeFunc':
+            k, depth = j, 0
+            while k < n:
+                c = values[k]
+                if c.isspace() and depth == 0:
+                    break
+                if c == '"' and depth > 0:
+                    k += 1
+                    while k < n and values[k] != '"':
+                        k += 2 if values[k] == '\\' else 1
+                    if k >= n:
+                        userMsg(f"Unterminated quote in #includeFunc on line "
+                                f"{self._ln(self.i)} of file "
+                                f"{self.filepath}.", "ERROR")
+                    k += 1
+                    continue
+                if c == '(':
+                    depth += 1
+                elif c == ')':
+                    if depth == 0:
+                        break  #- closes the list
+                    depth -= 1
+                k += 1
+            if depth > 0:
+                userMsg(f"Unbalanced parentheses in #includeFunc on line "
+                        f"{self._ln(self.i)} of file {self.filepath}.",
+                        "ERROR")
+            token, quoted, end = values[j:k], False, k
+        else:
+            return None, start
+        if token == '':
+            return None, start
+        if keyword == '#includeFunc':
+            return ofIncludeFunc(token, _quoted=quoted), end
+        if keyword == '#includeEtc':
+            return ofIncludeEtc(token), end
+        incl = ofInclude(token)
+        if keyword != '#include':
+            incl.keyword = keyword
+        return incl, end
+
     def _parseListValues(self, values : str):
         """
         convert a string value from file into the appropriate ofType.
@@ -5299,7 +5388,14 @@ class DictFileParser:
                     else:
                         value_ += values[i]
                         i += 1
-                if value_ != '':
+                incl = None
+                if value_.startswith('#') and 'include' in value_:
+                    incl, end = self._parseListInclude(value_, values, i)
+                if incl is not None:
+                    #- an include directive is one item, not two tokens
+                    listValues.append(incl)
+                    i = end-1
+                elif value_ != '':
                     type_, v = self._parseValue(value_)
                     if type_ is not None:
                         listValues.append(type_(value=v)) # TODO: save as ofType?
