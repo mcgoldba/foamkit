@@ -4156,13 +4156,64 @@ class DictFileParser:
 
     @staticmethod
     def _isFoamFileKeyword(line, column):
-        """True if the word before column `column` of `line` is `FoamFile`."""
-        seg = line[max(0, column - 64):column].rstrip()
-        if not seg.endswith('FoamFile'):
+        """True if `FoamFile` is the first word of `line` and ends before `column`."""
+        end = column
+        while end > 0 and line[end-1].isspace():
+            end -= 1
+        if line[max(0, end-8):end] != 'FoamFile':
             return False
-        if len(seg) > 8:
-            return seg[-9].isspace()
-        return line[:column].strip() == 'FoamFile'
+        return line[:end-8].strip() == ''
+
+    @staticmethod
+    def _isUniformList(line, column):
+        """
+        True if the '{' at `column` of `line` follows an integer that is not
+        the first word of an entry: a uniform list `3{0}` (also after
+        `List<scalar>`), not a dictionary named by a number.
+        """
+        j = column
+        while j > 0 and line[j-1].isspace():
+            j -= 1
+        k = j
+        while k > 0 and line[k-1].isdigit():
+            k -= 1
+        if k == j or (k > 0 and line[k-1].isalnum()):
+            return False
+        while k > 0 and line[k-1].isspace():
+            k -= 1
+        return k > 0 and line[k-1] not in ';{}('
+
+    def _checkDirectivePiece(self, piece, li):
+        """
+        Raise `FoamKitError` if `piece`, from a line with a one-line block,
+        is an `#include` family directive with text after its argument
+        (`#include "f" a 1;`): that is not read yet.
+        """
+        text = piece.strip()
+        word = text.split(None, 1)[0] if text else ''
+        if not (word.startswith('#include')
+                and INCLUDE_KEYWORD_RE.fullmatch(word)):
+            return
+        tokens, depth, quote, inToken = 0, 0, False, False
+        for ch in text[len(word):] + ' ':
+            if quote:
+                quote = ch != '"'
+            elif ch == '"':
+                quote, inToken = True, True
+            elif ch == '(':
+                depth += 1
+                inToken = True
+            elif ch == ')':
+                depth = max(0, depth - 1)
+            elif ch.isspace() and depth == 0:
+                tokens += inToken
+                inToken = False
+            elif ch != ';':
+                inToken = True
+        if tokens > 1:
+            userMsg(f"Line {self._ln(li)} of file {self.filepath} has "
+                    f"text after the argument of '{word}' in a one-line "
+                    "'{ ... }' block: it cannot be parsed.", "ERROR")
 
     def _precedingToken(self, li, lj, ws):
         """
@@ -4209,7 +4260,7 @@ class DictFileParser:
         Raises `FoamKitError`, naming the file and line, if a lone word or
         an empty statement is left after another entry (`x 1; y`), if a
         `{` that opens in the middle of a line is never closed, or if a
-        directive body `#eval{ ... }` is inside a list (T-044).
+        directive body `#eval{ ... }` is inside a one-line list (T-044).
         """
         #- line -> {column: True if the piece starting there is an entry
         #  after another entry, False if it only follows a bracket}
@@ -4221,8 +4272,9 @@ class DictFileParser:
         blocked = 0     #- number of 'v' and 'm' in `stack`
         paren = 0       #- '(' open inside the innermost '{'
         openParens = [] #- (line, column after) of the '(' open on this line
-        pending = []    #- (depth, column) of cuts after a ';' inside a '{'
-                        #  that may turn out to be a one-line block
+        pending = []    #- (depth, column, bad) of cuts after a ';' inside a
+                        #  '{' that may turn out to be a one-line block;
+                        #  bad: a ';' inside parentheses (no cut)
         openers = []    #- (line, column) of each '{' of a one-line block
         itemEnds = {}   #- line -> columns after the '}' of a list item
         base = 0        #- len(stack) at the start of the line, or lower
@@ -4274,14 +4326,32 @@ class DictFileParser:
             if c == '{':
                 if lj > 0 and line[lj-1] == '$':
                     kind = 'm'
+                elif self._isUniformList(line, lj) or (
+                        paren > 0 and line.lstrip().startswith('#includeFunc')):
+                    kind = 'u'      #- `3{0}`, or braces in `#includeFunc` args
                 elif self._precedingToken(li, lj, ws) == '#':
                     kind = 'v'
-                    if paren > 0:
-                        userMsg(f"Line {self._ln(li)} of file {self.filepath} has a "
-                                "directive body '{ ... }' inside a list: "
-                                "not supported yet (T-044).", "ERROR")
+                    if paren > 0 and paren <= len(openParens):
+                        #- (a list that opens and closes on this line lost
+                        #  its items; items of a multi-line list load)
+                        word = line[:lj].split()[-1].lstrip('(')
+                        what = ("; the value is T-044" if
+                                word.startswith('#eval') else "")
+                        userMsg(f"Line {self._ln(li)} of file {self.filepath} "
+                                f"has a directive body ('{word}{{ ... }}') in "
+                                f"a one-line list: not supported yet{what}.",
+                                "ERROR")
                 else:
                     kind = 'd'
+                    if not self._isFoamFileKeyword(line, lj):
+                        #- a comment right after the '{' must not hide the
+                        #  entry that follows it
+                        k = lj + 1
+                        while k < len(line) and line[k].isspace():
+                            k += 1
+                        if line.startswith('/*', k):
+                            cut(li, k, False)
+                            cut(li, self._cutAfter(line, lj + 1, inf), False)
                 if kind != 'd':
                     blocked += 1
                 stack.append((kind, li, lj, paren))
@@ -4291,7 +4361,7 @@ class DictFileParser:
                     kind, openLine, openCol, paren = stack.pop()
                 else:
                     kind, openLine, openCol, paren = '', -1, 0, 0
-                if kind in ('v', 'm'):
+                if kind in ('v', 'm', 'u'):
                     blocked -= 1
                 base = min(base, len(stack))
                 if kind == 'd' and blocked == 0:
@@ -4316,12 +4386,18 @@ class DictFileParser:
                             itemEnds.setdefault(li, set()).add(after)
                         if openParens and openParens[-1][0] == li:
                             cut(li, openParens[-1][1], False)
-                        for d, column in pending:
-                            if d > depth:
-                                cut(li, column, True)
-                        pending = [(d, x) for d, x in pending if d <= depth]
+                        while pending and pending[-1][0] > depth:
+                            _, column, bad = pending.pop()
+                            if bad:
+                                userMsg(f"Line {self._ln(li)} of file "
+                                        f"{self.filepath} has a ';' inside "
+                                        "parentheses in a one-line '{ ... }' "
+                                        "block.", "ERROR")
+                            cut(li, column, True)
                     elif paren == 0 and len(stack) <= base:
                         cut(li, self._cutAfter(line, end + 1, tail), True)
+            elif paren > 0 and blocked == 0 and len(stack) > base:  # ';'
+                pending.append((len(stack), None, True))
             elif paren == 0 and blocked == 0:  # ';'
                 #- (a ';' glued to a directive word is malformed, not an
                 #  entry end: the directive parser reports it)
@@ -4335,7 +4411,7 @@ class DictFileParser:
                 if len(stack) <= base:
                     cut(li, column, True)
                 else:
-                    pending.append((len(stack), column))
+                    pending.append((len(stack), column, False))
         #- A '{' that opens in the middle of a line (`p { type probes;`) and
         #  is never closed would swallow the rest of the file.
         for kind, li, lj, _ in stack:
@@ -4381,9 +4457,12 @@ class DictFileParser:
                                 f"text ('{text}') after a one-line '{{ ... }}'"
                                 " item of a list: it cannot be parsed.",
                                 "ERROR")
+                if li in openAt:
+                    self._checkDirectivePiece(piece, li)
                 if n > 0:
                     piece = indent + piece.lstrip()
-                    self._checkPiece(piece, li, cuts[li][bounds[n]])
+                    if not piece.lstrip().startswith('/*'):
+                        self._checkPiece(piece, li, cuts[li][bounds[n]])
                 last = n == len(bounds) - 2
                 lines.append(piece + (line[len(body):] if last else eol))
                 lineMap.append(self._ln(li))
@@ -4445,6 +4524,9 @@ class DictFileParser:
                 text = self.lines[li]
                 if c == '\0' or ('//' in text or '/*' in text) and li > i:
                     return i
+                if li + 1 < len(self.lines) and self.lines[li + 1].split(
+                        None, 1)[:1] == ['#includeFunc']:
+                    return i    #- (another directive: this one is not closed)
                 if depth > 0:
                     if '//' in text or '/*' in text:
                         return i

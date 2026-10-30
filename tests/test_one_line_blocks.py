@@ -301,6 +301,49 @@ DEEP_INPUTS = {
     "lists": "x " + "( " * DEEP + ")" * DEEP + ";",
     "unclosed": "a " + "b { " * DEEP,
 }
+# - Uniform lists `N{value}` are values, not one-line blocks (review round 1): they loaded
+# - and round-tripped before T-040 and must keep doing so.  Two are real ESI lines
+# - (v2412/v2606 twoSimpleRotors and twoSquaresOutDomain fvSchemes).
+UNIFORM = {
+    "esi_searchBoxDivisions": "searchBoxDivisions  3{(64 64 1)};",
+    "plain": "x 3{0};",
+    "spaced": "x 3 {0};",
+    "typed": "x List<scalar> 3{0.5};",
+    "nonuniform": "value nonuniform List<scalar> 4{0};",
+    "in_dict": "d\n{\n    x 3{0};\n    y 2;\n}",
+    "in_one_line_block": "d { x 3{0}; y 2; }",
+}
+UNIFORM_TEXT = {
+    "esi_searchBoxDivisions": "3{(64 64 1)}",
+    "plain": "3{0}",
+    "spaced": "3 {0}",
+    "typed": "List<scalar> 3{0.5}",
+    "nonuniform": "nonuniform List<scalar> 4{0}",
+    "in_dict": "3{0}",
+    "in_one_line_block": "3{0}",
+}
+# - `#eval{ }` / `#codeStream { }` in a list: refused only for a list that opens and closes
+# - on one line (that used to load EMPTY); an item of a multi-line list loaded correctly
+# - before T-040 (ESI filmPanel0 blockMeshDict) and must still load.
+EVAL_MULTI_LINE = (
+    "vertices\n(\n    (#eval{$xcore + $xside}  0   $zmin)\n    (1 2 3)\n);"
+)
+# - Comments right after the `{` must not hide the entry that follows (silent drop).
+COMMENT_AFTER_BRACE = {
+    "sub": ("p { /* c */ a 1; }", {"p": {"a": 1}}),
+    "nested": ("p { q { /* c */ a 1; } }", {"p": {"q": {"a": 1}}}),
+    "list_item": ("x ( a { /* c */ v 1; } );", {"x": [{"v": 1}]}),
+    "multi_line": ("p { /* c */\n    a 1;\n}", {"p": {"a": 1}}),
+}
+# - Input a one-line block cannot hold yet: FoamKitError naming the line, never a
+# - TypeError or a silent drop.
+REFUSED_IN_BLOCK = {
+    "include_then_entry": 'p { #include "f" a 1; }',
+    "includeEtc_then_entry": 'p { #includeEtc "x" a 1; }',
+    "two_includeFunc": "functions { #includeFunc residuals #includeFunc probes }",
+    "semicolon_in_parens": "d { a (1;2); b 2; }",
+    "keyword_before_foamfile": "x FoamFile { a 1; }",
+}
 INCLUDE_FUNC = {
     "args_on_two_lines": "#includeFunc foo(a,\n    b)\nz 1;",
     "args_open_paren_on_next_line": "#includeFunc foo\n(a, b)\nz 1;",
@@ -356,6 +399,15 @@ def res(tmp_path_factory):
     cases["macro"] = case(
         "x 1;" + NL + "d { $x; rotationAngle 60; }" + NL + "e { $d; rotationAngle 90; }"
     )
+    for k, body in UNIFORM.items():
+        cases[f"uniform:{k}"] = case(body)
+    cases["evalmulti"] = case(EVAL_MULTI_LINE)
+    cases["codestream_list"] = case("x ( #codeStream { a } );")
+    cases["includeFunc_braces"] = case("#includeFunc foo(a={b 1;})")
+    for k, (body, _) in COMMENT_AFTER_BRACE.items():
+        cases[f"comment:{k}"] = case(body)
+    for k, body in REFUSED_IN_BLOCK.items():
+        cases[f"refused:{k}"] = case(body)
     for k, body in DEEP_INPUTS.items():
         cases[f"deep:{k}"] = case(body, limit=8.0)
     for k, path in REAL.items():
@@ -592,6 +644,97 @@ def test_macro_inside_a_one_line_block_is_kept_not_dropped(res):
     assert re.search(r"\$d;", r["w1"])
     assert r["tree1"]["d"]["rotationAngle"] == 60
     assert r["tree1"]["e"]["rotationAngle"] == 90
+
+
+# --- review round 1 ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", sorted(UNIFORM))
+def test_uniform_list_is_a_value_not_a_one_line_block(res, name):
+    r = loaded(res[f"uniform:{name}"])
+    assert r["w1"] == r["w2"] == r["w3"]
+    assert UNIFORM_TEXT[name] in r["w1"]
+
+
+def test_uniform_list_in_a_dict_keeps_its_neighbour(res):
+    assert tree(res["uniform:in_dict"])["d"]["y"] == 2
+    assert tree(res["uniform:in_one_line_block"])["d"]["y"] == 2
+
+
+def test_eval_in_an_item_of_a_multi_line_list_still_loads(res):
+    r = loaded(res["evalmulti"])
+    assert r["w1"] == r["w2"] == r["w3"]
+    assert "(#eval{$xcore + $xside} 0 $zmin)" in r["w1"]
+    assert "(1 2 3)" in r["w1"]
+
+
+def test_codeStream_in_a_one_line_list_is_refused_without_citing_T044(res):
+    r = failed(res["codestream_list"])
+    assert r["etype"] == "FoamKitError"
+    assert line_of(r["msg"], HL + 1), r["msg"]
+    assert "T-044" not in r["msg"]
+
+
+def test_eval_in_a_one_line_list_names_T044(res):
+    assert "T-044" in res["eval:top_level"]["msg"]
+
+
+def test_braces_in_includeFunc_arguments_still_load(res):
+    r = loaded(res["includeFunc_braces"])
+    assert "foo(a={b 1;})" in r["w1"]
+    assert r["w1"] == r["w2"] == r["w3"]
+
+
+@pytest.mark.parametrize("name", sorted(COMMENT_AFTER_BRACE))
+def test_comment_right_after_a_brace_does_not_hide_the_next_entry(res, name):
+    r = loaded(res[f"comment:{name}"])
+    assert r["tree1"] == COMMENT_AFTER_BRACE[name][1]
+    assert r["w1"] == r["w2"] == r["w3"]
+
+
+@pytest.mark.parametrize("name", sorted(REFUSED_IN_BLOCK))
+def test_unreadable_block_content_raises_foamkit_error_naming_the_line(res, name):
+    r = failed(res[f"refused:{name}"])
+    assert r["etype"] == "FoamKitError", f"{r['etype']}: {r['msg']}"
+    assert FILE in r["msg"]
+    assert line_of(r["msg"], HL + 1), r["msg"]
+
+
+# --- linear time on adversarial lines ------------------------------------------------------
+
+
+def _read_time(tmp_path, body, n):
+    import time
+
+    from foamkit import FoamKitError
+    import foamkit.types as fkt
+
+    path = tmp_path / f"perf{n}"
+    with open(path, "w", newline="\n") as f:
+        f.write(doc(body(n)))
+    start = time.perf_counter()
+    try:
+        fkt.DictFileParser(path).readDictFile()
+    except FoamKitError:
+        pass
+    return time.perf_counter() - start
+
+
+PERF_BODIES = {
+    "unclosed_includeFunc": lambda n: "#includeFunc f(\n" * n,
+    "includeFunc_paren_on_next_line": lambda n: "#includeFunc f\n(\n" * n,
+    "entries_then_blocks_on_one_line": lambda n: (
+        "p { " + "a 1; " * n + "q { } " * n + "}"
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(PERF_BODIES))
+def test_adversarial_input_is_read_in_linear_time(tmp_path, name):
+    small = _read_time(tmp_path, PERF_BODIES[name], 1000)
+    big = _read_time(tmp_path, PERF_BODIES[name], 4000)
+    assert big < 8 * small + 0.5
+    assert big < 5
 
 
 # --- code blocks (must keep working) -----------------------------------------------------------

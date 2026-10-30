@@ -121,3 +121,18 @@ So in this environment the input loses data silently rather than hanging. The re
 - tests/test_entries_per_line.py: the two tests that pinned the interim T-040 error were rewritten (entries load; a lone word in a block still raises naming the line), `test_one_line_block_alone_on_its_line_is_unchanged` asserts `sub.b == 2`.
 - tests/test_brace_scan.py and tests/probe_runner.py had CRLF line endings; converted to LF.
 - New tests: pathological nesting (10^4 deep braces, list items, lists, unclosed), `$macro;` inside one-line blocks.
+
+## Review round 1 (implementer, 2026-10-29)
+
+Fixes for the reviewer's REQUEST CHANGES on PR #60.
+
+- **Uniform lists `N{value}` (blocking 1).** A `{` after an integer that is not the first word of an entry (`x 3{0};`, `x 3 {0};`, `List<scalar> 3{0.5}`, `nonuniform List<scalar> 4{0}`, the two real ESI `searchBoxDivisions 3{(64 64 1)};` lines, also inside a dict or a one-line block) is a value and is left alone, as before T-040. A number at the start of an entry or after `(`, `;`, `{`, `}` is still a dictionary name (`0 { a 1; }`). Tests added.
+- **`#eval{` in a list (blocking 2).** Refused only when the list opens and closes on one line (the case that loaded EMPTY on main). An item of a multi-line list (ESI `filmPanel0` `(#eval{$xcore + $xside} 0 $zmin)`) loads and writes back exactly as on main. The message cites T-044 only for `#eval`; `#codeStream { }` in a one-line list gets a plain "not supported yet" message.
+- **`_joinIncludeFunc` (blocking 3).** The look-ahead stops at the next `#includeFunc` line, so an unclosed one no longer lexes to the end of the file: `"#includeFunc f(\n" * 16000` takes 0.2 s (was 43 s at 4000).
+- **`pending` list (blocking 4).** Promotion pops the suffix of a stack, so it is amortised linear: the reviewer's one-line case at N=16000 takes 2.5 s (was 26 s at 8000).
+- **Comment after `{` (blocking 5).** A `/* ... */` right after a dictionary's `{` is put on a line of its own and the entry after it on the next, so `p { /* c */ a 1; }`, `p { q { /* c */ a 1; } }`, `x ( a { /* c */ v 1; } );` and the multi-line `p { /* c */` + `a 1;` (which lost `a` on main) all keep `a`.
+- **Note 1.** `p { #include "f" a 1; }`, `p { #includeEtc "x" a 1; }` and `functions { #includeFunc residuals #includeFunc probes }` raise `FoamKitError` with file and line (text after an include directive's argument is not read yet). Not fixed, left for a ticket: the `#include "f";` write bug and `${a}` `ValueError` (both on main in multi-line form).
+- **Note 2.** A `;` inside parentheses in a one-line block (`d { a (1;2); b 2; }`) raises `FoamKitError`.
+- **Note 3.** `_isFoamFileKeyword` only matches `FoamFile` as the first word of the line.
+- **Note 4.** Braces inside `#includeFunc` arguments (`foo(a={b 1;})`) are left verbatim again, as on main.
+- Tests: new groups in tests/test_one_line_blocks.py for each item, plus ratio-based linear-time tests for the three adversarial inputs.
