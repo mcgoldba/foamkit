@@ -69,3 +69,10 @@ Method: every `FoamFile` dictionary under `tutorials/` (ESI read from git `HEAD`
 - **Test markers removed:** `XFAIL_TODAY` table and `XF` markers in `tests/test_include_in_list.py`; both `XF_INCLUDE_IN_LIST` markers in `tests/test_entries_per_line.py`; `REAL_OUTCOMES` for both helmholtz files in `tests/test_brace_scan.py` now pin their first keys instead of `TypeError`.
 - **Deviation:** the criterion "listed by `iterDirectives`" is dropped: `iterDirectives` yields only `ofVerbatimDirective` items and never lists `ofInclude`, even at dict level. Tests assert the list holds an include item instead. `iterDirectives` is unchanged.
 - **Positional indexing (risk from the ticket):** a plain list holding an include now has one item where it had two, e.g. F12-14 `engine2Valve2D` `times ( #include "$FOAM_CASE/constant/meshTimes" );` holds one `ofInclude` instead of `ofStr('#include')`, `ofStr('"$FOAM_CASE/..."')`. Intended fix; mention in the commit body.
+
+### Review round 1
+- **Tabs (blocking):** `_parseListValues` splits words only on `(`, `)` and space, so a tab kept the keyword inside a word and the line fell back to the token path (parentheses of `#includeFunc mag(U)` lost). The word is now matched with `\s*(#\S*include\S*)` and the argument is read from the end of the keyword, so a tab before the keyword or between keyword and argument works in multi-line and one-line lists. The global delimiter handling is untouched (T-038).
+- **Nested lists:** `ofList.toString` writes an include inline (`(1 #include "f")`) when `indent=False`.
+- **Unbalanced `#includeFunc f(a, b );`:** the open-list scan in `_parseLineLenGreaterThanTwo` ran off the end of the file with a bare `IndexError`; it now raises `FoamKitError` naming the file and the line where the entry starts (applies to any unbalanced entry that reaches end of file there).
+- `_parseListInclude` docstring notes that any `#...include...` keyword followed by a quoted string becomes an include item.
+- Tests added to `tests/test_include_in_list.py`: every table row with tab indentation, tab between keyword and argument, and mixed; tab cases in one-line lists; nested list; unbalanced argument.

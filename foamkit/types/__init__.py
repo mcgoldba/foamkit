@@ -1525,8 +1525,11 @@ class ofList(_ofNamedTypeBase):
                     # dStr += f'"{v}"'
                     dStr+= v.toString(indent=False, ofRep=False).rstrip('\n')+" "
                 elif isinstance(v, ofInclude):
-                    #- a directive item is a line of its own
-                    dStr += "\n"+indentStr+v.toListString()+"\n"+indentStr
+                    if indent:
+                        #- a directive item is a line of its own
+                        dStr += "\n"+indentStr+v.toListString()+"\n"+indentStr
+                    else:
+                        dStr += v.toListString()+" "
                 elif hasattr(v, 'toString') and callable(getattr(v, 'toString')):
                     dStr += v.toString(ofRep=False, indent=False).strip()+" "
                 else:
@@ -5225,7 +5228,8 @@ class DictFileParser:
         """
         Read the argument of an include-family directive inside a list.
 
-        `keyword` (e.g. `#include`) was just read from `values`, which
+        Any `#...include...` keyword followed by a quoted string becomes an
+        include item, as at dict level.  `keyword` (e.g. `#include`) was just read from `values`, which
         continues at index `start`.  Returns `(item, end)`: the include item
         and the index just past its argument.  Returns `(None, start)` if the
         word is not a directive or its argument is not a quoted string (or,
@@ -5389,8 +5393,13 @@ class DictFileParser:
                         value_ += values[i]
                         i += 1
                 incl = None
-                if value_.startswith('#') and 'include' in value_:
-                    incl, end = self._parseListInclude(value_, values, i)
+                directive = re.match(r'\s*(#\S*include\S*)', value_)
+                if directive is not None:
+                    #- (a tab may precede the keyword or separate it from
+                    #  its argument; spaces never end up inside a word)
+                    incl, end = self._parseListInclude(
+                        directive.group(1), values,
+                        i - len(value_) + directive.end())
                 if incl is not None:
                     #- an include directive is one item, not two tokens
                     listValues.append(incl)
@@ -5939,11 +5948,12 @@ class DictFileParser:
         #- check if the line value terminates in an open list or dict
         logger.debug("Checking for open list or dict")
         line_ = copy.deepcopy(line)
+        startLine = self.i
 
         while True:
             nl = 0
             nd = 0
-            # Extract key values, note that key may contain parenthises, 
+            # Extract key values, note that key may contain parenthises,
             # e.g. as in the fvSchemes dictionary
             lineList = self._getLinesList(line_)
             entryName = lineList[0]
@@ -5965,6 +5975,12 @@ class DictFileParser:
             
             if nl <= 0 and nd <= 0:
                 break
+
+            if self.i + 1 >= len(self.lines):
+                userMsg(f"Invalid syntax.  Could not locate the end of "
+                        f"'{entryName}' (unbalanced brackets) starting on "
+                        f"line {self._ln(startLine)} of file "
+                        f"{self.filepath}.", 'ERROR')
 
             if nl > 0:
                 # logger.debug("Found open list..")

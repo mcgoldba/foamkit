@@ -361,3 +361,72 @@ def test_engine2valve_style_times_list_loads_and_keeps_the_path(tmp_path):
     path.write_text(HEADER + 'times ( #include "$FOAM_CASE/constant/meshTimes" );\n')
     text = _load(path).toString()
     assert '"$FOAM_CASE/constant/meshTimes"' in text
+
+
+# --- review round 1: tabs, nested lists, unbalanced arguments -----------------------------
+TAB = "\t"
+TAB_ROWS = []
+for _name, _text, _directive, _kind in ROWS:
+    _dir_tab = _directive.replace(" ", TAB, 1)  # - tab between keyword and argument
+    TAB_ROWS.append(
+        pytest.param(_text.replace("    ", TAB), _directive, id=f"{_name}-tab-indent")
+    )
+    TAB_ROWS.append(
+        pytest.param(
+            _text.replace(_directive, _dir_tab), _directive, id=f"{_name}-tab-between"
+        )
+    )
+    TAB_ROWS.append(
+        pytest.param(
+            _text.replace("    ", " \t").replace(_directive, _dir_tab),
+            _directive,
+            id=f"{_name}-mixed",
+        )
+    )
+
+
+@pytest.mark.parametrize(("text", "directive"), TAB_ROWS)
+def test_tabs_around_the_directive_still_give_one_include_item(
+    tmp_path, text, directive
+):
+    first, second, text1, text2 = _cycle(tmp_path, HEADER + text)
+    assert len(_in_lists(first)) == 1
+    assert _lines(text1).count(_norm(directive)) == 1
+    assert _shape(first) == _shape(second)
+    assert text1 == text2
+
+
+def test_tab_indented_includefunc_arguments_never_lose_the_parentheses(tmp_path):
+    text = (
+        f"x\n(\n\t{FUNC}\n\t#includeFunc\tmag(U)\n    #includeFunc mag(U)\t// c\n);\n"
+    )
+    written = _cycle(tmp_path, HEADER + text)[2]
+    lines = _lines(written)
+    assert lines.count(FUNC) == 1
+    assert lines.count("#includeFunc mag(U)") == 2
+
+
+def test_an_include_in_a_nested_list_is_written_inline(tmp_path):
+    text1 = _cycle(tmp_path, HEADER + 'x ( (1 #include "f") 3 );\n')[2]
+    assert '(1 #include "f")' in text1
+
+
+def test_unbalanced_includefunc_arguments_in_a_list_raise_foamkiterror(tmp_path):
+    path = tmp_path / "unbal"
+    path.write_text(HEADER + "x ( #includeFunc f(a, b );\n")
+    with pytest.raises(FoamKitError) as err:
+        _load(path)
+    assert "unbal" in str(err.value)
+    assert re.search(rf"\bline {HL + 1}\b", str(err.value), re.IGNORECASE)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ['x (\t#include "f" );\n', "x (\t#includeFunc mag(U)\t1 );\n"],
+    ids=["include", "includeFunc"],
+)
+def test_a_tab_before_a_directive_in_a_one_line_list(tmp_path, text):
+    first, _, text1, text2 = _cycle(tmp_path, HEADER + text)
+    assert len(_in_lists(first)) == 1
+    assert text1 == text2
+    assert "mag U" not in text1
