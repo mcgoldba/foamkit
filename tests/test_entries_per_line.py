@@ -50,7 +50,6 @@ SECTOR = RELEASES / "foundation-14.refineMeshSector.blockMeshDict"
 FIELD_DIRS = RELEASES / "foundation-11.refineFieldDirs.blockMeshDict"
 DAM_BREAK = RELEASES / "foundation-11.damBreak.fvSchemes"
 HL = HEADER.count(NL)
-XF_T040 = pytest.mark.xfail(strict=True, reason="T-040: one-line {} block")
 XF_INCLUDE_IN_LIST = pytest.mark.xfail(
     strict=True,
     reason="unticketed: writing a #include inside a list fails "
@@ -355,7 +354,6 @@ def test_three_entries_on_a_line_keep_their_order(tmp_path):
 
 
 @NESTING
-@XF_T040
 def test_entry_then_sub_dict_on_one_line_keeps_the_sub_dict(tmp_path, nested):
     path = _write(tmp_path, HEADER + _where("a 1; sub { b 2; }", nested))
     node = _node(_load(path), nested)
@@ -365,9 +363,8 @@ def test_entry_then_sub_dict_on_one_line_keeps_the_sub_dict(tmp_path, nested):
 
 
 @NESTING
-@XF_T040
 def test_entry_then_sub_dict_on_one_line_keeps_the_sub_dict_content(tmp_path, nested):
-    """The content of a one-line `{ ... }` is T-040's; T-041 only owes the `sub` entry."""
+    """The content of a one-line `{ ... }` is kept (T-040)."""
     path = _write(tmp_path, HEADER + _where("a 1; sub { b 2; }", nested))
     assert _node(_load(path), nested).sub.b.value == 2
 
@@ -402,15 +399,13 @@ def test_entry_then_print_directive_on_one_line_keeps_it_verbatim(tmp_path, nest
     assert text1 == text2
 
 
-@XF_T040
 def test_entry_after_a_one_line_sub_dict_is_kept(tmp_path):
-    """`d { a 1; } e 2;` loads with `e` once T-040 keeps the content of `d`; until then it raises."""
+    """`d { a 1; } e 2;` loads with `e` (T-041) and the content of `d` (T-040)."""
     d = _load(_write(tmp_path, HEADER + "d { a 1; } e 2;" + NL))
     assert _keys(d) == ["d", "e"]
     assert d.e.value == 2
 
 
-@XF_T040
 def test_entry_after_a_one_line_sub_dict_survives_a_write(tmp_path):
     path = _write(tmp_path, HEADER + "d { a 1; } e 2;" + NL)
     first, second, text1, text2 = _cycle(tmp_path, path)
@@ -420,9 +415,8 @@ def test_entry_after_a_one_line_sub_dict_survives_a_write(tmp_path):
     assert text1 == text2
 
 
-@XF_T040
 def test_entry_inside_a_one_line_sub_dict_is_kept(tmp_path):
-    """`a` of `d { a 1; } e 2;` is lost today and stays lost after T-041 (T-040)."""
+    """`a` of `d { a 1; } e 2;` is kept (T-040)."""
     d = _load(_write(tmp_path, HEADER + "d { a 1; } e 2;" + NL))
     assert d.d.a.value == 1
 
@@ -527,20 +521,24 @@ def test_a_doubled_semicolon_at_the_end_of_an_entry_still_loads(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "line",
-    ["a 1; sub { b 2; }", "d { a 1; } e 2;", "x 1; d { a 1; b 2; }"],
+    "line, keys, block, content",
+    [
+        ("a 1; sub { b 2; }", ["a", "sub"], "sub", {"b": 2}),
+        ("d { a 1; } e 2;", ["d", "e"], "d", {"a": 1}),
+        ("x 1; d { a 1; b 2; }", ["x", "d"], "d", {"a": 1, "b": 2}),
+    ],
     ids=["entry-then-block", "block-then-entry", "entry-then-two-entry-block"],
 )
 @NESTING
-def test_one_line_block_with_content_next_to_other_entries_raises_until_t040(
-    tmp_path, line, nested
+def test_one_line_block_with_content_next_to_other_entries_loads_every_entry(
+    tmp_path, line, keys, block, content, nested
 ):
-    """The block's entries would be dropped silently, so it is an error (not a load)."""
-    msg = _read_error(_write(tmp_path, HEADER + _where(line, nested)))
-    assert "entryLine" in msg
-    assert _line(msg, HL + (3 if nested else 1)), msg
-    assert "one-line '{ ... }' blocks with several entries are not supported yet" in msg
-    assert "T-040" in msg
+    """Was an error until T-040 (the block's entries would have been dropped)."""
+    d = _load(_write(tmp_path, HEADER + _where(line, nested)))
+    node = _node(d, nested)
+    assert _keys(node) == keys
+    inner = vars(node)[block]
+    assert {k: vars(inner)[k].value for k in _keys(inner)} == content
 
 
 def test_empty_one_line_block_next_to_other_entries_loads(tmp_path):
@@ -550,17 +548,24 @@ def test_empty_one_line_block_next_to_other_entries_loads(tmp_path):
 
 
 def test_one_line_block_alone_on_its_line_is_unchanged(tmp_path):
-    """T-040's pre-existing behaviour: not a T-041 change."""
+    """Loads with its entry (T-040; it was silently empty before)."""
     d = _load(_write(tmp_path, HEADER + "sub { b 2; }" + NL + "z 3;" + NL))
+    assert d.sub.b.value == 2
     assert d.z.value == 3
 
 
-def test_text_inside_a_one_line_block_error_names_the_block(tmp_path):
-    msg = _read_error(_write(tmp_path, HEADER + "d { a 1; b 2; }" + NL))
+def test_several_entries_inside_a_one_line_block_are_all_kept(tmp_path):
+    d = _load(_write(tmp_path, HEADER + "d { a 1; b 2; }" + NL))
+    assert _keys(d) == ["d"]
+    assert (d.d.a.value, d.d.b.value) == (1, 2)
+
+
+def test_text_inside_a_one_line_block_that_cannot_be_parsed_names_the_line(tmp_path):
+    """`{ a 1; b }`: a lone word is an incomplete entry, never a silent drop."""
+    msg = _read_error(_write(tmp_path, HEADER + "d { a 1; b }" + NL))
     assert "entryLine" in msg
     assert _line(msg, HL + 1), msg
-    assert "one-line" in msg
-    assert "T-040" in msg
+    assert "incomplete entry ('b')" in msg
 
 
 # --- verbatim directive bodies are not split ---------------------------------------------

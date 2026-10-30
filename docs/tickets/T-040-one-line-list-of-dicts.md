@@ -89,3 +89,58 @@ So in this environment the input loses data silently rather than hanging. The re
 - It also fixes the post-T-035 regression where one-line sub-dicts silently lose their entries.
 - Both are worse than loud load failures.
 - T-039 (Foundation 11 `phaseProperties`) depends on it.
+
+## Completion notes (implementer, 2026-10-29)
+
+**What changed.** `DictFileParser._splitEntries` (foamkit/types/__init__.py) now opens out every one-line `{ ... }` block (sub-dict `p { type probes; }` or list item `x ( a { v 1; } );`, also nested, empty or anonymous) into the multi-line form the line parser already reads (`p {`, one line per entry, `}`), using T-035's `_lex` for the bracket ends, so strings holding `}`, comments, `#{ #}` blocks and `#codeStream`/`#eval`/`${ }` bodies are untouched. `_lineMap` keeps the physical line for every error. The pass is linear (a 10^4-item one-line list loads in about 1.6 s; 4x10^4 items scale linearly). New: `_joinIncludeFunc` (multi-line `#includeFunc`), `MAX_NESTING = 100`, `_isFoamFileKeyword`.
+
+**User-visible effect.**
+- One-line blocks load with every entry, as sub-dicts and as list items. `d { a 1; } e 2;` keeps `a` and `e`. The multi-line named list of dicts that hung now loads. Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` load (about 15 ms) with every entry; they hung before.
+- Unterminated input (`p { type probes;`, `x ( { v 1; );`, `p { a { b 1; }`) raises `FoamKitError` naming the file and the physical line of the `{` (was `IndexError`).
+- Text the parser cannot place next to a one-line block raises `FoamKitError` with file and line, never a partial load: a list item that is not `name {` / `{` (`x ( 1 2 { v 1; } )`, `x ( { v 1; } 1 2 )`, `x ( ( 1 2 ) { v 1; } )`), a lone word inside the block (`d { a 1; b }`).
+- `#eval{ ... }` / `#eval { ... }` inside a list (`origin (#eval{0.5 * $S} 0 0);`) raises `FoamKitError` with file and line (it used to load an empty or wrong list; the real value is T-044).
+- Nesting deeper than 100 levels of `(`/`{` raises `FoamKitError` (it was `RecursionError` after 10-30 s).
+- Multi-line `#includeFunc foo(a,\n b)` and `#includeFunc foo\n(a, b)` load and round-trip as `#includeFunc foo(a, b)` (see below).
+- Entries after `{` in a list-of-dicts item, e.g. `v 1; w 2;` on one line inside a multi-line list item, are now split too (the `;` rule is now relative to the innermost `{`, so `(` outside a `{` no longer blocks it).
+
+**Markers removed.** All `T-040` strict xfails in tests/test_one_line_blocks.py (including `XF_MALFORMED` and `XF_INCLUDE_FUNC`) and `XF_T040` in tests/test_entries_per_line.py. `GUARDED_ELSEWHERE` removed from tests/test_brace_scan.py; `rotorDisk` and `heatedDuct` are in `REAL_OUTCOMES` (both load).
+
+**Markers kept.** T-020 byte-identity (3 tests, `..._written_on_one_line_byte_identical`): still xfail, so the block is written multi-line with every entry kept (the fallback). T-044 (`#eval{` list item values, 3 tests): still xfail; the loud error above is the interim. One new strict xfail, `rotor` in `test_real_snappyHexMeshDict_write_1_equals_write_2`, is NOT caused by T-040: see Deviations.
+
+**#includeFunc.** Foundation 11-14 accept both forms (`functionEntry::readFuncNameArgs`), so it is implemented: lines of an `#includeFunc` whose `(` is still open (or whose next line starts with `(`) are joined before parsing. A span containing a comment, or one never closed, is left as is, so the existing `FoamKitError` still applies. ESI v2412 does not accept it; foamkit now reads it anyway.
+
+**Impeller.** Foundation 11 `impeller/system/createNonConformalCouplesDict` (`name { $other; rotationAngle 60; }`) now loads in full: all 24 couples, every `$nonConformalCoupleIn30;` kept as a variable and written back with its `;`, write 1 == 2 == 3. No error is needed: nothing is dropped. A small inline test (`test_macro_inside_a_one_line_block_is_kept_not_dropped`) covers the shape; the file itself is not added as a fixture.
+
+**One-line FoamFile.** Left alone: a one-line `FoamFile { ... }` is still not expanded (T-021), so its error and the T-021 strict xfails are unchanged. Without this guard it would have started to load as a side effect.
+
+**Deviations from the tester's tests (all fixes of wrong expectations, none weakens a check).**
+- `brace_in_string` expected the unquoted `a}b`; string values keep their quotes everywhere in the tree (`'"a}b"'`), so the expectation was changed to that.
+- `after_include` / `in_functions_after_include` expected a tree without the `#include` entry (`include0` / `unnamed_1`); the expectation now includes it.
+- `_source_keys` counted the words of the multi-line `writeFlags ( ... )` list as top-level keywords; it now skips words inside parentheses.
+- `test_real_snappyHexMeshDict_write_1_equals_write_2[rotor]` is split: `write 2 == write 3` and the trees are asserted for both files; `write 1 == write 2` is asserted for `duct` and is a strict xfail for `rotor`. Cause: `inGroups (fixed);` (a one-line, one-element list) is written `inGroups    ( fixed);` (golden-pinned, e.g. `libs ( "libsampling.so");`) and that text is read back as a multi-line list. Identical on main with no `{ }` involved. It belongs with T-037/T-020 (re-flow); fixing it would change goldens.
+- tests/test_entries_per_line.py: the two tests that pinned the interim T-040 error were rewritten (entries load; a lone word in a block still raises naming the line), `test_one_line_block_alone_on_its_line_is_unchanged` asserts `sub.b == 2`.
+- tests/test_brace_scan.py and tests/probe_runner.py had CRLF line endings; converted to LF.
+- New tests: pathological nesting (10^4 deep braces, list items, lists, unclosed), `$macro;` inside one-line blocks.
+
+## Review round 1 (implementer, 2026-10-29)
+
+Fixes for the reviewer's REQUEST CHANGES on PR #60.
+
+- **Uniform lists `N{value}` (blocking 1).** A `{` after an integer that is not the first word of an entry (`x 3{0};`, `x 3 {0};`, `List<scalar> 3{0.5}`, `nonuniform List<scalar> 4{0}`, the two real ESI `searchBoxDivisions 3{(64 64 1)};` lines, also inside a dict or a one-line block) is a value and is left alone, as before T-040. A number at the start of an entry or after `(`, `;`, `{`, `}` is still a dictionary name (`0 { a 1; }`). Tests added.
+- **`#eval{` in a list (blocking 2).** Refused only when the list opens and closes on one line (the case that loaded EMPTY on main). An item of a multi-line list (ESI `filmPanel0` `(#eval{$xcore + $xside} 0 $zmin)`) loads and writes back exactly as on main. The message cites T-044 only for `#eval`; `#codeStream { }` in a one-line list gets a plain "not supported yet" message.
+- **`_joinIncludeFunc` (blocking 3).** The look-ahead stops at the next `#includeFunc` line, so an unclosed one no longer lexes to the end of the file: `"#includeFunc f(\n" * 16000` takes 0.2 s (was 43 s at 4000).
+- **`pending` list (blocking 4).** Promotion pops the suffix of a stack, so it is amortised linear: the reviewer's one-line case at N=16000 takes 2.5 s (was 26 s at 8000).
+- **Comment after `{` (blocking 5).** A `/* ... */` right after a dictionary's `{` is put on a line of its own and the entry after it on the next, so `p { /* c */ a 1; }`, `p { q { /* c */ a 1; } }`, `x ( a { /* c */ v 1; } );` and the multi-line `p { /* c */` + `a 1;` (which lost `a` on main) all keep `a`.
+- **Note 1.** `p { #include "f" a 1; }`, `p { #includeEtc "x" a 1; }` and `functions { #includeFunc residuals #includeFunc probes }` raise `FoamKitError` with file and line (text after an include directive's argument is not read yet). Not fixed, left for a ticket: the `#include "f";` write bug and `${a}` `ValueError` (both on main in multi-line form).
+- **Note 2.** A `;` inside parentheses in a one-line block (`d { a (1;2); b 2; }`) raises `FoamKitError`.
+- **Note 3.** `_isFoamFileKeyword` only matches `FoamFile` as the first word of the line.
+- **Note 4.** Braces inside `#includeFunc` arguments (`foo(a={b 1;})`) are left verbatim again, as on main.
+- Tests: new groups in tests/test_one_line_blocks.py for each item, plus ratio-based linear-time tests for the three adversarial inputs.
+
+## Review round 2 (implementer, 2026-10-29)
+
+- **Names ending in a number (blocking 1).** The digits before a `{` count as a uniform-list size only when they are a whole word (preceded by whitespace or `>`). `inlet_1 { type patch; }`, `wall_0`, `region-1`, `a.1`, the real ESI `STI_YEH_Index-0 { name STI_YEH_Index-0; }`, top-level, nested and the multi-line `inlet_1 {` / `type patch; inGroups (a);` / `}` all load with their entries.
+- **Consecutive multi-line `#includeFunc` (blocking 2).** The "next line is another `#includeFunc`" stop now applies only while a `(` is still open, so a directive that closed on its `)` line is joined. Both forms, one after the other, load with their arguments and round-trip. Still linear.
+- **Uniform list or numbered block inside a list (notes 4 and 5).** `x ( 1 2{0} );`, `x ( a 2{0} b );`, `x ( a 3 { v 1; } );`, `x (2{0});`, `x ( 2{0} 3{1} );` raise `FoamKitError` with file and line, saying a uniform list or numbered block inside a list is not supported yet (they loaded as `x ( )`, or gave "incomplete entry"). `x ( 0 { v 1; } 1 { v 2; } )` still loads.
+- **`d { "k" 3 { a 1; } }` (note 3).** A `;` inside an `N{ ... }` raises `FoamKitError`.
+- Braces in `#includeFunc` arguments now use the macro (verbatim) kind, so they are not mistaken for uniform lists.

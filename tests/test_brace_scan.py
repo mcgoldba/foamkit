@@ -598,6 +598,27 @@ REAL_OUTCOMES = {
     "foundation-14.refineMeshSector.blockMeshDict": ["Ax", "Ay", "Bx", "By"],
     "foundation-11.refineFieldDirs.blockMeshDict": ["convertToMeters", "Ax", "Ay"],
     "foundation-11.damBreak.fvSchemes": ["ddtSchemes", "gradSchemes", "divSchemes"],
+    # - Added with T-040: both hung before (one-line `{ ... }` sub-dicts and list items);
+    # - they load with every entry (timeout-guarded in tests/test_one_line_blocks.py).
+    "foundation-11.rotorDisk.snappyHexMeshDict": [
+        "includeEtc0",
+        "castellatedMesh",
+        "snap",
+        "addLayers",
+        "geometry",
+        "castellatedMeshControls",
+        "snapControls",
+        "addLayersControls",
+    ],
+    "foundation-11.heatedDuct.snappyHexMeshDict": [
+        "includeEtc0",
+        "castellatedMesh",
+        "snap",
+        "addLayers",
+        "geometry",
+        "castellatedMeshControls",
+        "addLayersControls",
+    ],
 }
 
 

@@ -56,6 +56,7 @@ None open.
 - **T-016** verbatim directive framework (`ofVerbatimDirective`, `OF_DIRECTIVES`, `iterDirectives`); single-line directives kept verbatim; stock Foundation 14 pitzDaily loads (1c10451, PR #46)
 - **T-035** dict/list end scan ignores braces inside strings, comments and `#{ #}` code blocks (bc4af32, PR #51)
 - **T-037** one-line and multi-line lists no longer gain an empty item on read; a second entry on a line raises `FoamKitError` instead of being dropped (option (b)) (1a10632, PR #53)
+- **T-041** every entry on a line is parsed (`x 1; y 2;`); category A tutorials (helmholtzResonance, refineMesh sector/refineFieldDirs, F11 damBreak `fvSchemes`) load; malformed leftovers and one-line `{…}` next to another entry raise `FoamKitError` (376edf3, PR #56)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
@@ -72,32 +73,37 @@ None open.
 - **Lists gain a spurious empty item (pre-existing):** one-line lists such as `x ( 1 );` after a write → read cycle, and, per the T-037 tester, **multi-line lists on first read** too. Fixed in T-037 (PR #53).
 - `_parseListValues` appends to the module-level `BRACKET_CHARS['list']` on every call, so state leaks between parses (T-038).
 - **Keyword glued to its bracket (pre-existing):** `x(1);` fails with `AttributeError`, `x{ a 1; }` loses its `}` on write, and Foundation 11's 6 `phaseProperties` files (`f10{dSph 10e-3; value 0.0;}`) fail with `IndexError` (T-039 + T-040). Glued lists occur in 0 Foundation 11-14 tutorial dictionaries.
-- **One-line `{…}` blocks (pre-existing):** real Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` **hang** (>25 s). One-line lists of dicts silently lose every item (`x ( );`), and one-line sub-dicts lose their entries (T-040).
-- **A second entry on a line** (`x 1; y 2;`) was silently dropped on main. Since T-037 (option (b)) it raises `FoamKitError`, so 3 real files per Foundation release (`helmholtzResonance`, `rotatingCube` and `refineMesh` `blockMeshDict`; `damBreak` `fvSchemes` in F11) and banner files with a one-line `FoamFile { … }` fail to load until T-041 lands. They also failed on main, with `IndexError` or "Parser made no progress"; the error is now clear.
+- **One-line `{…}` blocks:** fixed by T-040 (PR #60): sub-dicts and lists of dicts load with every entry, and the Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` hangs are gone. Unedited one-line blocks are written multi-line (one-line layout is T-020).
+- **A second entry on a line** (`x 1; y 2;`) is parsed since T-041, including next to one-line `{ … }` blocks since T-040.
 - Other gaps:
   - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
   - writer whitespace churn (T-019, T-020);
   - one-line `FoamFile { ... }` (T-021);
-  - one-line sub-dicts (`p { type probes; }`) now silently lose their entries after T-035 (T-040, absorbed T-022);
+  - one-line sub-dicts (`p { type probes; }`) lost their entries after T-035; fixed by T-040;
   - Foundation 14 named dimension sets read as strings (T-013).
 - `fk init` / `write` / `plot` / `edit` on a non-case path crash with a traceback, or open a console with no case, instead of printing a clean `ERROR:` (T-023).
 - `userMsg` does not escape C1 or bidi control characters, and `str(FoamKitError(42))` raises (T-034).
 - `_interpretUnitsAndConvert` is dead code that fails on every call (T-024).
+- **Directives inside lists (pre-existing, found in T-041):** stock `helmholtzResonance` `blockMeshDict` (Foundation 11-14, ESI) loads but **crashes on write** (`TypeError`) on `boundary ( #include "…" … )`; `#include` in plain lists is split into two tokens, and `#includeFunc f(a)` in a list loses its parentheses (T-042).
+- **`#{ … #}` code entries:** a top-level `codeExecute`/`codeInclude` block crashes with `AttributeError`; `code`, `evaluate`, `expression` keywords and the one-line form fail in 2-5 Foundation and about 17 ESI files per release (T-043).
+- **ESI `#eval`:** `Cy #eval{-$Cx};` (no space after `{`) and `#eval` inside lists fail in 20 ESI files per release; a top-level one-line list with `#eval{…}` loads as an empty list (T-044).
 - There is no docs site, and the README has broken examples.
 
 ## Next (ranked)
-**In progress:** T-041 second entry on a line (#55).
+**In progress:** T-040 one-line `{…}` blocks (#54).
 
-1. **T-041** second entry on a line (S, #55): since T-037's option (b), a second entry raises `FoamKitError`, so category A tutorials (3 files per Foundation release, e.g. stock `helmholtzResonance`) fail to load with a clear error; they also failed on main, less clearly. It makes them load (S, tests already written).
-2. **T-040** one-line `{…}` blocks (M, #54; absorbed T-022): **confirmed hangs** on real Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` (untrusted-input DoS), plus silent loss in lists of dicts and one-line sub-dicts (category B: 4-12 files per release). The hangs pre-date T-037, so it goes just after T-041.
+1. **T-040** one-line `{…}` blocks (M, #54; absorbed T-022): **confirmed hangs** on real Foundation 11 `rotorDisk` and `heatedDuct` `snappyHexMeshDict` (untrusted-input DoS), plus silent loss in lists of dicts and one-line sub-dicts (category B: 4-12 files per release). It also removes the silent loss of a lone one-line block left after T-041.
+2. **T-042** `#include` inside a list (S, #57): stock `helmholtzResonance` in every tested release loads but crashes on write, so an edit is lost at the last step; tests already exist as strict xfails. Same list code as T-040, so it follows it.
 3. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
 4. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.
 5. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
 6. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
+7. **T-043** `#{ … #}` code entries (M, #58): `AttributeError` at top level (ESI `twistingColumn`), and stock coded BCs (`pipeCyclic`, `pitzDailyPulse`) fail in every release; loud, so after the files above.
 
-T-041 and T-040 come first: silent loss, hangs, and the files option (b) turned into load failures.
+T-040 comes first: silent loss and hangs.
 
-After these, the order is T-039 → T-023 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+After these, the order is T-044 → T-039 → T-023 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-003 → T-024 → T-001 → T-007 → T-020 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 (see `docs/plans/openfoam-compatibility.md`).
+- T-044 (ESI `#eval{-$x}` and `#eval` in lists, #59) blocks 20 ESI files per release, all loudly on real files; neither T-027 nor T-039 covers it. It goes ahead of T-039 on file count.
 - T-039 (glued `name{`/`name(`) completes the Foundation 11 `phaseProperties` fix with T-040, and it stops `x{ a 1; }` from losing its `}`. Glued lists do not occur in tutorials.
 - T-036 (`//` in strings) silently truncates list items, but has 0 tutorial occurrences, and it lands before T-031.
 - T-038 is a cheap latent-leak fix in the same list code as T-037.
