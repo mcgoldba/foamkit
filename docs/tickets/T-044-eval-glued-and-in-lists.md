@@ -18,6 +18,7 @@
 | `Cy #eval{ -$Cx };`, `Cy #eval {-$Cx};`, `Cy #eval "-$Cx";` | load and round-trip |
 | top-level one-line list `origin (#eval{0.5 * $S} 0 0);` | **silent loss:** loads as an empty list and is written `origin ( );`. Inside a sub-dict (the real `multiWorld2/slab1` shape) it raises `FoamKitError` "one-line '{ ... }' blocks … (T-040)" since T-041 |
 | multi-line list item `(#eval{0.5 * $S} 0 0)` | loads as one string item; written with the expression's spacing changed (`0.5  * $S`) |
+| multi-line list whose items are `#eval{0.5 * $S} 0 0` directly (no inner brackets), top level or in a sub-dict (T-040 reviewer, PR #60; planner re-run 2026-10-30 at a9a9447) | **fails:** `FoamKitError: Could not find functionEntry bracket type.`, with no file or line. Same message as the real `NACA4412`/`multiWorld2` failures below |
 
 So the bug is a **glued body**: `#eval{` followed directly by a non-space character. Neither T-027 nor T-039 covers it, hence this ticket.
 
@@ -44,6 +45,7 @@ So the bug is a **glued body**: `#eval{` followed directly by a non-space charac
 - [ ] After the fix both files load; `Cy`, `Dy`, `transform.origin` are present; the `#eval` text is written back unchanged; write 1 == write 2. Add the two files to `tests/test_brace_scan.py` `REAL_OUTCOMES`.
 - [ ] `origin (#eval{0.5 * $S} 0 0);` never loads as an empty list: it keeps 3 items, or raises `FoamKitError` with file and line.
 - [ ] Every remaining unsupported `#eval` form raises `FoamKitError` with file and line, never `IndexError`.
+- [ ] The message "Could not find functionEntry bracket type." (`foamkit/types/__init__.py`, `_parseVerbatimEntry`) names the file and line wherever it is still raised, including for `#neg` until T-027 lands.
 - [ ] No golden file changes. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.
 - [ ] A `fix:` commit whose body describes the user-visible change.
 

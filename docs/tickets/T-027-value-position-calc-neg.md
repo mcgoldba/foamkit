@@ -17,6 +17,7 @@ Entries whose value is a `#calc` or `#neg` expression load, and are written back
   - Example: the same `blockMeshDict:29` `cylMin #neg $cylMax;`.
   - Fails with "Could not find functionEntry bracket type".
 - The ticket's earlier example, a top-level `#calc "1+2"`, occurs in **no** tutorial.
+- **More evidence (T-040 review, PR #60; planner re-run 2026-10-30 at a9a9447):** Foundation 12 `incompressibleVoF/trayedPipe/system/topoSetDict:24` (`innerBaffleOuterRadius #calc "$<scalar>{radius}/(2 - $<scalar>baffleOverlap)";`) fails with the same bare `TypeError: ofCalc.__init__() got an unexpected keyword argument 'name'` (raised from `_parseVerbatimEntry`), with no file or line. Its `#codeStream` in a list of dicts (line 31) is T-033's. `#neg` in a sub-dict (`d { b #neg $a; c 2; }`) still gives "Could not find functionEntry bracket type." with no file or line.
 
 ## Scope
 - Value-position handling for `#calc` and `#neg` in `DictFileParser`:
@@ -33,6 +34,7 @@ Entries whose value is a `#calc` or `#neg` expression load, and are written back
 - [ ] **Failing tests first** with the real fixtures `foundation-14.cylinder.blockMeshDict` (lines 27-34: `#calc`, `#neg`, `$<scalar>`) and `foundation-13.aerofoilNACA0012Steady.U`.
 - [ ] After the fix, both parse. Every `#calc`/`#neg` entry is written back with its value text unchanged, and the key stays addressable (`d.cylRadius`).
 - [ ] Top-level `#calc "1+2"` and `#calc #{ ... #}` also parse. They are not in any tutorial, but cheap to cover.
+- [ ] Any `#calc`/`#neg` form still unsupported raises `FoamKitError` naming file and line, never `TypeError` (CLAUDE.md, "Errors never pass silently").
 - [ ] All existing golden files are unchanged. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.
 - [ ] A `fix:` commit whose body describes the user-visible change.
 

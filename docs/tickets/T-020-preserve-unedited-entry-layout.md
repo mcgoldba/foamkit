@@ -12,6 +12,7 @@ An unedited read → write reproduces each entry's original spacing and layout. 
 ## Today
 - The writer re-aligns key/value padding (`TAB_SIZE`-based columns).
 - It re-flows some lists: `tests/test_golden.py:36-42` notes that `libs ("lib.so");` becomes a multi-line list.
+  - That one-element example is split out to T-045 (2026-10-30): `libs ("lib.so");` is written `( "lib.so")`, which re-reads as a different list type, and `domains (10);` fails to load. T-020 keeps the general layout work.
 - Goldens record this normalized output.
 
 ## Scope
