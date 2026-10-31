@@ -5,6 +5,13 @@
 - **Size:** M. The first step is a short design note in this ticket. If that note shows more than M, split by entry kind: T-020a scalars and words, T-020b lists and sub-dictionaries.
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B9
 - **Depends on:** T-019. Should land after T-007, which provides the real-file corpus.
+- **Followed by:** T-050 (#67, `fk format` and `format_on_write`).
+
+## Maintainer decision (2026-10-30)
+"lets keep the original layout as default, and have a format command the reformats the whole file. Lets also add a user specifiable option to reformat files on write by default."
+- **Preserving the layout of unedited entries is the default write behaviour** (this ticket). Edited and new entries are written in the standard style.
+- Reformatting a whole file is T-050 (#67): `fk format`, `fkf.formatDictFile`/`fkf.formatCase`, and an opt-in `format_on_write` config key plus a `case.write(format=...)` argument. When that option is on, it **bypasses** this ticket's preservation and regenerates every entry in the canonical style. T-050 lands after this ticket and builds on its preserve-or-regenerate split, so this ticket needs no format option. Its write path should keep "regenerate this entry" as one call that T-050 can force for every entry.
+- T-050 also changes the standard style for edited entries: keyword column 16 instead of 12, and no tab after long keywords. Until T-050 lands, this ticket keeps today's style for edited entries.
 
 ## Goal
 An unedited read → write reproduces each entry's original spacing and layout. Only entries the user changed are re-formatted.
@@ -12,6 +19,7 @@ An unedited read → write reproduces each entry's original spacing and layout. 
 ## Today
 - The writer re-aligns key/value padding (`TAB_SIZE`-based columns).
 - It re-flows some lists: `tests/test_golden.py:36-42` notes that `libs ("lib.so");` becomes a multi-line list.
+  - That one-element example is split out to T-045 (2026-10-30): `libs ("lib.so");` is written `( "lib.so")`, which re-reads as a different list type, and `domains (10);` fails to load. T-020 keeps the general layout work.
 - Goldens record this normalized output.
 
 ## Scope

@@ -50,11 +50,6 @@ SECTOR = RELEASES / "foundation-14.refineMeshSector.blockMeshDict"
 FIELD_DIRS = RELEASES / "foundation-11.refineFieldDirs.blockMeshDict"
 DAM_BREAK = RELEASES / "foundation-11.damBreak.fvSchemes"
 HL = HEADER.count(NL)
-XF_INCLUDE_IN_LIST = pytest.mark.xfail(
-    strict=True,
-    reason="unticketed: writing a #include inside a list fails "
-    "(ofInclude.toString() takes no indent); also needs T-041 to load",
-)
 XF_T027 = pytest.mark.xfail(strict=True, reason="T-027: value-position #calc")
 
 
@@ -133,7 +128,6 @@ def test_helmholtz_keeps_the_entries_of_a_line_in_order():
     assert [k for k in keys if k in wanted] == wanted
 
 
-@XF_INCLUDE_IN_LIST
 def test_helmholtz_every_variable_survives_a_write(tmp_path):
     d = _load(HELM)
     out = tmp_path / "wa"
@@ -146,15 +140,13 @@ def test_helmholtz_every_variable_survives_a_write(tmp_path):
         assert getattr(obj, "zs") is not None
 
 
-@XF_INCLUDE_IN_LIST
 def test_helmholtz_second_write_equals_the_first(tmp_path):
     first, second, text1, text2 = _cycle(tmp_path, HELM)
     assert text1 == text2
     assert _keys(first) == _keys(second)
 
 
-# - The whole file cannot be written yet (the `blocks ( #include ... )` list, see
-# - XF_INCLUDE_IN_LIST), so T-041's write behaviour is pinned on lines 144-146 alone.
+# - T-041's write behaviour is pinned on lines 144-146.
 HELM_ORDER = ["x1", "x2", "x3", "x4", "x5", "yc", "ys", "zc", "zs", "o"]
 
 
