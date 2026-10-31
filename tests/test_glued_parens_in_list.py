@@ -510,3 +510,103 @@ def test_concentric_cylinders_written_arc_10_11_keeps_its_point(tmp_path):
     point = _point_after_arc_10_11(_load(out).edges.value)
     assert isinstance(point, fkt.ofList)
     assert [v.value for v in point.value] == POINT
+
+
+# --- review round 1 ---------------------------------------------------------------------------
+# Source of the positions fixture (byte-exact, no CR): Shallow clone of
+# https://github.com/OpenFOAM/OpenFOAM-13 (tag 20260624, commit 18870c24d2...),
+# tutorials/multicomponentFluid/parcelInBox/constant/cloudPositions,
+# blob e55a1f99cdea281851afd93c8ea9337f27baad95.
+POSITIONS = RELEASES / "foundation-13.parcelInBox.cloudPositions"
+
+
+def _top(d):
+    return d.unnamed_1
+
+
+TOP_LISTS = [
+    ("vectors", "(\n(1 2 3)\n(4 5 6)\n)\n", ["(1 2 3)", "(4 5 6)"]),
+    ("words", "(\na\nb\n)\n", ["a", "b"]),
+    ("indented", "(\n    (1 2 3)\n)\n", ["(1 2 3)"]),
+    ("two-on-a-line", "(\n(1 2 3) (4 5 6)\n)\n", ["(1 2 3)", "(4 5 6)"]),
+    ("comment", "(\n(1 2 3)\n(4 5 6)\n) // c\n", ["(1 2 3)", "(4 5 6)"]),
+]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"), [p[1:] for p in TOP_LISTS], ids=[p[0] for p in TOP_LISTS]
+)
+def test_a_top_level_unnamed_list_loads_and_is_stable(tmp_path, text, expected):
+    first, second, text1, text2 = _cycle(tmp_path, text)
+    assert [_text(i) for i in _top(first).value] == expected
+    assert [_text(i) for i in _top(second).value] == expected
+    assert text1 == text2
+
+
+def test_a_counted_top_level_list_loads(tmp_path):
+    first, _, text1, text2 = _cycle(tmp_path, "2\n(\n(1 2 3)\n(4 5 6)\n)\n")
+    assert [_text(i) for i in first.t_2.value] == ["(1 2 3)", "(4 5 6)"]
+    assert text1 == text2
+
+
+def test_the_real_positions_file_loads_and_is_stable(tmp_path):
+    d = _load(POSITIONS)
+    assert [_text(i) for i in _top(d).value] == ["(0.05 0.05 0.005)"]
+    text1 = d.toString()
+    out = tmp_path / "pos"
+    out.write_text(text1)
+    assert _load(out).toString() == text1
+
+
+@pytest.mark.parametrize("cont", CONTAINERS)
+def test_a_closing_bracket_and_semicolon_on_their_own_lines(tmp_path, cont):
+    path = tmp_path / "glued"
+    path.write_text(HEADER + _wrap("x\n(\n    a\n    b\n)\n;\ny 1;\n", cont))
+    d = _load(path)
+    assert _items(d, cont) == ["a", "b"]
+    if cont == "top":
+        assert d.y.value == 1
+
+
+# - inner lists of one element keep their parentheses
+ONE_ELEMENT = [
+    ("number-then-one", "x ( 1(5) );\n", ["1", "(5)"]),
+    ("word-then-one", "x ( a (b) );\n", ["a", "(b)"]),
+    ("glued-then-one", "x ( mag(U)(V) );\n", ["mag(U)", "(V)"]),
+    ("nested-one", "x (1(2));\n", ["1", "(2)"]),
+    ("two-ones", "x ((1)(2));\n", ["(1)", "(2)"]),
+    ("word-glued-ones", "x (a(b)(c));\n", ["a(b)", "(c)"]),
+    ("spaced-inside", "x ( mag( U ) );\n", ["mag", "(U)"]),
+    ("plain-one", "x ( (1) );\n", ["(1)"]),
+]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"), [p[1:] for p in ONE_ELEMENT], ids=[p[0] for p in ONE_ELEMENT]
+)
+@pytest.mark.parametrize("cont", CONTAINERS)
+def test_an_inner_one_element_list_keeps_its_parentheses(
+    tmp_path, text, expected, cont
+):
+    first, second, text1, text2 = _cycle(tmp_path, _wrap(text, cont))
+    assert _items(first, cont) == expected
+    assert _items(second, cont) == expected
+    assert _parens(text1) == _parens(text)
+    assert text1 == text2
+
+
+@pytest.mark.parametrize("cont", CONTAINERS)
+def test_a_quoted_item_with_parentheses_is_not_routed_as_a_glued_item(tmp_path, cont):
+    path = tmp_path / "glued"
+    path.write_text(HEADER + _wrap('x ("a(b)");\n', cont))
+    assert '( "a(b)");' in _load(path).toString()
+
+
+def test_list_shape_errors_are_not_called_unbalanced(tmp_path):
+    path = tmp_path / "shape"
+    path.write_text(HEADER + "x ( (1 2)\n (3 4) );\n")
+    with pytest.raises(FoamKitError) as err:
+        _load(path)
+    assert "nbalanced" not in str(err.value)
+    assert "not supported yet" in str(err.value)
+    assert "shape" in str(err.value)

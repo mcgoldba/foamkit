@@ -4895,7 +4895,8 @@ class DictFileParser:
         #     # Found include statement 
         #     return self._parseIncludes(lineList[0], lineList[1].rstrip(';'))
         if (lineList[1][-1] == ';' and lineList[1].startswith('(')
-                and re.search(r'[^\s(]\(', lineList[1])):
+                and re.search(r'[^\s(]\(',
+                           re.sub(r'"(?:\\.|[^"\\])*"', '""', lineList[1]))):
             # Found a one-item list whose item has parentheses attached,
             # e.g. `fields (mag(U));`
             return self._parseListOrDict(lineList[0], line=lineList[1])
@@ -5167,6 +5168,12 @@ class DictFileParser:
                 head = line.split(';')[0].rstrip()
                 if head.endswith(')'):
                     line = head[:-1]
+            elif self.i == i_end:
+                #- the list closes on this line with no ';' (e.g. a ')' on
+                #  a line of its own): drop that closing ')'
+                head = line.split('//')[0].rstrip()
+                if head.endswith(')'):
+                    line = head[:-1]
 
             # logger.debug(f"line[{self.i+1}]: {line}")
 
@@ -5208,6 +5215,11 @@ class DictFileParser:
             self.i += 1
 
         self.i -= 1 #Reset line after while loop; while increment in _parseLine 
+
+        #- a ';' alone on the line after the closing ')' ends the entry
+        if (';' not in self.lines[self.i] and self.i+1 < len(self.lines)
+                and self.lines[self.i+1].split('//')[0].strip() == ';'):
+            self.i += 1
 
         # strValue = " ".join(entryList)
 
@@ -5398,18 +5410,12 @@ class DictFileParser:
                 # if j != len(values)-1:
                 #     #- Add extra text to self.extraLine
                 #     self.extraLine.append(values[j:])
-                if not any([char in subStr for char in BRACKET_CHARS['list']]):
-                    #if not list of lists, append values
-                    for value in subStr.split():
-                        listValues.append(value)
-                else:
-                    #TODO: Store as ofList or list. An ofLIst is required here to 
-                    # store line comments
-                    listValue_ = ofList(value=self._parseListValues(subStr))
-                    # listValues.append(self._parseListValues(subStr))
-                    if foundComment:
-                        listValue_._comment = self._getComment()
-                    listValues.append(listValue_)
+                #TODO: Store as ofList or list. An ofLIst is required here to 
+                # store line comments
+                listValue_ = ofList(value=self._parseListValues(subStr))
+                if foundComment:
+                    listValue_._comment = self._getComment()
+                listValues.append(listValue_)
 
                 i=j+i
                 # logger.debug(f"i: {i}")
@@ -5429,8 +5435,9 @@ class DictFileParser:
                         value_ += values[i]
                         i += 1
                 if values[i:i+1] == ')':
-                    userMsg(f"Unbalanced ')' in a list on line "
-                            f"{self._ln(self.i)} of file {self.filepath}.",
+                    userMsg(f"A list closes in the middle of a line (line "
+                            f"{self._ln(self.i)} of file {self.filepath}); "
+                            f"this list shape is not supported yet.",
                             'ERROR')
                 if (values[i:i+1] == '(' and value_.strip() != ''
                         and not re.search(r'#\S*include', value_)):

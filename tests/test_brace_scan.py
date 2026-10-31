@@ -642,6 +642,8 @@ REAL_OUTCOMES = {
         "sets",
         "fields",
     ],
+    # - Added with the T-048 review: a top-level unnamed list file.
+    "foundation-13.parcelInBox.cloudPositions": ["unnamed_1"],
     "foundation-14.hotWire.controlDict": ["regionSolvers", "startFrom", "startTime"],
     "foundation-14.concentricCylinders.blockMeshDict.orig": [
         "vertices",
