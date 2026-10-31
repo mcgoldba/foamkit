@@ -1836,6 +1836,33 @@ class ofBoundBox(ofList):
 #         return self.toString().rstrip(';\n')
 
 @dataclass
+class ofListGroups(ofList):
+    """
+    An entry whose value is two or more parenthesised groups, e.g.
+    `transform (1 0 0 0 1 0 0 0 1) (0.5 0.45 0.1);`.  `value` holds one
+    `ofList` per group, in order; the entry is written on one line.
+    """
+    def __init__(self, arg1=None, arg2=None, name=None, value=None, _comment=None):
+        super(ofListGroups, self).__init__(
+            arg1=arg1, arg2=arg2, name=name, value=value, _comment=_comment)
+
+    def toString(self, ofRep=False, indent=True) -> str:
+        """Write `name (group 1) (group 2) ...;` on one line."""
+        groups = []
+        for group in self.value:
+            if not isinstance(group, ofList):
+                group = ofList(value=list(group))
+            groups.append(group.toString(indent=False).strip())
+        dStr = (printNameStr(self.name) if indent else f"{self.name} ")
+        dStr += " ".join(groups) + ";"
+        if self._comment is not None:
+            dStr += " //"+str(self._comment)
+        return dStr+"\n"
+
+    def __str__(self):
+        return self.toString().rstrip(';\n')
+
+@dataclass
 class ofMultilineStatement(_ofNamedTypeBase):
     def __init__(self, *args, **kwargs):
         super(ofMultilineStatement, self).__init__(*args, **kwargs)
@@ -2811,6 +2838,10 @@ class _ofFunctionEntry(_ofUnnamedTypeBase):
 INCLUDE_KEYWORD_RE = re.compile(r'#[A-Za-z_][A-Za-z0-9_.\-]*')
 #- A number as OpenFOAM reads it; it ends at a following '('.
 _NUMBER_RE = re.compile(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?')
+#- The keyword of an entry, for `_parseListGroups`: a word followed by space.
+_GROUP_KEY_RE = re.compile(
+    r"[ \t]*([^\s(){}\[\];\"'#$/][^\s(){}\[\];\"]*)(?=\s|$)")
+_COMMENT_RE = re.compile(r'//[^\n]*|/\*.*?\*/', re.DOTALL)
 
 
 @dataclass
@@ -4829,6 +4860,10 @@ class DictFileParser:
                         f"'{lineList[1]}' after the keyword '{lineList[0]}' "
                         "(an include directive as the value of an entry) "
                         "cannot be parsed.", "ERROR")
+            elif (not parsingExtraLine
+                    and (groupsValue := self._parseListGroups()) is not None):
+                #- `key (...) (...);`: an entry of several lists
+                return groupsValue
             elif len(lineList) == 1:
                 if lineList[0].strip() == '};' or lineList[0] == ');':
                     #- ending list or dict
@@ -6928,6 +6963,8 @@ class DictFileParser:
             ofWord(lineList[0])
         except:
             return None  # first item is not valid key
+        if not any(v.startswith('[') for v in lineList[1:]):
+            return None  # not a dimension set (`[...]`), e.g. `t (1 2 3 ...)`
         #- try to convert list to dimension, return None if error
         dimList = []
         for value in lineList[1:]:
@@ -7031,6 +7068,125 @@ class DictFileParser:
 
         logger.debug("Found bounding box.")
         return ofBoundBox(name=lineList[0], value=bounds)
+
+    def _parseListGroups(self):
+        """
+        Parse an entry whose value is two or more top-level `( ... )` groups
+        and nothing else, e.g. `transform (1 0 0 0 1 0 0 0 1) (0.5 0.45 0.1);`,
+        on one line or across lines, into an `ofListGroups`.
+
+        Returns None, with nothing consumed, if the entry at the current line
+        is not that shape (the other parsers then handle it); `box (...)
+        (...)` of two numeric 3-vectors on one line stays an `ofBoundBox`.
+        Raises `FoamKitError`, naming the file and line, for the shapes that
+        are recognised but not read yet: counted groups (`2(1 2) 2(3 4)`) and
+        a comment inside the value (it would be lost).
+        """
+        i0 = self.i
+        m = _GROUP_KEY_RE.match(self.lines[i0])
+        if m is None or _NUMBER_RE.fullmatch(m.group(1)):
+            return None
+        pos = (i0, m.end())
+        start = None
+        groups = []       #- ((line, col) of '(', (line, col) past ')')
+        gaps = []         #- text before each group, then before the ';'
+        counted = False   #- a group has a glued count (`2(1 2)`)
+        depth = 0
+        semi = None
+        for li, lj, c in self._lex(self.lines, i0, m.end(), strict=False,
+                                   semis=True):
+            if c in '{}':
+                return None
+            if c in '\n\0':
+                if (depth == 0 and start is None
+                        and _COMMENT_RE.sub('', self._slice(pos, (li, lj))
+                                            ).strip() != ''):
+                    return None  #- the value starts with something else
+                continue
+            if c == '(':
+                if depth == 0:
+                    gap = self._slice(pos, (li, lj))
+                    word = _COMMENT_RE.sub('', gap).strip()
+                    if not groups and word != '' and not (
+                            word.isdigit() and gap[-1:].isdigit()):
+                        return None  #- e.g. `uniform (0 0 0)`
+                    counted = counted or word != ''
+                    gaps.append(gap)
+                    start = (li, lj)
+                depth += 1
+            elif c == ')':
+                depth -= 1
+                if depth < 0:
+                    return None
+                if depth == 0:
+                    groups.append((start, (li, lj + 1)))
+                    pos = (li, lj + 1)
+            elif c == ';':
+                if depth > 0:
+                    return None
+                gaps.append(self._slice(pos, (li, lj)))
+                semi = (li, lj)
+                break
+        if semi is None or len(groups) < 2:
+            return None
+        key = m.group(1)
+        end_li = semi[0]
+
+        #- A comment inside the value would be lost on write
+        for n in range(i0, end_li + 1):
+            text = self.lines[n][m.end() if n == i0 else 0:
+                                 semi[1] if n == end_li else None]
+            if re.search(r'//|/\*',
+                         re.sub(r'"(?:\\.|[^"\\])*"', '""', text)):
+                userMsg(f"Line {self._ln(n)} of file {self.filepath} has a "
+                        f"comment inside the value of '{key}' (several "
+                        "lists); this shape is not supported yet.", 'ERROR')
+
+        blank = [_COMMENT_RE.sub('', g).strip() for g in gaps]
+        if counted:
+            if all(g.isdigit() for g in blank[:-1]) and blank[-1] == '':
+                userMsg(f"Line {self._ln(i0)} of file {self.filepath}: "
+                        f"the value of '{key}' is several lists with counts "
+                        "(e.g. 2(1 2) 2(3 4)); this shape is not supported "
+                        "yet.", 'ERROR')
+            return None
+        if any(g != '' for g in blank):
+            return None  #- words between or after the groups
+        if end_li == i0 and self._parseBoundBoxValue() is not None:
+            return None  #- two numeric 3-vectors: an ofBoundBox
+
+        values = []
+        for (a, b) in groups:
+            inner = self._slice((a[0], a[1] + 1), (b[0], b[1] - 1))
+            inner = re.sub(r'("(?:\\.|[^"\\])*")|\s+',
+                           lambda mm: mm.group(1) or ' ', inner).strip()
+            self.i = a[0]
+            try:
+                values.append(ofList(value=self._parseListValues(inner)))
+            except (IndexError, ValueError, AttributeError, TypeError):
+                userMsg(f"Line {self._ln(a[0])} of file {self.filepath}: "
+                        f"cannot read a list in the value of '{key}'.",
+                        'ERROR')
+
+        #- Text after the ';': a `// comment` belongs to the entry, anything
+        #  else is queued (or refused) as for other entries
+        self.i = end_li
+        tail = self.lines[end_li][semi[1] + 1:].strip()
+        comment = None
+        if tail.startswith('//'):
+            comment = tail[2:]
+            if end_li == i0 and self.comment:
+                self.comment.pop()  #- (already read from this line)
+        else:
+            self._queueTrailing(self.lines[end_li])
+        return ofListGroups(name=key, value=values, _comment=comment)
+
+    def _slice(self, a, b):
+        """The text of `self.lines` from `a` up to `b`, both (line, column)."""
+        if a[0] == b[0]:
+            return self.lines[a[0]][a[1]:b[1]]
+        return (self.lines[a[0]][a[1]:] + ''.join(self.lines[a[0]+1:b[0]])
+                + self.lines[b[0]][:b[1]])
 
 
 
