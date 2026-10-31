@@ -18,6 +18,7 @@ An entry whose value is two or more parenthesised groups, such as the rigid-body
 | `c (1 2) (3 4);`, `c (1 2)(3 4);`, `c (a b) (c d);`, `c (1 2 3) (4 5 6) (7 8 9);`, `transform (1 0 0 0 1 0 0 0 1) (2.929541 0 0.2);` | bare `IndexError: list index out of range` (`_parseListValues`, reads past the end of the file looking for a `)`), with or without entries after it, also inside a sub-dict |
 | `c 2(1 2) 2(3 4);` | bare `ValueError: not enough values to unpack` (`_parseSingleLineEntry`) |
 | `c (1 2) (3 4)` / `;` (`;` on the next line) | bare `AttributeError: 'ofWord' object has no attribute '_name'` |
+| `t (` / `1 2` / `)` / `(3 4);` (first list multi-line, second on the closing line; also in a sub-dict) | **silent corruption** (T-048 review round 2, note 2; same on main and after T-048): the second list is written as an orphan entry `(3 4);`. Real files: F11-F14 `planingHullW3/constant/dynamicMeshDict`, where the translation `(0.586 0 0.156)` is orphaned |
 | `box (0 0 -1) (0.1461 0.292 1);`, `c ((1 2) (3 4));` | OK, round-trip (must not change) |
 
 OpenFOAM reads such an entry as a token stream; the code that looks the keyword up decides the types (`transform` is a `spatialTransform`: tensor then vector). Both forms are valid in every tested release.

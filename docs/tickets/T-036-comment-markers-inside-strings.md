@@ -28,6 +28,7 @@ From the T-042 review (PR #66, round 2 note 2 and round 4 note 4). The one-line 
 | `l` / `(` / `    "a//b"` / `    1` / `);` (multi-line) | still **silently truncated:** written `"a`; the written file fails to re-read with "Unterminated string" |
 | `note w "http://x";` (several tokens) | **silently truncated:** loads, written `note w "http:;`, an unterminated string |
 | `note "http://x";` | unchanged: "Cannot handle single line entry" |
+| `x` / `(` / ` "a//b"` / `)` / `;` and `x` / `(` / ` a /* c */` / `)` / `;` (`)` and `;` on separate lines) | crashed with `AttributeError` before T-048. T-048 loads this shape but raises `FoamKitError` with file and line when the body has `//` inside a string or a `/*` comment (T-048 review round 2, note 1); this ticket lifts that guard |
 
 Added acceptance (below): every row above loads and round-trips; until it does, no message may say "unbalanced brackets" for balanced input.
 
