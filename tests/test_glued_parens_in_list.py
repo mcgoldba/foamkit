@@ -610,3 +610,24 @@ def test_list_shape_errors_are_not_called_unbalanced(tmp_path):
     assert "nbalanced" not in str(err.value)
     assert "not supported yet" in str(err.value)
     assert "shape" in str(err.value)
+
+
+# --- ')' and ';' on separate lines: comment and string shapes (T-036) ---------------------------
+@pytest.mark.parametrize(
+    "body",
+    ['    "a//b"\n', "    a /* c */\n"],
+    ids=["slashes-in-string", "block-comment"],
+)
+def test_semicolon_on_its_own_line_with_comment_or_string_shape_raises(tmp_path, body):
+    path = tmp_path / "shape"
+    path.write_text(HEADER + "x\n(\n" + body + ")\n;\n")
+    with pytest.raises(FoamKitError) as err:
+        _load(path)
+    assert "shape" in str(err.value) and "T-036" in str(err.value)
+    assert re.search(rf"\bline ({HL + 3}|{HL + 4})\b", str(err.value), re.I)
+
+
+def test_semicolon_on_its_own_line_with_plain_items_and_line_comment_loads(tmp_path):
+    path = tmp_path / "shape"
+    path.write_text(HEADER + "x\n(\n    a // c\n    b\n)\n;\n")
+    assert _items(_load(path), "top") == ["a", "b"]

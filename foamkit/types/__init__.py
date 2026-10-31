@@ -5219,6 +5219,15 @@ class DictFileParser:
         #- a ';' alone on the line after the closing ')' ends the entry
         if (';' not in self.lines[self.i] and self.i+1 < len(self.lines)
                 and self.lines[self.i+1].split('//')[0].strip() == ';'):
+            for n in range(i_start, self.i+1):
+                text = self.lines[n]
+                strings = re.findall(r'"(?:\\.|[^"\\])*"', text)
+                if (any('//' in t for t in strings)
+                        or '/*' in re.sub(r'"(?:\\.|[^"\\])*"', '""', text)):
+                    userMsg(f"Line {self._ln(n)} of file {self.filepath} "
+                            f"has a comment or a '//' in a string inside a "
+                            f"list whose ';' is on its own line; this shape "
+                            f"is not supported yet (see T-036).", 'ERROR')
             self.i += 1
 
         # strValue = " ".join(entryList)
