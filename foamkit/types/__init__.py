@@ -2809,6 +2809,8 @@ class _ofFunctionEntry(_ofUnnamedTypeBase):
 #- Directive keyword: '#' then an ASCII letter or '_', then ASCII letters,
 #- digits, '_', '.' or '-'.
 INCLUDE_KEYWORD_RE = re.compile(r'#[A-Za-z_][A-Za-z0-9_.\-]*')
+#- A number as OpenFOAM reads it; it ends at a following '('.
+_NUMBER_RE = re.compile(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?')
 
 
 @dataclass
@@ -4892,6 +4894,12 @@ class DictFileParser:
         # if lineList[0].startswith('#include'):
         #     # Found include statement 
         #     return self._parseIncludes(lineList[0], lineList[1].rstrip(';'))
+        if (lineList[1][-1] == ';' and lineList[1].startswith('(')
+                and re.search(r'[^\s(]\(',
+                           re.sub(r'"(?:\\.|[^"\\])*"', '""', lineList[1]))):
+            # Found a one-item list whose item has parentheses attached,
+            # e.g. `fields (mag(U));`
+            return self._parseListOrDict(lineList[0], line=lineList[1])
         if lineList[1][-1] == ';':
             # Found single line entry
             return self._parseSingleLineEntry(lineList[0], 
@@ -5160,6 +5168,12 @@ class DictFileParser:
                 head = line.split(';')[0].rstrip()
                 if head.endswith(')'):
                     line = head[:-1]
+            elif self.i == i_end:
+                #- the list closes on this line with no ';' (e.g. a ')' on
+                #  a line of its own): drop that closing ')'
+                head = line.split('//')[0].rstrip()
+                if head.endswith(')'):
+                    line = head[:-1]
 
             # logger.debug(f"line[{self.i+1}]: {line}")
 
@@ -5201,6 +5215,20 @@ class DictFileParser:
             self.i += 1
 
         self.i -= 1 #Reset line after while loop; while increment in _parseLine 
+
+        #- a ';' alone on the line after the closing ')' ends the entry
+        if (';' not in self.lines[self.i] and self.i+1 < len(self.lines)
+                and self.lines[self.i+1].split('//')[0].strip() == ';'):
+            for n in range(i_start, self.i+1):
+                text = self.lines[n]
+                strings = re.findall(r'"(?:\\.|[^"\\])*"', text)
+                if (any('//' in t for t in strings)
+                        or '/*' in re.sub(r'"(?:\\.|[^"\\])*"', '""', text)):
+                    userMsg(f"Line {self._ln(n)} of file {self.filepath} "
+                            f"has a comment or a '//' in a string inside a "
+                            f"list whose ';' is on its own line; this shape "
+                            f"is not supported yet (see T-036).", 'ERROR')
+            self.i += 1
 
         # strValue = " ".join(entryList)
 
@@ -5300,6 +5328,35 @@ class DictFileParser:
             incl.keyword = keyword
         return incl, end
 
+    def _glueParens(self, values : str, start : int) -> Optional[int]:
+        """
+        Return the index just past the `)` that balances the `(` at
+        `values[start]`, so that a word like `mag(U)` is one item.  Quoted
+        text inside is skipped.  Returns `None` if a space comes first
+        (`a(0 1)`): that is a word followed by a list, as in `a (0 1)`.
+        Raises `FoamKitError` if the text ends inside the parentheses.
+        """
+        depth, k, n = 0, start, len(values)
+        while k < n:
+            c = values[k]
+            if c == '"':
+                k += 1
+                while k < n and values[k] != '"':
+                    k += 2 if values[k] == '\\' else 1
+            elif c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+                if depth == 0:
+                    return k+1
+            elif c.isspace():
+                return None
+            k += 1
+        userMsg(f"Unbalanced parentheses in list item "
+                f"'{values[start:].strip()}' on line {self._ln(self.i)} of "
+                f"file {self.filepath}.", 'ERROR')
+        raise AssertionError("unreachable: userMsg raises")
+
     def _parseListValues(self, values : str):
         """
         convert a string value from file into the appropriate ofType.
@@ -5362,18 +5419,12 @@ class DictFileParser:
                 # if j != len(values)-1:
                 #     #- Add extra text to self.extraLine
                 #     self.extraLine.append(values[j:])
-                if not any([char in subStr for char in BRACKET_CHARS['list']]):
-                    #if not list of lists, append values
-                    for value in subStr.split():
-                        listValues.append(value)
-                else:
-                    #TODO: Store as ofList or list. An ofLIst is required here to 
-                    # store line comments
-                    listValue_ = ofList(value=self._parseListValues(subStr))
-                    # listValues.append(self._parseListValues(subStr))
-                    if foundComment:
-                        listValue_._comment = self._getComment()
-                    listValues.append(listValue_)
+                #TODO: Store as ofList or list. An ofLIst is required here to 
+                # store line comments
+                listValue_ = ofList(value=self._parseListValues(subStr))
+                if foundComment:
+                    listValue_._comment = self._getComment()
+                listValues.append(listValue_)
 
                 i=j+i
                 # logger.debug(f"i: {i}")
@@ -5392,6 +5443,33 @@ class DictFileParser:
                     else:
                         value_ += values[i]
                         i += 1
+                if values[i:i+1] == ')':
+                    userMsg(f"A list closes in the middle of a line (line "
+                            f"{self._ln(self.i)} of file {self.filepath}); "
+                            f"this list shape is not supported yet.",
+                            'ERROR')
+                if (values[i:i+1] == '(' and value_.strip() != ''
+                        and not re.search(r'#\S*include', value_)):
+                    if _NUMBER_RE.fullmatch(value_.split()[-1]):
+                        #- a number ends at `(`: a list follows it
+                        i -= 1  #- (the `(` is not skipped below)
+                    else:
+                        #- a word with parentheses attached (`mag(U)`) is
+                        #  one item
+                        close = self._glueParens(values, i)
+                        if close is None:
+                            #- (`a(0 1)`: the word, then a list)
+                            i -= 1
+                        else:
+                            value_ += values[i:close]
+                            i = close-1  #- (the next char is not skipped)
+                            if (close < len(values)
+                                    and not values[close].isspace()
+                                    and values[close] not in '()'):
+                                userMsg(f"Unsupported text after ')' in "
+                                        f"'{value_.strip()}' on line "
+                                        f"{self._ln(self.i)} of file "
+                                        f"{self.filepath}.", 'ERROR')
                 incl = None
                 if re.search(r'\S\s+#includeFunc\b',
                              re.sub(r'"(?:\\.|[^"\\])*"', '""', value_)):

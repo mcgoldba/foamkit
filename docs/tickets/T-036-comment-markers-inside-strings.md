@@ -19,6 +19,19 @@ An entry or list item whose quoted string contains `//` (for example a URL) load
 
 **Cause:** the entry and line parser strip `//` comments without tracking quoted strings.
 
+### Re-check after T-042 (planner, 2026-10-30, 693d945, no `foamkit/` changes)
+From the T-042 review (PR #66, round 2 note 2 and round 4 note 4). The one-line list case changed since the table above; the others did not.
+| Input | Now |
+|---|---|
+| `l ( "a//b" );`, `x ( "a//b" 1 );` (one-line) | loud but **misleading:** `FoamKitError: Could not locate the end of 'x' (unbalanced brackets)`, with file and line. The brackets are balanced; the `//` hid the `)` |
+| `x ( #include "a//b" 1 );`, `x ( #include "f" // comment` / ` 2 );`, `a (1 2 // c )` / `3);` | same misleading "unbalanced brackets" message (the last two are real comments that hide a `)`, valid OpenFOAM) |
+| `l` / `(` / `    "a//b"` / `    1` / `);` (multi-line) | still **silently truncated:** written `"a`; the written file fails to re-read with "Unterminated string" |
+| `note w "http://x";` (several tokens) | **silently truncated:** loads, written `note w "http:;`, an unterminated string |
+| `note "http://x";` | unchanged: "Cannot handle single line entry" |
+| `x` / `(` / ` "a//b"` / `)` / `;` and `x` / `(` / ` a /* c */` / `)` / `;` (`)` and `;` on separate lines) | crashed with `AttributeError` before T-048. T-048 loads this shape but raises `FoamKitError` with file and line when the body has `//` inside a string or a `/*` comment (T-048 review round 2, note 1); this ticket lifts that guard |
+
+Added acceptance (below): every row above loads and round-trips; until it does, no message may say "unbalanced brackets" for balanced input.
+
 ## How common (real tutorials, 2026-10-26)
 - Foundation 11-14: **0** files with `//` inside a single quoted token. Apparent hits were a string followed by a `//` comment, for example `separator " "; // Optional`. This was checked with `git grep -I` in the inventory clones.
 - ESI v2412-v2606: **not re-checked.** The scratchpad clones no longer have `tutorials/` checked out; re-run the grep after `git sparse-checkout set tutorials` (method in the plan's Directive inventory).
@@ -36,6 +49,7 @@ An entry or list item whose quoted string contains `//` (for example a URL) load
 - [ ] **Failing tests first:** `//` inside a string as a top-level entry, an entry in a sub-dict, and a list item (the truncation case). Also `"a\" // b"` (escaped quote, then `//` still inside the string), and `x "a"; // real comment` (a real comment after a string still works).
 - [ ] Tests for `/*` and `*/` inside strings in the same three positions, passing before and after.
 - [ ] After the fix, all of these load, round-trip unchanged, and write 1 == write 2.
+- [ ] The rows of "Re-check after T-042" are tests: the `//`-in-string rows load and round-trip; `x ( #include "f" // comment` / ` 2 );` and `a (1 2 // c )` / `3);` load as OpenFOAM reads them (the comment is dropped or kept, never the `)`); no balanced input reports "unbalanced brackets".
 - [ ] No golden file changes. All `tests/releases/` files behave as before.
 - [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.
 - [ ] A `fix:` commit whose body describes the user-visible change.

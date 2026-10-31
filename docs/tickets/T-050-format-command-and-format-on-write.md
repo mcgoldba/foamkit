@@ -14,7 +14,7 @@ Background: the coordinator advised against merging tabs and spaces, because tab
 ## Goal
 A user can run `fk format <path>` (or `fkf.formatDictFile` / `fkf.formatCase`) to rewrite a dictionary file or a whole case in one consistent style. Only whitespace changes, never content. A user who wants this on every write can turn on the `format_on_write` config option.
 
-## Canonical style (planner decision; the maintainer can change it at approval)
+## Canonical style (planner proposal, accepted by the maintainer on 2026-10-30: "Lets use the column-16 style.")
 - **Spaces only.** No tab is ever written. Indentation is 4 spaces per level (today's `TAB_STR`). Tab width varies by editor, so mixing tabs and spaces is the inconsistency this command exists to remove.
 - **Keyword column 16:** the keyword is padded with spaces so the value starts at column 16 (`application     foamRun;`). A keyword of 15 or more characters is followed by exactly one space. This is OpenFOAM's own output (`Ostream::writeKeyword`, 4-space indent, `entryIndentation_` 16), and the real fixtures in `tests/releases/` use it (for example `foundation-11.controlDict`). Formatting a stock tutorial therefore changes as few lines as possible.
   - **Change from today's writer:** `printNameStr` pads to 12 and puts a **tab** after names of 12 or more characters. The canonical style replaces both. One style function is used both by the formatter and for edited and new entries, so edited entries also move to column 16 with no tab. The rejected alternative was keeping column 12: it matches today's goldens, but no OpenFOAM release writes it, so formatting would move every line of every stock file.
@@ -73,7 +73,7 @@ If any check fails, or the file does not load, `FoamKitError` is raised. It name
 - [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline (`ci.yml`). The commit is `feat(cli): …`, and its body describes the new command, the option, and the column-12-to-16 and tab-to-space change for written entries.
 
 ## Risks
-- **Output change for edited entries:** the keyword column moves from 12 to 16, and the tab after long keywords becomes a space. Users who diff FoamKit output against earlier FoamKit output will see this once. Say so in the commit body. The maintainer can choose to keep column 12 at approval.
+- **Output change for edited entries:** the keyword column moves from 12 to 16, and the tab after long keywords becomes a space. Users who diff FoamKit output against earlier FoamKit output will see this once. Say so in the commit body. The maintainer chose column 16 at approval (2026-10-30).
 - **Per-project config is relative to the working directory:** `.params/config.ini` is looked up from the current directory, not from the case path. Document this (T-051). Moving the lookup to the case directory is out of scope.
 - **OpenFOAM versions:** whitespace between tokens is not significant to OpenFOAM's parser in any tested release, except where a directive ends at the end of its line. Rule 2 guards that. `#{ … #}` code is C++ and is kept verbatim.
 - **No backup:** `fk format` rewrites files in place without a `.params` backup. It only changes whitespace and refuses anything else, so version control is the expected undo. State this in the help text.
