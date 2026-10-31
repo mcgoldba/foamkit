@@ -128,6 +128,7 @@ FAMILY = [
     ("#includeFunc streamlines;", "streamlines"),
     ("#includeFunc enstrophy(executeAtStart=no);", "enstrophy(executeAtStart=no)"),
     ("#includeFunc foo(a, b);", "foo(a, b)"),
+    ('#includeFunc "x";', "x"),
 ]
 CASES = []
 for _directive, _value in FAMILY:
@@ -247,13 +248,37 @@ def test_value_position_include_round_trips_or_raises_foamkiterror(tmp_path, tex
     assert _load(out).toString() == text1
 
 
-def test_a_space_before_the_semicolon_loads_or_raises_foamkiterror(tmp_path):
-    path = tmp_path / "spaced"
-    path.write_text(HEADER + '#include "f" ;\nx 1;\n')
-    try:
+@pytest.mark.parametrize(
+    ("text", "value", "written"),
+    [
+        pytest.param('#include "f" ;', "f", '#include "f";', id="include"),
+        pytest.param("#includeFunc x ;", "x", "#includeFunc x;", id="includeFunc"),
+    ],
+)
+def test_a_space_before_the_semicolon_loads_and_writes_one_semicolon(
+    tmp_path, text, value, written
+):
+    # - the space before the `;` is layout only (T-020)
+    first, second, text1, text2 = _cycle(tmp_path, HEADER + text + "\nx 1;\n")
+    assert [i.value for i in _includes(first)] == [value]
+    assert _directive_lines(text1) == [written]
+    assert text1 == text2
+    assert _shape(first) == _shape(second)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ['#include "f";;', '#include "f"; ;', '#includeFunc "x";;', 'a 1; #include "f";;'],
+)
+def test_more_than_one_semicolon_raises_foamkiterror_with_file_and_line(tmp_path, text):
+    path = tmp_path / "semis"
+    path.write_text(HEADER + text + "\nx 1;\n")
+    with pytest.raises(FoamKitError) as err:
         _load(path)
-    except FoamKitError:
-        pass
+    msg = str(err.value)
+    assert "More than one ';'" in msg
+    assert "semis" in msg
+    assert re.search(r"\bline (\d+)\b", msg, re.IGNORECASE), msg
 
 
 # --- includes in a list with a `;` (T-042 shape): loud errors today -----------------------
