@@ -2809,6 +2809,8 @@ class _ofFunctionEntry(_ofUnnamedTypeBase):
 #- Directive keyword: '#' then an ASCII letter or '_', then ASCII letters,
 #- digits, '_', '.' or '-'.
 INCLUDE_KEYWORD_RE = re.compile(r'#[A-Za-z_][A-Za-z0-9_.\-]*')
+#- A number as OpenFOAM reads it; it ends at a following '('.
+_NUMBER_RE = re.compile(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?')
 
 
 @dataclass
@@ -4892,6 +4894,11 @@ class DictFileParser:
         # if lineList[0].startswith('#include'):
         #     # Found include statement 
         #     return self._parseIncludes(lineList[0], lineList[1].rstrip(';'))
+        if (lineList[1][-1] == ';' and lineList[1].startswith('(')
+                and re.search(r'[^\s(]\(', lineList[1])):
+            # Found a one-item list whose item has parentheses attached,
+            # e.g. `fields (mag(U));`
+            return self._parseListOrDict(lineList[0], line=lineList[1])
         if lineList[1][-1] == ';':
             # Found single line entry
             return self._parseSingleLineEntry(lineList[0], 
@@ -5300,6 +5307,35 @@ class DictFileParser:
             incl.keyword = keyword
         return incl, end
 
+    def _glueParens(self, values : str, start : int) -> Optional[int]:
+        """
+        Return the index just past the `)` that balances the `(` at
+        `values[start]`, so that a word like `mag(U)` is one item.  Quoted
+        text inside is skipped.  Returns `None` if a space comes first
+        (`a(0 1)`): that is a word followed by a list, as in `a (0 1)`.
+        Raises `FoamKitError` if the text ends inside the parentheses.
+        """
+        depth, k, n = 0, start, len(values)
+        while k < n:
+            c = values[k]
+            if c == '"':
+                k += 1
+                while k < n and values[k] != '"':
+                    k += 2 if values[k] == '\\' else 1
+            elif c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+                if depth == 0:
+                    return k+1
+            elif c.isspace():
+                return None
+            k += 1
+        userMsg(f"Unbalanced parentheses in list item "
+                f"'{values[start:].strip()}' on line {self._ln(self.i)} of "
+                f"file {self.filepath}.", 'ERROR')
+        raise AssertionError("unreachable: userMsg raises")
+
     def _parseListValues(self, values : str):
         """
         convert a string value from file into the appropriate ofType.
@@ -5392,6 +5428,32 @@ class DictFileParser:
                     else:
                         value_ += values[i]
                         i += 1
+                if values[i:i+1] == ')':
+                    userMsg(f"Unbalanced ')' in a list on line "
+                            f"{self._ln(self.i)} of file {self.filepath}.",
+                            'ERROR')
+                if (values[i:i+1] == '(' and value_.strip() != ''
+                        and not re.search(r'#\S*include', value_)):
+                    if _NUMBER_RE.fullmatch(value_.split()[-1]):
+                        #- a number ends at `(`: a list follows it
+                        i -= 1  #- (the `(` is not skipped below)
+                    else:
+                        #- a word with parentheses attached (`mag(U)`) is
+                        #  one item
+                        close = self._glueParens(values, i)
+                        if close is None:
+                            #- (`a(0 1)`: the word, then a list)
+                            i -= 1
+                        else:
+                            value_ += values[i:close]
+                            i = close-1  #- (the next char is not skipped)
+                            if (close < len(values)
+                                    and not values[close].isspace()
+                                    and values[close] not in '()'):
+                                userMsg(f"Unsupported text after ')' in "
+                                        f"'{value_.strip()}' on line "
+                                        f"{self._ln(self.i)} of file "
+                                        f"{self.filepath}.", 'ERROR')
                 incl = None
                 if re.search(r'\S\s+#includeFunc\b',
                              re.sub(r'"(?:\\.|[^"\\])*"', '""', value_)):

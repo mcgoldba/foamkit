@@ -632,6 +632,25 @@ REAL_OUTCOMES = {
         "castellatedMeshControls",
         "addLayersControls",
     ],
+    # - Added with T-048 (tests/test_glued_parens_in_list.py): load today, with the
+    # - parentheses of the glued list items lost on write.
+    "foundation-13.shockTube.sample": [
+        "type",
+        "libs",
+        "interpolationScheme",
+        "setFormat",
+        "sets",
+        "fields",
+    ],
+    "foundation-14.hotWire.controlDict": ["regionSolvers", "startFrom", "startTime"],
+    "foundation-14.concentricCylinders.blockMeshDict.orig": [
+        "vertices",
+        "cells",
+        "blocks",
+        "edges",
+        "defaultPatch",
+        "boundary",
+    ],
 }
 
 
