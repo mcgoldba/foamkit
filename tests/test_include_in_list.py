@@ -432,21 +432,55 @@ def test_a_tab_before_a_directive_in_a_one_line_list(tmp_path, text):
     assert "mag U" not in text1
 
 
-@pytest.mark.parametrize(
-    "item",
-    ["#includeFunc mag(U)", '#include "f"'],
-    ids=["includeFunc", "include"],
-)
-def test_a_directive_after_a_tab_separated_item_raises_instead_of_losing_text(
-    tmp_path, item
+def test_includefunc_after_a_tab_separated_item_raises_instead_of_losing_text(
+    tmp_path,
 ):
     """T-042 review round 2: `1<TAB>#includeFunc mag(U)` must not lose `( )`."""
     path = tmp_path / "tabItem"
-    path.write_text(HEADER + "x" + NL + "(" + NL + "\t1\t" + item + NL + ");" + NL)
+    path.write_text(
+        HEADER + "x" + NL + "(" + NL + "\t1\t#includeFunc mag(U)" + NL + ");" + NL
+    )
     with pytest.raises(FoamKitError) as err:
         _load(path)
     assert "tabItem" in str(err.value)
     assert re.search(rf"\bline {HL + 3}\b", str(err.value), re.IGNORECASE)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "x" + NL + "(" + NL + '\t1\t#include "f"' + NL + ");" + NL,
+        'x ( (1\t#include "f") 2 );' + NL,
+        'x ( "see #include file" 1 );' + NL,
+        'x ( "a\t#include b" 1 );' + NL,
+        "x"
+        + NL
+        + "("
+        + NL
+        + '    "use #includeFunc mag(U)"'
+        + NL
+        + "    2"
+        + NL
+        + ");"
+        + NL,
+        'libs ("lib #include.so");' + NL,
+    ],
+    ids=[
+        "tab-then-include",
+        "nested-tab-then-include",
+        "quoted-include",
+        "quoted-tab-include",
+        "quoted-includefunc",
+        "quoted-lib",
+    ],
+)
+def test_text_that_loaded_on_main_still_loads_and_keeps_its_text(tmp_path, body):
+    """T-042 review round 3: the tab guard must not fire on these."""
+    first, _, text1, text2 = _cycle(tmp_path, HEADER + body)
+    assert text1 == text2
+    words = re.findall(r'"[^"]*"|#\w+', body)
+    for word in words:
+        assert word in text1
 
 
 def test_a_directive_after_a_space_separated_item_still_loads(tmp_path):

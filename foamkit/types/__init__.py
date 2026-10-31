@@ -5393,9 +5393,11 @@ class DictFileParser:
                         value_ += values[i]
                         i += 1
                 incl = None
-                if re.search(r'\S\s+#\S*include', value_):
-                    #- a tab-separated item before the directive: it can't
-                    #  be split here, so refuse rather than lose its text
+                if re.search(r'\S\s+#includeFunc\b',
+                             re.sub(r'"(?:\\.|[^"\\])*"', '""', value_)):
+                    #- a tab-separated item before #includeFunc: its
+                    #  arguments would lose their parentheses, so refuse
+                    #  (text inside quotes is not a directive)
                     userMsg(f"Line {self._ln(self.i)} of file "
                             f"{self.filepath} has an include directive "
                             f"after another list item separated by a tab "
