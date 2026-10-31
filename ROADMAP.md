@@ -46,6 +46,7 @@ None open.
   - The default is policy (a): unedited entries keep their layout, and only edited or new entries are written in the standard style (T-020).
   - Policy (b), reformatting the whole file, is an explicit command: `fk format` and `fkf.formatDictFile`/`fkf.formatCase` (T-050, #67).
   - An opt-in `format_on_write` config key (default off, set with `fk setConfig`), plus `case.write(format=...)`, makes (b) the write default and bypasses T-020.
+  - **Style (maintainer, 2026-10-30):** "Lets use the column-16 style." Values start at column 16 (OpenFOAM's own layout), 4-space indent, no tabs; edited and new entries move from column 12 to 16 once.
   - Tabs and spaces are never mixed. Formatting changes whitespace only; anything else raises `FoamKitError` with file and line, and nothing is written. The docs page is T-051 (#68).
 - **Fixtures** come from real files only. Source URLs are in `docs/plans/openfoam-compatibility.md`, under References.
 - **`bin/` scripts:** deleted by the maintainer.
@@ -63,6 +64,7 @@ None open.
 - **T-037** one-line and multi-line lists no longer gain an empty item on read; a second entry on a line raises `FoamKitError` instead of being dropped (option (b)) (1a10632, PR #53)
 - **T-041** every entry on a line is parsed (`x 1; y 2;`); category A tutorials (helmholtzResonance, refineMesh sector/refineFieldDirs, F11 damBreak `fvSchemes`) load; malformed leftovers and one-line `{…}` next to another entry raise `FoamKitError` (376edf3, PR #56)
 - **T-040** one-line `{ … }` blocks load with every entry, as sub-dicts and list items; Foundation 11 `rotorDisk`/`heatedDuct` hangs fixed; multi-line `#includeFunc` arguments load; unsupported shapes raise `FoamKitError` (a9a9447, PR #60)
+- **T-042** `#include` and `#includeFunc` inside a list are one item, written back on one line; stock `helmholtzResonance` `blockMeshDict` writes in every release; `#includeFunc` after a tab-separated item raises `FoamKitError` instead of losing its parentheses (693d945, PR #66)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
@@ -90,7 +92,7 @@ None open.
 - `fk init` / `write` / `plot` / `edit` on a non-case path crash with a traceback, or open a console with no case, instead of printing a clean `ERROR:` (T-023).
 - `userMsg` does not escape C1 or bidi control characters, and `str(FoamKitError(42))` raises (T-034).
 - `_interpretUnitsAndConvert` is dead code that fails on every call (T-024).
-- **Directives inside lists (pre-existing, found in T-041):** stock `helmholtzResonance` `blockMeshDict` (Foundation 11-14, ESI) loads but **crashes on write** (`TypeError`) on `boundary ( #include "…" … )`; `#include` in plain lists is split into two tokens, and `#includeFunc f(a)` in a list loses its parentheses (T-042).
+- **Directives inside lists (pre-existing, found in T-041):** stock `helmholtzResonance` `blockMeshDict` (Foundation 11-14, ESI) crashed on write on `boundary ( #include "…" … )`; `#include` in lists was split into two tokens and `#includeFunc f(a)` lost its parentheses. Fixed by T-042 (PR #66).
 - **`#{ … #}` code entries:** a top-level `codeExecute`/`codeInclude` block crashes with `AttributeError`; `code`, `evaluate`, `expression` keywords and the one-line form fail in 2-5 Foundation and about 17 ESI files per release (T-043).
 - **ESI `#eval`:** `Cy #eval{-$Cx};` (no space after `{`) and `#eval` inside lists fail in 20 ESI files per release; a top-level one-line list with `#eval{…}` loads as an empty list (T-044).
 - **Found after the T-040 review (pre-existing, 2026-10-30):**
@@ -99,31 +101,37 @@ None open.
   - `${name}` references raise a bare `ValueError` or "Invalid syntax": 28 ESI files and 1-2 Foundation 13/14 files per release; `( ${a} 2 )` loads as an empty list (T-047).
   - One-element lists: `domains (10);` fails with `TypeError` (1-8 Foundation and 15-17 ESI files per release); `inGroups (fixed);` changes type on the second write (T-045).
   - `N{…}` items inside a list raise "not supported yet" with file and line; valid OpenFOAM, 0 tutorial files (T-049).
+- **Found in the T-042 review (pre-existing, 2026-10-30):**
+  - **Silent corruption:** an entry of two or more lists, the rigid-body `transform (1 0 0 0 1 0 0 0 1) (0.5 0.45 0.1);`, is written `transform [0 0 0 1 0 0 0];` (stock ESI `floatingObject`, every release); other values raise a bare `IndexError` (F11-14 `DTCHullMoving`/`DTCHullWave`, 2 ESI files per release) or become a new `unnamed_1` entry (T-052).
+  - `;` inside a quoted list item (`x ( "a;b" 1 );`) adds an empty item and writes a file that does not re-read; 0 tutorial files (T-053).
+  - The T-042 tab-guard error quotes the whole list word (40k characters for 20k items) (T-054). `//` hiding a `)` gives a misleading "unbalanced brackets" error (added to T-036).
 - There is no docs site, and the README has broken examples.
 
 ## Next (ranked)
-**In progress:** T-042 `#include` inside a list (#57).
+**In progress:** T-048 glued parentheses in list items (#64).
 
-1. **T-042** `#include` inside a list (S, #57): stock `helmholtzResonance` in every tested release loads but crashes on write, so an edit is lost at the last step; tests already exist as strict xfails. Same list code as T-040, so it follows it.
-2. **T-048** glued parentheses in list items (S, #64): **silent corruption** of stock files in every release (`fields (T mag(U) p)` written as `T mag U p`; a blockMesh arc loses its point). Same list item parser as T-042.
-3. **T-046** `#include "f";` written as `#include "f";"` (S, #62): 11 ESI files per release load and then write a file nobody can read, the T-042 failure in more files. Same `ofInclude` class.
-4. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
-5. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.
-6. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
-7. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
+1. **T-048** glued parentheses in list items (S, #64): **silent corruption** of stock files in every release (`fields (T mag(U) p)` written as `T mag U p`; a blockMesh arc loses its point). Same list item parser as T-042.
+2. **T-046** `#include "f";` written as `#include "f";"` (S, #62): 11 ESI files per release load and then write a file nobody can read, the T-042 failure in more files. Same `ofInclude` class.
+3. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
+4. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.
+5. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
+6. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
+7. **T-052** entry values of two or more lists (M, #69): **silent corruption** of the stock ESI `floatingObject` rigid-body `transform` in every ESI release, and a bare `IndexError` in 10 more stock file sets.
 
-T-042 comes first: it loses an edit at the last step on a stock tutorial. T-048 and T-046 follow because a write silently changes meaning or produces an unreadable file, which outranks the loud load failures below.
+T-048 and T-046 come first because a write silently changes meaning or produces an unreadable file, which outranks the loud load failures below. T-052 is also silent corruption of a stock file; it was added as item 7 without reordering, and by that rule it belongs at item 3 if the maintainer agrees.
 
-After these, the order is T-043 → T-047 → T-045 → T-044 → T-039 → T-023 → T-036 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-020 → T-050 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
-- T-043 (`#{ … #}` code entries, #58) moved out of the ranked seven to make room for T-048 and T-046; it is loud.
+After these, the order is T-043 → T-047 → T-045 → T-044 → T-039 → T-023 → T-036 → T-053 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-054 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-020 → T-050 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
+- T-043 (`#{ … #}` code entries, #58) moved out of the ranked seven to make room for T-048 and T-046, and stays out for T-052 (silent beats loud); it is first in line.
 - T-047 (`${name}`, #63) blocks 28 ESI and 1-2 Foundation 13/14 files per release with a bare `ValueError`; it follows T-030, which fixes the same check.
 - T-045 (one-element lists, #61): a `TypeError` in 16-25 files per release, and a second-write type change in hundreds (no data loss). It clears the unticketed T-040 xfail.
 - T-044 (ESI `#eval{-$x}` and `#eval` in lists, #59) blocks 20 ESI files per release, all loudly on real files; neither T-027 nor T-039 covers it. It goes ahead of T-039 on file count.
 - T-039 (glued `name{`/`name(`) completes the Foundation 11 `phaseProperties` fix with T-040, and it stops `x{ a 1; }` from losing its `}`. Glued lists do not occur in tutorials.
 - T-036 (`//` in strings) silently truncates list items, but has 0 tutorial occurrences, and it lands before T-031.
+- T-053 (`;` in a quoted list item, #70) follows T-036: same quote-aware fix, silent but 0 tutorial files.
 - T-038 is a cheap latent-leak fix in the same list code as T-037.
 - T-033 follows T-031 because the file grows on every write.
 - T-021 was not seen in the real-tutorial inventory, so it stays below the files that fail today.
+- T-054 (long error excerpts, #71) is cosmetic, next to T-034's message hardening.
 - T-028 affects only 3 files.
 - T-049 (`N{…}` list items, #65) is valid syntax with 0 tutorial files and already fails loudly with file and line.
 - T-024 can be picked up any time.
