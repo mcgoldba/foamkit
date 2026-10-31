@@ -118,18 +118,19 @@ None open.
 **In progress:** T-052 entry values of two or more lists (#69).
 
 1. **T-052** entry values of two or more lists (M, #69): **silent corruption** of the stock ESI `floatingObject` rigid-body `transform` in every ESI release and of the F11-F14 `planingHullW3` translation, plus loud failures in 10 more stock file sets.
-2. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
-3. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.
-4. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
-5. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
-6. **T-043** `#{ … #}` code entries (S, #58): loud load failures in 2-5 Foundation and about 17 ESI files per release.
-7. **T-047** `${name}` references (S, #63): a bare `ValueError` in 28 ESI and 1-2 Foundation 13/14 files per release; it follows T-030, which fixes the same check.
+2. **T-055** `//` comment after a block keyword (S, #74): **silent key change** in stock Foundation tutorials (`aerofoilNACA0012` `physicalProperties` loads `mixture` as `mixture_//_air_at_room_temperature__293_K_`, 2-6 files per release); a bare `ValueError` before a list in 3 more.
+3. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
+4. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.
+5. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
+6. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
+7. **T-043** `#{ … #}` code entries (S, #58): loud load failures in 2-5 Foundation and about 17 ESI files per release.
 
-T-052 comes first because a write silently changes meaning, which outranks the loud load failures below (maintainer, 2026-10-31).
+T-052 and T-055 come first because a write or load silently changes meaning, which outranks the loud load failures below (maintainer, 2026-10-31).
 
-After these, the order is T-055 → T-045 → T-044 → T-039 → T-023 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-054 → T-058 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-020 → T-050 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
-- T-047 (`${name}`, #63) took the 7th slot when T-046 was done.
-- T-055 (`//` after a block keyword, #74) heads the backlog: a silent key change in stock Foundation tutorials outranks the loud failures after it.
+After these, the order is T-047 → T-045 → T-044 → T-039 → T-023 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-054 → T-058 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-020 → T-050 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
+- T-047 (`${name}`, #63) leaves the ranked seven for T-055 and is first in line; it follows T-030, which fixes the same check.
+- T-055 (`//` after a block keyword, #74) moved into the ranked list as item 2 (maintainer, 2026-10-31): a silent key change in stock Foundation tutorials.
+- T-058 (#77): the maintainer chose option A (2026-10-31): `#includeFunc x;;` raises "More than one ';'" like the rest of the include family.
 - T-045 (one-element lists, #61): a `TypeError` in 16-25 files per release, and a second-write type change in hundreds (no data loss). It clears the unticketed T-040 xfail.
 - T-044 (ESI `#eval{-$x}` and `#eval` in lists, #59) blocks 20 ESI files per release, all loudly on real files; neither T-027 nor T-039 covers it. It goes ahead of T-039 on file count.
 - T-039 (glued `name{`/`name(`) completes the Foundation 11 `phaseProperties` fix with T-040, and it stops `x{ a 1; }` from losing its `}`. Glued lists do not occur in tutorials.

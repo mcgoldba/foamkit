@@ -29,7 +29,7 @@ OpenFOAM reads a file name (a string token) after the keyword, so `#include ;` i
 
 OpenFOAM accepts any number of `;` here (`entry::getKeyword` skips `END_STATEMENT` tokens: Foundation 11 `entryIO.C:50`, ESI `entryIO.C:54`).
 
-## Decision for the maintainer (at approval)
+## Decision (maintainer, 2026-10-31: option A)
 - **Option A (default, recommended per CLAUDE.md):** `#includeFunc x;;` (and `x(a);;`, `x;;;`) raises the same "More than one ';'" `FoamKitError` with file and line as the rest of the family. This is the smaller change, and nothing is silently changed.
 - **Option B (OpenFOAM-faithful):** the whole family accepts any run of `;`. The value never contains `;`, and the written text keeps the number of `;` the source had (writing one `;` would silently change the text, which T-020 is meant to stop). This needs the count stored in place of today's `_semicolon` flag and changes its tests; about the same size, but it touches the T-046 tests and the `ofInclude` fields.
 
