@@ -2822,6 +2822,9 @@ class ofInclude(_ofFunctionEntry):
     setting `keyword` on them raises `AttributeError`.
     """
     _keyword: "str | None" = None
+    #- True if the source had a `;` after the directive (an empty statement
+    #  to OpenFOAM); written back, but not part of `value`.
+    _semicolon: bool = False
 
     @property
     def keyword(self) -> str:
@@ -2861,7 +2864,9 @@ class ofInclude(_ofFunctionEntry):
 
 
     def toString(self, ofRep=False) -> str:
-        return printNameStr(f"#{self.feType}")+'"'+str(self.value)+'"\n\n'
+        end = ';' if self._semicolon else ''
+        return (printNameStr(f"#{self.feType}")+'"'+str(self.value)+'"'+end
+                +'\n\n')
 
     def toListString(self) -> str:
         """The directive on one line, as written inside a list."""
@@ -2901,7 +2906,8 @@ class ofIncludeFunc(ofInclude):
 
     def toString(self, ofRep=False) -> str:
         v = f'"{self.value}"' if self._quoted else str(self.value)
-        return printNameStr(f"#{self.feType}")+v+'\n\n'
+        end = ';' if self._semicolon else ''
+        return printNameStr(f"#{self.feType}")+v+end+'\n\n'
 
     def toListString(self) -> str:
         """The directive on one line, as written inside a list."""
@@ -4791,6 +4797,11 @@ class DictFileParser:
                 # Line is blank
                 return None
             elif lineList[0][0] == '#':
+                if (len(lineList) == 3 and lineList[2] == ';'
+                        and 'include' in lineList[0]
+                        and INCLUDE_KEYWORD_RE.fullmatch(lineList[0])):
+                    #- `#include "f" ;`: the `;` is a separate word
+                    lineList = [lineList[0], lineList[1] + ';']
                 includeFunc = None
                 if lineList[0] == '#includeFunc':
                     includeFunc = self._parseIncludeFunc(
@@ -4812,6 +4823,12 @@ class DictFileParser:
             #     if lineList[1][0] == '#':
             #         value = self._parseVerbatimEntry(lineList=lineList[1:],name=lineList[0])
             #         return value
+            elif (len(lineList) >= 2 and 'include' in lineList[1]
+                    and INCLUDE_KEYWORD_RE.fullmatch(lineList[1])):
+                userMsg(f"Line {self._ln(self.i)} of file {self.filepath}: "
+                        f"'{lineList[1]}' after the keyword '{lineList[0]}' "
+                        "(an include directive as the value of an entry) "
+                        "cannot be parsed.", "ERROR")
             elif len(lineList) == 1:
                 if lineList[0].strip() == '};' or lineList[0] == ');':
                     #- ending list or dict
@@ -5698,6 +5715,7 @@ class DictFileParser:
         `//` in quoted values do not count.
         """
         rest = line.strip()[len('#includeFunc'):]
+        semicolon = False
         n = len(rest)
         j = 0
         while j < n and rest[j] in ' \t':
@@ -5737,12 +5755,16 @@ class DictFileParser:
                 userMsg(f"Unbalanced parentheses in #includeFunc on line "
                         f"{self._ln(self.i)} of file {self.filepath}.", "ERROR")
             token, quoted = rest[start:j], False
+            if token.endswith(';'):
+                token, semicolon = token[:-1], True
         tail = rest[j:].strip()
+        if tail.startswith(';') and not semicolon:
+            semicolon, tail = True, tail[1:].strip()
         if token == '' or not (tail == '' or tail.startswith('//')
                                or (tail.startswith('/*')
                                    and tail.endswith('*/'))):
             return None
-        return ofIncludeFunc(token, _quoted=quoted)
+        return ofIncludeFunc(token, _quoted=quoted, _semicolon=semicolon)
 
     def _parseIncludes(self, key, value):
         """
@@ -5750,15 +5772,23 @@ class DictFileParser:
         """
         logger.debug("parsing key '%s', and value '%s'.", key, value)
 
+        semicolon = value.endswith(';')
+        if semicolon:
+            value = value[:-1]  #- an empty statement, written back as is
+            if value.endswith(';'):
+                userMsg(f"More than one ';' after '{key}' on line "
+                        f"{self._ln(self.i)} of file {self.filepath}.",
+                        "ERROR")
         if key == '#includeEtc':
-            return ofIncludeEtc(value)
+            incl = ofIncludeEtc(value)
         elif key == '#includeFunc':
-            return ofIncludeFunc(value)
+            incl = ofIncludeFunc(value)
         else:
             incl = ofInclude(value)
             if key != '#include':
                 incl.keyword = key  #- keep #sinclude, #includeIfPresent, etc.
-            return incl
+        incl._semicolon = semicolon
+        return incl
 
     def _parseTable(self, name, string = None):
         """
