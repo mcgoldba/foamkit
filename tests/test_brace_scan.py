@@ -653,6 +653,15 @@ REAL_OUTCOMES = {
         "defaultPatch",
         "boundary",
     ],
+    # - Added with T-046 (#62): `#include "f";` in a sub-dict loads and round-trips;
+    #   `value #include "f";` raises FoamKitError naming the file and line.
+    "esi-v2606.blob.collapseDict": [
+        "controlMeshQuality",
+        "collapseEdgesCoeffs",
+        "collapseFacesCoeffs",
+        "controlMeshQualityCoeffs",
+    ],
+    "esi-v2606.flange.faceSetDict": FoamKitError,
 }
 
 
