@@ -38,22 +38,18 @@ Users on any Python from 3.9 to 3.15, on Linux or Windows, get a FoamKit that CI
 - Making the 3.16 pre-release job a required check.
 
 ## Acceptance criteria
-- [ ] `release.yml` uses an explicit `include:` list matching the table above; no other job changes.
+- [ ] `release.yml` uses an explicit `include:` list matching the table above; the only other change is the `All tests passed` summary job (below).
 - [ ] Every required job passes. Any 3.15 failure is fixed in this PR (with `FoamKitError` messages and behaviour unchanged) or, if larger than S, filed as a new ticket and the coordinator asks the maintainer before merging. No test is skipped, `xfail`ed or marked to get green.
 - [ ] New `DeprecationWarning`s seen on 3.15 are listed in the PR body (fixed or ticketed), not filtered.
 - [ ] The 3.16 job runs with `allow-prereleases: true` and `continue-on-error: true`; its failure leaves the workflow green.
 - [ ] Classifiers: unchanged, since `pyproject.toml` has no per-version classifiers (re-check at implementation time; if any were added since 2026-11-07, they list each tested version: 3.9, 3.12 and 3.15).
 - [ ] `CLAUDE.md` `CI:` line updated, e.g. "`release.yml` runs `pytest` on Python 3.9 (`ubuntu-24.04`), 3.12 and 3.15 (`ubuntu-latest`), 3.9 and 3.15 (`windows-latest`), plus a non-required 3.16 pre-release job."
 - [ ] `ci.yml` and its ruff/mypy baselines are untouched and the `ruff + mypy (no new findings)` check passes.
-- [ ] Branch protection on `main` is updated by the coordinator, with maintainer approval, to exactly these required checks:
-  - `Test (Python 3.9, ubuntu-24.04)`
-  - `Test (Python 3.12, ubuntu-latest)`
-  - `Test (Python 3.15, ubuntu-latest)`
-  - `Test (Python 3.9, windows-latest)`
-  - `Test (Python 3.15, windows-latest)`
+- [ ] **Amended (maintainer, 2026-11-07, PR #95):** a summary job `All tests passed` (`needs: [test]`, `if: always()`) fails unless `needs.test.result` is `success`, so a failed, cancelled or skipped required test job fails it, and the 3.16 pre-release job does not. Branch protection on `main` is updated by the coordinator, with maintainer approval, to exactly these required checks:
+  - `All tests passed`
   - `ruff + mypy (no new findings)`
 
-  Removed: `Test (Python 3.12, ubuntu-24.04)`, `Test (Python 3.12, windows-latest)`. `Test (Python 3.16, ubuntu-latest)` is not required.
+  Removed: every `Test (Python X, OS)` check. Later matrix changes then need no settings change. (The original plan listed the five required `Test (…)` jobs, which would have needed a settings edit on every matrix change.)
 - [ ] A `ci:` PR title, e.g. `ci: test Python 3.9, 3.12 and 3.15 on Linux and 3.9 and 3.15 on Windows (T-070)`.
 
 ## Risks
