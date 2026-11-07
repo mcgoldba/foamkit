@@ -673,6 +673,20 @@ REAL_OUTCOMES = {
     ],
     "foundation-14.planingHullW3.dynamicMeshDict": ["mover"],
     "foundation-14.DTCHullMoving.dynamicMeshDict": ["mover"],
+    # - Added with T-055 (tests/test_comment_after_block_keyword.py): a `//` comment after a
+    # - sub-dict or list keyword.  Before T-055 the first loaded under a key that contained
+    # - the comment (a silent key change; the second held the same bug one level down) and
+    # - the third raised a bare ValueError.
+    "foundation-14.aerofoilNACA0012.physicalProperties": [
+        "thermoType",
+        "mixture",
+    ],
+    "foundation-14.simpleRushtonMRF.createBafflesDict.baffles": [
+        "internalFacesOnly",
+        "baffles",
+    ],
+    # - (a keyword comment, then a list whose items have comments: T-057, loud for now)
+    "foundation-14.SandiaD_LTS.radiationProperties": FoamKitError,
 }
 
 
