@@ -21,6 +21,7 @@ Each row loads with the right values and write 1 == write 2, but the comment is 
 | `d { a 1; } // c`, `d` / `{` / `a 1;` / `} // end d` | the sub-dict, no comment |
 | `d` / `{ // c` / `a 1;` / `}` | no comment |
 | `x` / `(` / `1` / `); // c` | no comment |
+| `x` / `(` / `1` / `);` / `r 2; // u` (an entry after a multi-line list; also inside a sub-dict, found in the T-055 review) | `r 2;`, no comment |
 
 Kept today (must not change): whole-line `// c` comments at top level, in sub-dicts and inside lists; `( // c` (kept, moved to its own line); `#remove a; // c` and other verbatim directives (T-016 keeps the whole line).
 

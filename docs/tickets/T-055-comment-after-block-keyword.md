@@ -40,7 +40,7 @@ A keyword line with a `//` comment, followed by `{` or `(` on the next line, loa
 - [ ] **Failing tests first:** every row of the table except the `/* */` one, at top level and in a sub-dict; the three real files above as byte-exact fixtures in `tests/releases/` (F14 `aerofoilNACA0012/constant/physicalProperties`, `simpleRushtonMRF/system/createBafflesDict.baffles`, F11 or F14 `SandiaD_LTS/constant/radiationProperties`), with source and commit recorded as for earlier fixtures.
 - [ ] `d // c` + `{ a 1; }` loads as key `d` with entry `a`; the written text has `// c` on the `d` line; the re-read gives the same keys; write 1 == write 2. Same for `//c`, the tab form and the list form (`x` is a list of one item).
 - [ ] No loaded key contains `//`, for any input (errors never pass silently: it loads correctly or raises `FoamKitError` with file and line).
-- [ ] The real fixtures load with `mixture`, `bafflesGroup` and `loTcoeffs`/`hiTcoeffs` as keys and round-trip with every comment kept.
+- [ ] The real fixtures load with `mixture` and `bafflesGroup` as keys and round-trip with every comment kept. **Amended (maintainer, 2026-11-07, PR #91 review):** the `radiationProperties` fixture (`loTcoeffs`/`hiTcoeffs`) carries `//` comments after list items, which cannot be kept until T-057, so it raises `FoamKitError` naming the file and line instead of loading and dropping them.
 - [ ] No golden file changes. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.
 - [ ] A `fix:` commit whose body describes the user-visible change (keys that used to contain the comment now load under the plain keyword).
 
