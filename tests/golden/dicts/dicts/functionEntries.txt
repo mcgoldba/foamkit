@@ -7,18 +7,17 @@
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
-    version     2.0; 
-    format      ascii; 
-    class       dictionary; 
-    object      functionEntries; 
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      functionEntries;
 }
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #include    "initialConditions"
 
 
-nx          10; 
+nx          10;
 
 halfX       #eval{ $nx / 2 };
 
@@ -26,7 +25,7 @@ twiceX      #eval " 2 * $nx ";
 
 tripleX     #eval{ $nx * 3 };
 
-area        0.5; 
+area        0.5;
 
 velocity    $U0;
 
@@ -34,18 +33,18 @@ functions
 {
     coded1
     {
-        type        coded; 
+        type        coded;
         libs        ( "libutilityFunctionObjects.so");
-        
-    
-        name        reportTime; 
+
+
+        name        reportTime;
         codeExecute
         #{
             Info<< "time = " << mesh().time().value() << endl;
         #};
     }
-    
-    
+
+
 }
 
 

@@ -7,49 +7,48 @@
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
-    version     2.0; 
-    format      ascii; 
-    class       dictionary; 
-    object      fvSolution; 
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvSolution;
 }
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 solvers
 {
     p
     {
-        solver      GAMG; 
-        tolerance   1e-06; 
-        relTol      0.1; 
-        smoother    GaussSeidel; 
+        solver      GAMG;
+        tolerance   1e-06;
+        relTol      0.1;
+        smoother    GaussSeidel;
     }
-    
-    
+
+
     "(U|k|epsilon|omega|f|v2)"
     {
-        solver      smoothSolver; 
-        smoother    symGaussSeidel; 
-        tolerance   1e-05; 
-        relTol      0.1; 
+        solver      smoothSolver;
+        smoother    symGaussSeidel;
+        tolerance   1e-05;
+        relTol      0.1;
     }
-    
-    
+
+
 }
 
 
 SIMPLE
 {
-    nNonOrthogonalCorrectors	0; 
+    nNonOrthogonalCorrectors	0;
     consistent  yes;
     residualControl
     {
-        p           0.01; 
-        U           0.001; 
-        "(k|epsilon|omega|f|v2)"	0.001; 
+        p           0.01;
+        U           0.001;
+        "(k|epsilon|omega|f|v2)"	0.001;
     }
-    
-    
+
+
 }
 
 
@@ -57,11 +56,11 @@ relaxationFactors
 {
     equations
     {
-        U           0.9; 
-        ".*"        0.9; 
+        U           0.9;
+        ".*"        0.9;
     }
-    
-    
+
+
 }
 
 

@@ -7,59 +7,58 @@
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
-    version     2.0; 
-    format      ascii; 
-    class       dictionary; 
-    object      fvSchemes; 
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvSchemes;
 }
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 ddtSchemes
 {
-    default     steadyState; 
+    default     steadyState;
 }
 
 
 gradSchemes
 {
-    default     cellLimited Gauss linear 1; 
-    grad(U)     cellLimited Gauss linear 1; 
+    default     cellLimited Gauss linear 1;
+    grad(U)     cellLimited Gauss linear 1;
 }
 
 
 divSchemes
 {
-    default     none; 
-    div(phi,U)  Gauss upwind; 
-    div(phi,k)  Gauss upwind; 
-    div(phi,omega)	Gauss upwind; 
-    div(phi,epsilon)	Gauss upwind; 
-    div((nuEff*dev2(T(grad(U)))))	Gauss linear; 
+    default     none;
+    div(phi,U)  Gauss upwind;
+    div(phi,k)  Gauss upwind;
+    div(phi,omega)	Gauss upwind;
+    div(phi,epsilon)	Gauss upwind;
+    div((nuEff*dev2(T(grad(U)))))	Gauss linear;
 }
 
 
 laplacianSchemes
 {
-    default     Gauss linear limited 0.5; 
+    default     Gauss linear limited 0.5;
 }
 
 
 interpolationSchemes
 {
-    default     linear; 
+    default     linear;
 }
 
 
 snGradSchemes
 {
-    default     limited 0.5; 
+    default     limited 0.5;
 }
 
 
 wallDist
 {
-    method      meshWave; 
+    method      meshWave;
 }
 
 

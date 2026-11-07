@@ -7,41 +7,40 @@
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
-    version     2.0; 
-    format      ascii; 
-    class       dictionary; 
-    object      controlDict; 
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
 }
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-application simpleFoam; 
+application simpleFoam;
 
-startFrom   startTime; 
+startFrom   startTime;
 
-startTime   0; 
+startTime   0;
 
-stopAt      endTime; 
+stopAt      endTime;
 
-endTime     2000; 
+endTime     2000;
 
-deltaT      1; 
+deltaT      1;
 
-writeControl	timeStep; 
+writeControl	timeStep;
 
-writeInterval	100; 
+writeInterval	100;
 
-purgeWrite  0; 
+purgeWrite  0;
 
-writeFormat ascii; 
+writeFormat ascii;
 
-writePrecision	6; 
+writePrecision	6;
 
 writeCompression	off;
 
-timeFormat  general; 
+timeFormat  general;
 
-timePrecision	6; 
+timePrecision	6;
 
 runTimeModifiable	true;
 

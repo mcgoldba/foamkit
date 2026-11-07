@@ -7,19 +7,18 @@
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
-    version     2.0; 
-    format      ascii; 
-    class       dictionary; 
-    object      momentumTransport; 
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      momentumTransport;
 }
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-simulationType	RAS; 
+simulationType	RAS;
 
 RAS
 {
-    model       kEpsilon; 
+    model       kEpsilon;
     turbulence  on;
     printCoeffs on;
 }

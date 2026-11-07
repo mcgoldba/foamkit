@@ -7,12 +7,11 @@
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
-    version     2.0; 
-    format      ascii; 
-    class       dictionary; 
-    object      tableDict; 
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      tableDict;
 }
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 inletVelocity	 table (

@@ -317,7 +317,7 @@ def test_dict_level_include_output_is_unchanged_at_top_level(
     path = tmp_path / "dl"
     path.write_text(HEADER + directive + "\nx 1;\n")
     text = _load(path).toString().split(AFTER_BANNER, 1)[1]
-    assert text == written + "\nx           1; \n\n"
+    assert text == written + "\nx           1;\n\n"
 
 
 @pytest.mark.parametrize(("directive", "written"), DICT_LEVEL)
@@ -327,7 +327,7 @@ def test_dict_level_include_output_is_unchanged_in_a_sub_dict(
     path = tmp_path / "dl"
     path.write_text(HEADER + "sub\n{\n" + directive + "\n    x 1;\n}\n")
     text = _load(path).toString().split(AFTER_BANNER, 1)[1]
-    assert text == "sub\n{\n    " + written + "    x           1; \n}\n\n\n"
+    assert text == "sub\n{\n    " + written + "    x           1;\n}\n\n\n"
 
 
 # - Other directives in a plain list keep today's token behaviour (out of scope).
