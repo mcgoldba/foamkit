@@ -110,3 +110,39 @@ def test_goldens_have_no_trailing_whitespace():
     }
     bad = {k: v for k, v in bad.items() if v}
     assert not bad, f"{len(bad)} golden files with trailing whitespace: {bad}"
+
+
+@pytest.mark.parametrize(
+    "eol, gap, blanks",
+    [
+        ("\r\n", "\n\n", 2),  # CRLF source
+        ("\n", "   \n\t\n", 2),  # whitespace-only lines are written empty
+    ],
+)
+def test_synthetic_blank_line_variants_after_foamfile(eol, gap, blanks, tmp_path):
+    src = (
+        "FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n"
+        "    object x;\n}\n" + gap + "a 1;\n"
+    )
+    f = tmp_path / "x"
+    f.write_bytes(src.replace("\n", eol).encode())
+    out = _write(f)
+    assert _blanks_after_foamfile(out) == blanks
+    assert _trailing_ws(out) == []
+
+
+def test_blank_lines_after_foamfile_survive_json_cache(case):
+    """A non-zero count must survive init -> save -> load (the default is 0)."""
+    import foamkit.functions as pf
+
+    cd = case / "system" / "controlDict"
+    lines = cd.read_text(encoding="utf-8").split("\n")
+    end = next(i for i, ln in enumerate(lines) if ln.strip() == "}")
+    k = end + 1
+    while k < len(lines) and not lines[k].strip():
+        k += 1
+    cd.write_text("\n".join(lines[: end + 1] + ["", ""] + lines[k:]), encoding="utf-8")
+
+    pf.init(path=case).save(path=case)
+    loaded = pf.load(path=case)
+    assert _blanks_after_foamfile(loaded.system.controlDict.toString()) == 2
