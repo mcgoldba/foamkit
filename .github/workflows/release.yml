@@ -6,11 +6,28 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Only the pre-release entry may fail without failing the workflow.
+    continue-on-error: ${{ matrix.prerelease == true }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
-        python-version: ['3.9', '3.12']
+        # 3.9 (the minimum) is pinned to ubuntu-24.04 because ubuntu-latest is
+        # Ubuntu 26.04, which has no Python 3.9 in setup-python. See the
+        # minimum-Python policy in ROADMAP.md Decisions.
+        include:
+          - python-version: '3.9'
+            os: ubuntu-24.04
+          - python-version: '3.12'
+            os: ubuntu-latest
+          - python-version: '3.15'
+            os: ubuntu-latest
+          - python-version: '3.9'
+            os: windows-latest
+          - python-version: '3.15'
+            os: windows-latest
+          - python-version: '3.16'
+            os: ubuntu-latest
+            prerelease: true
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -19,6 +36,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: ${{ matrix.prerelease == true }}
 
       - name: Install package and test dependencies
         run: python -m pip install -e ".[test]"

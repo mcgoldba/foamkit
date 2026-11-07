@@ -10,7 +10,7 @@
   - release detection covers foam-extend (T-008);
   - name mapping (T-010) is deferred;
   - full-case fixtures are optional and later (T-007 note).
-- **Python:** 3.9+, tested on 3.9 and 3.12.
+- **Python:** 3.9+, tested on 3.9, 3.12 and 3.15 (Linux) and 3.9 and 3.15 (Windows).
 
 The version-specific facts below were written from memory unless marked *real file*. On 2026-10-19 a memory-based claim (B2 for boxed banners) turned out to be wrong when checked against real files. T-007's fact-check table, built from real release files (see References), is the source of truth and overrides this document. Fixture text must always be fetched from real files.
 
