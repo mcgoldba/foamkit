@@ -44,6 +44,27 @@ jobs:
       - name: Run tests
         run: python -m pytest
 
+  tests-passed:
+    # The one required test check in branch protection. Matrix entries can be
+    # added or renamed without editing the required checks on main.
+    name: All tests passed
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the result of every required test job
+        # `needs.test.result` is `success` only if every test job passed or
+        # is allowed to fail (the pre-release entry); a failed, cancelled or
+        # skipped required job fails this check.
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          if [ "$TEST_RESULT" != "success" ]; then
+            echo "::error::The test jobs finished with result '$TEST_RESULT'."
+            exit 1
+          fi
+          echo "All required test jobs passed."
+
   build:
     name: Build distributions
     runs-on: ubuntu-latest
