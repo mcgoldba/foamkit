@@ -80,5 +80,7 @@ version_scheme = "pep440"
 major_version_zero = true
 #- Release candidates start at rc1
 prerelease_offset = 1
+#- The final release's CHANGELOG entry includes its release candidates' commits
+changelog_merge_prerelease = true
 version_provider = "pep621"
 update_changelog_on_bump = true

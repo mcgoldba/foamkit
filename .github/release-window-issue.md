@@ -9,4 +9,4 @@ Scheduled OpenFOAM compatibility release. Policy, version rules and release step
 - [ ] Deprecations due for removal in this release removed (listed under `BREAKING CHANGE`)
 - [ ] Optional: `rc1` published one to two weeks before the target
 - [ ] CHANGELOG entry lists the tested and best-effort OpenFOAM releases
-- [ ] Released with `python -m commitizen bump --yes --files-only --increment MINOR`, bump PR merged, tag pushed, PyPI checked, GitHub release created
+- [ ] Released at least as a minor (`--increment MINOR` only if the dry run proposes a patch); bump PR merged last, tag pushed, PyPI checked, GitHub release created

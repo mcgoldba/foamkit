@@ -29,7 +29,9 @@ jobs:
         run: |
           set -euo pipefail
           title="Release window $(date -u +%Y-%m): OpenFOAM compatibility release"
-          if gh issue list --state open --label release --json title --jq '.[].title' | grep -Fxq "$title"; then
+          #- Assigned first so a gh failure stops the job (set -e) instead of creating a duplicate
+          open_titles=$(gh issue list --state open --label release --json title --jq '.[].title')
+          if grep -Fxq "$title" <<<"$open_titles"; then
             echo "Already open: $title"
             exit 0
           fi

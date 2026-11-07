@@ -51,8 +51,8 @@ Commitizen computes the bump from the conventional-commit PR titles (PRs are squ
 | Bug fix, including turning silent loss into a `FoamKitError` | `fix:` | patch | patch |
 | New public API, CLI command or option | `feat:` | minor | minor |
 | A new OpenFOAM release joins the tested set, or one moves to best-effort | scheduled window | minor | minor |
-| Deprecation (old name kept as an alias with a warning, per `CLAUDE.md`) | `feat:` / `fix:` | minor | minor |
-| Minimum Python raised (after one minor release of notice, per the ROADMAP decision) | `feat!:` or `BREAKING CHANGE:` | minor | minor |
+| Deprecation (old name kept as an alias with a warning, per `CLAUDE.md`) | `feat:` | minor | minor |
+| Minimum Python raised, after one minor release of notice. `requires-python` stops pip from installing it on the old Python, so it is not marked breaking | `feat:` | minor | minor |
 | Deprecated name removed, or a valid call changes behaviour incompatibly | `feat!:` or `BREAKING CHANGE:` | **minor** | **major** |
 | Docs, tests, CI, refactor | `docs:` `test:` `ci:` `refactor:` `chore:` | no release on its own | same |
 
@@ -61,7 +61,7 @@ Notes:
 - **Turning a silent loss into a loud error is a fix, not a breaking change.** Code that "worked" while losing data was already broken. The CHANGELOG entry still names the new error so users can find it.
 - **While `0.x`,** breaking changes bump the minor version (`major_version_zero = true` in `pyproject.toml`) and are listed under `BREAKING CHANGE` in the CHANGELOG.
 - **Deprecations** stay for at least one minor release before removal. Before 1.0, the earliest removal is the next minor release. From 1.0, removal waits for the next major release.
-- A scheduled release that contains only fixes is still forced to minor (`--increment MINOR`), because the tested set changed.
+- A scheduled release must be at least a minor release, because the tested set changed. If the dry run proposes only a patch, add `--increment MINOR`. Never use `--increment` to lower the bump commitizen proposes: from 1.0, that would hide a major.
 
 ### 1.0.0
 
@@ -75,18 +75,18 @@ After 1.0, a major release happens only for breaking changes, never just because
 
 ### Pre-releases
 
-For a scheduled release with large compatibility changes, publish a release candidate (`0.3.0rc1`) one to two weeks before the target date. `pip install foamkit` ignores pre-releases. Testers use `pip install --pre foamkit`.
+For a scheduled release with large compatibility changes, publish a release candidate (`0.3.0rc1`) one to two weeks before the target date. `pip install foamkit` ignores pre-releases. Testers use `pip install --pre foamkit`. The final release's CHANGELOG entry also lists the commits from its release candidates (`changelog_merge_prerelease = true`), so its release notes are complete.
 
 ## Calendar
 
 | Version | Target | Contents |
 |---|---|---|
-| **0.2.0** | week of 2026-11-16, after PR #91 (T-055) merges | Off-cycle catch-up: 39 commits since 0.1.0, including about ten fixes for silent loss (T-035, T-037, T-040, T-041, T-052, T-055) and the `fk` command. `FoamKitError` subclasses `Exception` and keeps `SystemExit` for this one release (T-017). |
+| **0.2.0** | week of 2026-11-16, after PR #91 (T-055) merges | Off-cycle catch-up: 39 commits since 0.1.0, including about ten fixes for silent loss (T-035, T-037, T-040, T-041, T-052, T-055) and the `fk` command. `FoamKitError` subclasses `Exception` and keeps `SystemExit` through 0.2.x (T-017). |
 | 0.2.x | as needed | Fixes (for example T-056/T-057 comment loss) |
 | **0.3.0** | last week of January 2027 | ESI v2612 (expected December 2026) joins the tested set; ESI v2412 moves to best-effort. `SystemExit` is removed from `FoamKitError` (ROADMAP: "the release after T-017 ships"). |
 | **0.4.0** | third week of August 2027 | ESI v2706 and Foundation 15 (expected June and July 2027) join; ESI v2506 and Foundation 11 move to best-effort. |
 
-Tested today: Foundation 11-14 and ESI v2412, v2506, v2512, v2606.
+Tested set by policy today: Foundation 11-14 and ESI v2412, v2506, v2512, v2606. Real tutorial files are so far in `tests/releases/` only for Foundation 11, 13, 14 and ESI v2606; T-007 adds fixtures for the rest.
 
 ## How to release
 
@@ -97,7 +97,7 @@ The steps are the same for every release. Branch protection blocks pushes to `ma
    ```bash
    git switch -c release/v0.2.0 origin/main
    python -m commitizen bump --dry-run            # check the version and CHANGELOG
-   python -m commitizen bump --yes --files-only   # scheduled window: add --increment MINOR
+   python -m commitizen bump --yes --files-only   # add --increment MINOR only if a window release would be a patch
    ```
 
    `--files-only` updates `pyproject.toml` and `CHANGELOG.md` and makes no commit or tag. For a release candidate, add `--prerelease rc`.
@@ -105,6 +105,16 @@ The steps are the same for every release. Branch protection blocks pushes to `ma
 2. **Edit the CHANGELOG entry** if needed: for a scheduled release, add a `### Supported OpenFOAM releases` list (tested and newly best-effort); name new `FoamKitError`s; spell out the user impact of any `BREAKING CHANGE`.
 
 3. **Open the PR.** Commit as `bump: version 0.1.0 → 0.2.0` (commitizen leaves `bump:` commits out of the CHANGELOG) and use the same PR title. Wait for green CI, then the maintainer squash-merges.
+
+   **The bump PR must be the last PR merged before the tag.** Branch protection doesn't require branches to be up to date, so a PR that merges while the bump PR is open would ship without a CHANGELOG entry. Don't merge other PRs while it is open. If `main` moved anyway, redo the bump on top of it:
+
+   ```bash
+   git fetch origin && git reset --hard origin/main
+   python -m commitizen bump --yes --files-only   # same flags as before
+   git commit -am "bump: version 0.1.0 → 0.2.0" && git push --force-with-lease
+   ```
+
+   `release.yml` checks this at tag time too (step 4).
 
 4. **Tag the merged commit and push the tag** (maintainer):
 
@@ -114,7 +124,7 @@ The steps are the same for every release. Branch protection blocks pushes to `ma
    git push origin v0.2.0
    ```
 
-   `release.yml` refuses to publish when the tag doesn't match the `pyproject.toml` version.
+   `release.yml` (`.github/scripts/check_release_tag.py`) refuses to publish if the tag doesn't match the `pyproject.toml` version, if the tagged commit isn't on `main`, or if a `feat`/`fix`/`refactor`/`perf`/breaking commit since the previous tag is missing from `CHANGELOG.md`. Nothing reaches PyPI in that case. Delete the tag (`git push origin :v0.2.0`, `git tag -d v0.2.0`), fix the cause and tag again.
 
 5. **Check and announce:**
    - the `Publish to PyPI` job is green and <https://pypi.org/p/foamkit> shows the version;
