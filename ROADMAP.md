@@ -4,7 +4,7 @@
 - **Real run output for the runtime track (2026-11-06).** T-011, T-064, T-066 and T-068 need solver logs, `postProcessing` output (including one restarted run) and written time directories from real runs; tutorial repositories do not contain these. Can you supply trimmed output from pitzDaily (plus one transient tutorial) for at least Foundation 14 and ESI v2606, ideally also Foundation 11 and ESI v2412, with the release and command recorded? Until then those four tickets are skipped when reached; the ranked seven do not depend on them.
 - **T-066 overlap rule:** pick option A (the later restart replaces overlapping rows, with a warning) or B (keep every row with a `startTime` column) at approval.
 
-## Decisions (2026-10-18, 2026-10-19, 2026-11-06)
+## Decisions (2026-10-18, 2026-10-19, 2026-11-06, 2026-11-07)
 - **Approved by maintainer:** the ranked order, the T-010 canonical name table and the `case.canonical(...)` accessor.
 - **T-013 unit API:** parsed units go on a new `.units` attribute. Unit-annotated values come back typed instead of as strings; this is treated as a bug fix and gets a CHANGELOG note.
 - **`FoamKitError`:** becomes an `Exception` subclass. For one release it inherits from both `SystemExit` and `Exception`, with a CHANGELOG deprecation notice; a runtime warning "when caught as SystemExit" is not possible in Python. The `fk` CLI keeps its message and exit code (T-017).
@@ -60,6 +60,8 @@
 - **Order (maintainer, 2026-11-06):** silent-corruption fixes stay first (T-052, then T-055). T-019 and T-020 come right after them, as the largest write-side gap. The rest of the parser queue keeps its relative order.
   - **T-020 corpus:** T-020 no longer waits for T-007, which depends on 9 other tickets. Its corpus is `tests/releases/` plus `tests/fixtures/pitzDaily`; T-007 stays where it was, now depends on T-020, and its fixtures must round-trip with no T-020 `xfail`.
   - **Runtime track:** new tickets T-059 to T-066, T-068 and T-069. T-011 is rescoped onto it and no longer waits for T-007/T-010 (T-010 later absorbs its `residuals` → `solverInfo` fallback). T-023 moves up to just before T-062 (`fk run`), which needs its clean CLI errors.
+- **CI matrix (maintainer, 2026-11-07):** Python 3.9 on `ubuntu-24.04`; 3.12 and 3.15 on `ubuntu-latest`; 3.9 and 3.15 on `windows-latest`; a non-required 3.16 pre-release job. Explicit `include:` list, job names `Test (Python X, OS)` (T-070). Until T-070 lands, the Linux jobs are pinned to `ubuntu-24.04` (PR #78), because `ubuntu-latest` (Ubuntu 26.04) has no Python 3.9.
+- **Minimum Python (maintainer, 2026-11-07):** 3.9 stays. The oldest version is dropped only when it blocks a dependency or a language feature FoamKit needs, or when no supported CI runner can install it. Dropping it takes one minor release of notice: a warning when running on that version, plus a CHANGELOG note. A version that a supported RHEL release still ships with full-life support is not dropped, unless conda or uv covers those users and the docs say so. Python 3.9 has full-life support for the whole RHEL 9 life cycle (Red Hat Application Streams life cycle); CPython 3.9 reached end of life on 2025-10-31.
 - **Docs (maintainer, 2026-11-06):** T-001 gains a short, factual "How FoamKit compares" page (foamlib, PyFoam, pybFoam/pyOFTools) that states differences neutrally, with a link, version and date for each claim.
 
 ## Done
@@ -78,6 +80,7 @@
 - **T-042** `#include` and `#includeFunc` inside a list are one item, written back on one line; stock `helmholtzResonance` `blockMeshDict` writes in every release; `#includeFunc` after a tab-separated item raises `FoamKitError` instead of losing its parentheses (693d945, PR #66)
 - **T-048** list items with glued parentheses (`mag(U)`, `4(0 1 2 3)`, `arc 10 11(…)`) and one-element inner lists keep their parentheses; list shapes that were silently corrupted raise `FoamKitError` with file and line; top-level `*Positions` lists unchanged (c4a810d, PR #72)
 - **T-046** `#include "f";` and the rest of the include family keep their `;` on write; `.value` no longer contains it; value-position includes and `;;` raise `FoamKitError` with file and line (0eb75b1, PR #73)
+- **T-052** entries whose value is two or more lists (`transform (…) (…);`) load and write back as `ofListGroups`; only `[…]` is read as a dimension set (fixes the ESI `floatingObject` transform, the `planingHullW3` orphan and the ESI `heatExchanger` `porous` `muCoeffs<8>`); CI pins `ubuntu-24.04` (647cb84, PR #78)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
@@ -123,6 +126,8 @@
   - **`//` comments are dropped on write** after entries, include directives and `}`/`);` (`x 1; // c`, `#include "f"; // c`; 73-85 Foundation files per release) (T-056), and after items of multi-line lists (stock `snappyHexMeshDict` `writeFlags`) (T-057).
   - `#include "a//b";` loads as `a` and is written `#include "a"` (added to T-036). `x 1; /* c */` loads `x` as a string, and `#include "f"; /* c */` raises a bare `TypeError` (added to T-031).
   - `#include ;` (no file name) loads silently as `""`, and `#include` alone raises a bare `IndexError`; `#includeFunc x;;` keeps a `;` in its value while `#include "f";;` raises (T-058).
+- **Found in the T-052 review (2026-11-07):** `box` entries written with exponents (`8e-3`, `1e6`; Foundation `capillaryRise`, several `topoSetDict`s) load as `ofListGroups`, and write 2 reads them back as `ofBoundBox` written `0.0`/`1.0`. Every `ofBoundBox` writes `0` as `0.0` and is chosen by shape for any key (`p1 (0 0 0) (1 1 1)`). The maintainer asked whether `ofBoundBox` should become a subclass of `ofListGroups` with one parser (PR #78 discussion).
+- CI tests Python 3.9 and 3.12 only; nothing newer than 3.12 is tested (T-070).
 - There is no docs site, and the README has broken examples.
 - **Writes are not yet lossless:** an unedited read → write changes 13-690 lines per file in the real-file corpus (T-019, T-020).
 - **Running, monitoring and results (review, 2026-11-06):**
@@ -134,10 +139,10 @@
   - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-052 entry values of two or more lists (#69, PR #78).
+**In progress:** T-055 `//` comment after a block keyword (#74).
 
-1. **T-052** entry values of two or more lists (M, #69): **silent corruption** of the stock ESI `floatingObject` rigid-body `transform` in every ESI release.
-2. **T-055** `//` comment after a block keyword (S, #74): **silent key change** in stock Foundation tutorials (2-6 files per release).
+1. **T-055** `//` comment after a block keyword (S, #74): **silent key change** in stock Foundation tutorials (2-6 files per release).
+2. **T-070** CI Python matrix (S, #90): tests the oldest and newest supported Python on Linux and Windows; small and CI-only, wanted soon by the maintainer (2026-11-07).
 3. **T-019** writer whitespace churn (S, #26): the cheap first step to lossless writes, and T-020 needs it.
 4. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
 5. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
