@@ -19,6 +19,10 @@ Block comments in the body of a dictionary are written back unchanged, and never
 - **Update (2026-10-26, T-035):** T-035 fixed a separate bug in `_parseComments`: a single-line `/* x */` comment gained another `/*` on every write. With that fix, `bendJunction`'s second write is stable. **Still owned here:**
   - multi-line block comments are joined into one line, losing their newlines;
   - the potentialFoam/cylinder parse failure (re-check it on main after T-035 and T-036).
+- **Re-check after T-046 (planner, 2026-10-31, 0eb75b1, no `foamkit/` changes).** Found while reproducing the T-046 review notes (PR #73); pre-existing:
+  - **silent type change:** `x 1; /* c */` loads `x` as `ofStr('1')` instead of `ofInt(1)`. It is written `x 1;` with the comment on its own line, so the re-read gives `ofInt` again;
+  - `#include "f"; /* c */` raises a bare `TypeError` (`ofInclude.__init__() got an unexpected keyword argument 'name'`), with no file or line;
+  - `d /* c */` followed by `{` / `a 1;` / `}` raises `FoamKitError` "Unexpected '}'", which points at the brace instead of the comment.
 
 ## Scope
 - Block-comment handling in `DictFileParser` (`_parseComments` and the "end of commented block" search) and the comment writer. The single-line `/* x */` growth is already fixed by T-035; keep its regression test green. A comment's text, including its newlines, is kept byte-for-byte. Comments may start mid-line, span lines, or sit inside lists and sub-dicts.
@@ -37,6 +41,7 @@ Block comments in the body of a dictionary are written back unchanged, and never
   - multi-line block comments round-trip byte-identically at top level, inside a sub-dict and inside a list;
   - the potentialFoam-cylinder file gets past every comment. Other failures in it (`#codeStream` → T-033, `#remove` → T-016) are recorded, not fixed here.
 - [ ] Inline block comments still round-trip.
+- [ ] The "Re-check after T-046" rows are tests: `x 1; /* c */` loads `x` as `ofInt(1)` and keeps the comment; `#include "f"; /* c */` loads (value `f`) and keeps the comment; `d /* c */` + `{ … }` loads `d` with the comment kept. Anything still unsupported raises `FoamKitError` with file and line, never a bare `TypeError`.
 - [ ] All existing golden files are unchanged. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.
 - [ ] A `fix:` commit whose body describes the user-visible change.
 

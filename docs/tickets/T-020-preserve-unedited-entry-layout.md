@@ -4,7 +4,8 @@
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** M. The first step is a short design note in this ticket. If that note shows more than M, split by entry kind: T-020a scalars and words, T-020b lists and sub-dictionaries.
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B9
-- **Depends on:** T-019. Should land after T-007, which provides the real-file corpus.
+- **Depends on:** T-019.
+- **Rescoped (2026-11-06):** moved up to right after T-055 (maintainer). It no longer waits for T-007: its corpus is the real files already in `tests/releases/` plus `tests/fixtures/pitzDaily`. T-007 now lands after this ticket, and its fixtures must round-trip byte-identically with no T-020 `xfail`.
 - **Followed by:** T-050 (#67, `fk format` and `format_on_write`).
 
 ## Maintainer decision (2026-10-30)
@@ -32,13 +33,16 @@ An unedited read → write reproduces each entry's original spacing and layout. 
 - Header (T-006) and FoamFile-block whitespace (T-019)
 
 ## Acceptance criteria
-- [ ] Every T-007 fixture round-trips byte-identically when unedited. The `xfail` markers T-007 added for T-020 are removed.
+- [ ] **Corpus:** every file in `tests/releases/` that loads on main, and every dictionary in `tests/fixtures/pitzDaily`, round-trips byte-identically when unedited (read → write; the cache round trip follows the cache criterion below). Files that do not load yet are listed in the test with the ticket that blocks them, and are picked up automatically once they load.
+- [ ] For each corpus file, a test reports the number of changed lines on an unedited write; the target is 0 for all of them.
 - [ ] Editing one entry changes only that entry's lines. A diff test on a real fixture checks this.
 - [ ] `test_repeated_writes_converge` still passes. Goldens are regenerated, and their diffs are reviewed as "now equal to source".
 - [ ] The cache behaviour is documented and tested.
 - [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the T-002 baseline. There is a `fix:` commit whose body describes the user-visible change.
 
 ## Risks
+- **Overlap with open writer tickets:** keeping the source text of unedited entries also keeps their comments (T-056, T-057), block comments (T-031), number spelling (T-032) and `#codeStream` text (T-033). The design note says which of these become "edited entries only" after this ticket, so the planner can shrink them; this ticket does not close them.
+- **Size:** the corpus covers more entry kinds than T-007's pitzDaily set would have. If the design note shows more than M, split as stated under Size.
 - **Memory:** keeping source text per entry costs memory on large dictionaries; check against `dict_filesize_limit`.
 - **Modified flags:** nested edits (`case.a.b.c = x`) must mark the right node as modified.
 - **Output change:** users who relied on FoamKit normalizing formatting will see that stop. Say so in the commit body (the `fix:` commit).

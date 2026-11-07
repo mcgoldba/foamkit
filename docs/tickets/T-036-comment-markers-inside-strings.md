@@ -32,6 +32,15 @@ From the T-042 review (PR #66, round 2 note 2 and round 4 note 4). The one-line 
 
 Added acceptance (below): every row above loads and round-trips; until it does, no message may say "unbalanced brackets" for balanced input.
 
+### Re-check after T-046 (planner, 2026-10-31, 0eb75b1, no `foamkit/` changes)
+From the T-046 review (PR #73, note 5). The include family has the same cause: `_getLinesList` (`foamkit/types/__init__.py:4607`, `line.strip().split('//')[0]`) cuts the line at the first `//`, inside the quotes too.
+| Input | Now |
+|---|---|
+| `#include "a//b";`, `#include "a//b"` (top level or in a sub-dict) | **silently truncated:** loads with value `a`, written `#include "a"` (the `;` is lost too). Write 1 == write 2, so the wrong name is stable |
+| `#includeEtc "a//b";` | same: value `a`, written `#includeEtc "a"` |
+
+Added acceptance (below): these rows load with the full name and are written back unchanged.
+
 ## How common (real tutorials, 2026-10-26)
 - Foundation 11-14: **0** files with `//` inside a single quoted token. Apparent hits were a string followed by a `//` comment, for example `separator " "; // Optional`. This was checked with `git grep -I` in the inventory clones.
 - ESI v2412-v2606: **not re-checked.** The scratchpad clones no longer have `tutorials/` checked out; re-run the grep after `git sparse-checkout set tutorials` (method in the plan's Directive inventory).
@@ -50,6 +59,7 @@ Added acceptance (below): every row above loads and round-trips; until it does, 
 - [ ] Tests for `/*` and `*/` inside strings in the same three positions, passing before and after.
 - [ ] After the fix, all of these load, round-trip unchanged, and write 1 == write 2.
 - [ ] The rows of "Re-check after T-042" are tests: the `//`-in-string rows load and round-trip; `x ( #include "f" // comment` / ` 2 );` and `a (1 2 // c )` / `3);` load as OpenFOAM reads them (the comment is dropped or kept, never the `)`); no balanced input reports "unbalanced brackets".
+- [ ] The rows of "Re-check after T-046" are tests: `#include "a//b";` and `#includeEtc "a//b";`, at top level and in a sub-dict, load with value `a//b` and are written back as `#include "a//b";` (the `;` kept, as T-046 does); without the `;` they are written without it. A real comment after the name (`#include "f"; // c`) is still read as a comment; keeping its text on write is T-056 (#75).
 - [ ] No golden file changes. All `tests/releases/` files behave as before.
 - [ ] `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.
 - [ ] A `fix:` commit whose body describes the user-visible change.

@@ -1,9 +1,10 @@
 # FoamKit Roadmap
 
 ## Questions for the maintainer
-None open.
+- **Real run output for the runtime track (2026-11-06).** T-011, T-064, T-066 and T-068 need solver logs, `postProcessing` output (including one restarted run) and written time directories from real runs; tutorial repositories do not contain these. Can you supply trimmed output from pitzDaily (plus one transient tutorial) for at least Foundation 14 and ESI v2606, ideally also Foundation 11 and ESI v2412, with the release and command recorded? Until then those four tickets are skipped when reached; the ranked seven do not depend on them.
+- **T-066 overlap rule:** pick option A (the later restart replaces overlapping rows, with a warning) or B (keep every row with a `startTime` column) at approval.
 
-## Decisions (2026-10-18, 2026-10-19)
+## Decisions (2026-10-18, 2026-10-19, 2026-11-06)
 - **Approved by maintainer:** the ranked order, the T-010 canonical name table and the `case.canonical(...)` accessor.
 - **T-013 unit API:** parsed units go on a new `.units` attribute. Unit-annotated values come back typed instead of as strings; this is treated as a bug fix and gets a CHANGELOG note.
 - **`FoamKitError`:** becomes an `Exception` subclass. For one release it inherits from both `SystemExit` and `Exception`, with a CHANGELOG deprecation notice; a runtime warning "when caught as SystemExit" is not possible in Python. The `fk` CLI keeps its message and exit code (T-017).
@@ -17,7 +18,7 @@ None open.
 - **T-006:** promoted to right after T-005. Headers are preserved byte-for-byte for Foundation, ESI and foam-extend, using real-file fixtures. The 3 `tests/golden/dicts/headers/*.txt` goldens (which currently record B3) are regenerated and reviewed deliberately. T-006 also fixes the same-line `FoamFile {` blank-line drift.
 - **Writer formatting churn:** an unedited read → write must reproduce the file. Split into T-019 (whitespace) and T-020 (padding/layout).
 - **foam-extend:** a third distribution, handled at the header and detection level. Name mapping is deferred. Supported-versions label approved (2026-10-19): "headers tested (4.1, 5.0), otherwise best-effort".
-- **Order (2026-10-19):** T-015 goes next, ahead of T-017, by maintainer choice: stock Foundation 11 pitzDaily cannot load without it. Its error tests use `FoamKitError`, which stays valid under T-017's dual base. T-016 moves up because of the Foundation 14 `#print` evidence, and stays after T-017.
+- **Order (2026-10-19):** T-015 goes next, ahead of T-017, by maintainer choice: stock Foundation 11 pitzDaily cannot load without it. Its error tests use `FoamKitError`, which stays valid while T-017 keeps both bases. T-016 moves up because of the Foundation 14 `#print` evidence, and stays after T-017.
 - **T-013 position (delegated to the coordinator, 2026-10-19):** stays after T-021. Real Foundation 13/14 pitzDaily files show no `[m/s]`-style units. The scope gains Foundation 14 named dimension sets (`[velocity]`).
 - **Docs:**
   - Sphinx + MyST + Furo; the strict build is `sphinx-build -W --keep-going -b html docs docs/_build/html`.
@@ -50,6 +51,16 @@ None open.
   - Tabs and spaces are never mixed. Formatting changes whitespace only; anything else raises `FoamKitError` with file and line, and nothing is written. The docs page is T-051 (#68).
 - **Fixtures** come from real files only. Source URLs are in `docs/plans/openfoam-compatibility.md`, under References.
 - **`bin/` scripts:** deleted by the maintainer.
+- **Scope (maintainer, 2026-11-06):** development focuses on (a) lossless dictionary read/edit/write (the parser and writer queue) and (b) running cases, following running cases and reading results. Case running, `ofStudy` included, stays in scope. No async or scheduler (Slurm) runners unless a concrete need appears.
+- **Library review (2026-11-06):**
+  - foamlib (GPL-3.0-only, Python >=3.12, v1.10.2): a pure-Python reader and editor. On `tests/releases/*` plus `tests/fixtures/pitzDaily` (45 files) it parsed 31 and FoamKit 30. Its edits change only the edited entry (0-3 diff lines, comments and layout kept), while FoamKit's *unedited* read → write changes 13-690 lines per file. It also clones and runs cases (async, Slurm) and runs parametric studies. It fails loudly on bare `#print`, `#eval{`, `#if`, `${x}`, `#codeStream` and `[deg]`.
+  - pybFoam / pyOFTools: compiled OpenFOAM bindings (ESI v2312+, Linux, sourced OpenFOAM) for solver-level field access and in-situ post-processing. A different approach, complementary to FoamKit.
+  - FoamKit leans into Python 3.9+, Windows in CI, errors that never pass silently, the `fk` CLI and console, Foundation and ESI canonical names (T-010), and running, monitoring and results.
+  - foamlib code is never copied into FoamKit. An optional dev-only comparison test is allowed: T-067, skipped when foamlib is not installed.
+- **Order (maintainer, 2026-11-06):** silent-corruption fixes stay first (T-052, then T-055). T-019 and T-020 come right after them, as the largest write-side gap. The rest of the parser queue keeps its relative order.
+  - **T-020 corpus:** T-020 no longer waits for T-007, which depends on 9 other tickets. Its corpus is `tests/releases/` plus `tests/fixtures/pitzDaily`; T-007 stays where it was, now depends on T-020, and its fixtures must round-trip with no T-020 `xfail`.
+  - **Runtime track:** new tickets T-059 to T-066, T-068 and T-069. T-011 is rescoped onto it and no longer waits for T-007/T-010 (T-010 later absorbs its `residuals` → `solverInfo` fallback). T-023 moves up to just before T-062 (`fk run`), which needs its clean CLI errors.
+- **Docs (maintainer, 2026-11-06):** T-001 gains a short, factual "How FoamKit compares" page (foamlib, PyFoam, pybFoam/pyOFTools) that states differences neutrally, with a link, version and date for each claim.
 
 ## Done
 - **T-002** ruff + mypy config and baseline (ad4c34c)
@@ -57,7 +68,7 @@ None open.
 - **T-005** header-less `FoamFile` dictionaries recognised; real ESI/foam-extend banners pinned (9912fcc)
 - **T-006** headers written back verbatim, ESI/foam-extend box borders kept; same-line `FoamFile {` read as the header (b97578c)
 - **T-015** `#includeFunc` with arguments parsed; original quoting kept (17e125f)
-- **T-017** `FoamKitError` catchable with `except Exception` (dual base for one release) (PR #34)
+- **T-017** `FoamKitError` catchable with `except Exception` (keeps `SystemExit` as a second base for one release) (PR #34)
 - **T-025** `userMsg` prints messages literally; always raises `FoamKitError` at ERROR (5c10d41, PR #36)
 - **T-016** verbatim directive framework (`ofVerbatimDirective`, `OF_DIRECTIVES`, `iterDirectives`); single-line directives kept verbatim; stock Foundation 14 pitzDaily loads (1c10451, PR #46)
 - **T-035** dict/list end scan ignores braces inside strings, comments and `#{ #}` code blocks (bc4af32, PR #51)
@@ -66,6 +77,7 @@ None open.
 - **T-040** one-line `{ … }` blocks load with every entry, as sub-dicts and list items; Foundation 11 `rotorDisk`/`heatedDuct` hangs fixed; multi-line `#includeFunc` arguments load; unsupported shapes raise `FoamKitError` (a9a9447, PR #60)
 - **T-042** `#include` and `#includeFunc` inside a list are one item, written back on one line; stock `helmholtzResonance` `blockMeshDict` writes in every release; `#includeFunc` after a tab-separated item raises `FoamKitError` instead of losing its parentheses (693d945, PR #66)
 - **T-048** list items with glued parentheses (`mag(U)`, `4(0 1 2 3)`, `arc 10 11(…)`) and one-element inner lists keep their parentheses; list shapes that were silently corrupted raise `FoamKitError` with file and line; top-level `*Positions` lists unchanged (c4a810d, PR #72)
+- **T-046** `#include "f";` and the rest of the include family keep their `;` on write; `.value` no longer contains it; value-position includes and `;;` raise `FoamKitError` with file and line (0eb75b1, PR #73)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
@@ -98,7 +110,7 @@ None open.
 - **ESI `#eval`:** `Cy #eval{-$Cx};` (no space after `{`) and `#eval` inside lists fail in 20 ESI files per release; a top-level one-line list with `#eval{…}` loads as an empty list (T-044).
 - **Found after the T-040 review (pre-existing, 2026-10-30):**
   - List items with glued parentheses lost them on write (`fields (T mag(U) p);` became `T mag U p`). Fixed by T-048 (PR #72), which also keeps one-element inner lists such as blockMesh `project v0 v1 (cylinder)`.
-  - `#include "f";` is written `#include "f";"`, which neither FoamKit nor OpenFOAM can read: 11 ESI files per release load and then write a corrupt file (T-046).
+  - `#include "f";` was written `#include "f";"`, which neither FoamKit nor OpenFOAM can read (11 ESI files per release). Fixed by T-046 (PR #73): the include family keeps its `;` once, and value-position includes and `;;` raise `FoamKitError` with file and line.
   - `${name}` references raise a bare `ValueError` or "Invalid syntax": 28 ESI files and 1-2 Foundation 13/14 files per release; `( ${a} 2 )` loads as an empty list (T-047).
   - One-element lists: `domains (10);` fails with `TypeError` (1-8 Foundation and 15-17 ESI files per release); `inGroups (fixed);` changes type on the second write (T-045).
   - `N{…}` items inside a list raise "not supported yet" with file and line; valid OpenFOAM, 0 tutorial files (T-049).
@@ -106,39 +118,45 @@ None open.
   - **Silent corruption:** an entry of two or more lists, the rigid-body `transform (1 0 0 0 1 0 0 0 1) (0.5 0.45 0.1);`, is written `transform [0 0 0 1 0 0 0];` (stock ESI `floatingObject`, every release); other values raise a bare `IndexError` (F11-14 `DTCHullMoving`/`DTCHullWave`, 2 ESI files per release) or become a new `unnamed_1` entry (T-052).
   - `;` inside a quoted list item (`x ( "a;b" 1 );`) adds an empty item and writes a file that does not re-read; 0 tutorial files (T-053).
   - The T-042 tab-guard error quotes the whole list word (40k characters for 20k items) (T-054). `//` hiding a `)` gives a misleading "unbalanced brackets" error (added to T-036).
+- **Found in the T-046 review (pre-existing, 2026-10-31):**
+  - **Silent key change:** a `//` comment after a sub-dict keyword becomes part of the key: stock Foundation `aerofoilNACA0012` `physicalProperties` loads `mixture` as `mixture_//_air_at_room_temperature__293_K_` (2-6 Foundation 11-14 files per release); before a list it raises a bare `ValueError` (3 files per release) (T-055).
+  - **`//` comments are dropped on write** after entries, include directives and `}`/`);` (`x 1; // c`, `#include "f"; // c`; 73-85 Foundation files per release) (T-056), and after items of multi-line lists (stock `snappyHexMeshDict` `writeFlags`) (T-057).
+  - `#include "a//b";` loads as `a` and is written `#include "a"` (added to T-036). `x 1; /* c */` loads `x` as a string, and `#include "f"; /* c */` raises a bare `TypeError` (added to T-031).
+  - `#include ;` (no file name) loads silently as `""`, and `#include` alone raises a bare `IndexError`; `#includeFunc x;;` keeps a `;` in its value while `#include "f";;` raises (T-058).
 - There is no docs site, and the README has broken examples.
+- **Writes are not yet lossless:** an unedited read → write changes 13-690 lines per file in the real-file corpus (T-019, T-020).
+- **Running, monitoring and results (review, 2026-11-06):**
+  - A failed `Allrun` passes silently in both `case.allRun()` and `fkf.allRun()`, and a POSIX `Allrun` on Windows gives a bare `OSError` (T-059).
+  - The README's `case.run()` does not exist. There is no non-blocking, solver-direct, parallel or stoppable run, and no `fk run` (T-060 to T-062).
+  - `getLatestTime` ignores non-integer times such as `0.5`, so it **silently returns the wrong time** (T-063).
+  - There is no solver-log reader (T-064), and `extractLogData` crashes or silently skips missing logs (T-065).
+  - `getMonitor(startTime='all')` **silently returns only the last restart** (T-066). ESI `solverInfo` and text columns are not handled (T-011).
+  - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-046 `#include "f";` written as `#include "f";"` (#62).
+**In progress:** T-052 entry values of two or more lists (#69, PR #78).
 
-1. **T-046** `#include "f";` written as `#include "f";"` (S, #62): 11 ESI files per release load and then write a file nobody can read, the T-042 failure in more files. Same `ofInclude` class.
-2. **T-052** entry values of two or more lists (M, #69): **silent corruption** of the stock ESI `floatingObject` rigid-body `transform` in every ESI release and of the F11-F14 `planingHullW3` translation, plus loud failures in 10 more stock file sets.
-3. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
-4. **T-026** `#if`/`#ifeq` blocks (M, #37): blocks Foundation 13/14 `fvSchemes` and ESI dictionaries.
-5. **T-030** scoped `$` references (S, #41): a load failure in the stock Foundation 14 `cylinder` `fvSolution` and in ESI field files.
-6. **T-029** `#includeModel`/`#includeConstraint` (S, #40): 7-13 Foundation `fvConstraints` files fail per release.
-7. **T-043** `#{ … #}` code entries (S, #58): loud load failures in 2-5 Foundation and about 17 ESI files per release.
+1. **T-052** entry values of two or more lists (M, #69): **silent corruption** of the stock ESI `floatingObject` rigid-body `transform` in every ESI release.
+2. **T-055** `//` comment after a block keyword (S, #74): **silent key change** in stock Foundation tutorials (2-6 files per release).
+3. **T-019** writer whitespace churn (S, #26): the cheap first step to lossless writes, and T-020 needs it.
+4. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
+5. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
+6. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
+7. **T-027** value-position `#calc`/`#neg` (S, #38): the most widespread loud load failure, in 100+ files per Foundation 13/14 release.
 
-T-046 and T-052 come first because a write produces an unreadable file or silently changes meaning, which outranks the loud load failures below. T-052 moved up to follow T-046 (maintainer, 2026-10-31).
+**Interleaving:** after the layout work, runtime and parser tickets alternate so neither track stalls. Runtime fixes that give silently wrong answers go first (T-059, T-063). Then come starting and stopping runs (T-060 → T-061 → T-062), then the readers for logs, `postProcessing` and fields. The readers need real run output (see Questions); a blocked ticket (marked *) is skipped when reached. Parser tickets keep their earlier relative order.
 
-After these, the order is T-047 → T-045 → T-044 → T-039 → T-023 → T-036 → T-053 → T-038 → T-031 → T-033 → T-019 → T-021 → T-013 → T-034 → T-054 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-020 → T-050 → T-018 → T-008 → T-010 → T-009 → T-011 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
-- T-043 (`#{ … #}` code entries, #58) moved out of the ranked seven for T-048 and T-046 and is back in as item 7 now that T-042 and T-048 are done.
-- T-047 (`${name}`, #63) blocks 28 ESI and 1-2 Foundation 13/14 files per release with a bare `ValueError`; it follows T-030, which fixes the same check.
-- T-045 (one-element lists, #61): a `TypeError` in 16-25 files per release, and a second-write type change in hundreds (no data loss). It clears the unticketed T-040 xfail.
-- T-044 (ESI `#eval{-$x}` and `#eval` in lists, #59) blocks 20 ESI files per release, all loudly on real files; neither T-027 nor T-039 covers it. It goes ahead of T-039 on file count.
-- T-039 (glued `name{`/`name(`) completes the Foundation 11 `phaseProperties` fix with T-040, and it stops `x{ a 1; }` from losing its `}`. Glued lists do not occur in tutorials.
-- T-036 (`//` in strings) silently truncates list items, but has 0 tutorial occurrences, and it lands before T-031.
-- T-053 (`;` in a quoted list item, #70) follows T-036: same quote-aware fix, silent but 0 tutorial files.
-- T-038 is a cheap latent-leak fix in the same list code as T-037.
-- T-033 follows T-031 because the file grows on every write.
-- T-021 was not seen in the real-tutorial inventory, so it stays below the files that fail today.
-- T-054 (long error excerpts, #71) is cosmetic, next to T-034's message hardening.
-- T-028 affects only 3 files.
-- T-049 (`N{…}` list items, #65) is valid syntax with 0 tutorial files and already fails loudly with file and line.
-- T-024 can be picked up any time.
-- T-020 follows T-007, so it can use T-007's test cases as its corpus.
-- T-050 (`fk format` and `format_on_write`, #67) is a feature, not a data-loss fix, so it ranks below every load and write bug. It goes right after T-020 because, until T-020 lands, every write already reformats the whole file and the option would do almost nothing. T-050 plugs into T-020's preserve-or-regenerate split. Its whitespace-only safety check also refuses files that the earlier writer fixes (T-019, T-031, T-032, T-033, T-045) would otherwise make it reject.
-- T-051 (formatting docs page, #68) waits for T-001, T-020 and T-050, so it documents a stable API.
+After these: T-060 → T-026 → T-061 → T-030 → T-023 → T-062 → T-029 → T-064* → T-043 → T-011* → T-047 → T-066* → T-045 → T-068* → T-044 → T-065 → T-069 → T-039 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-021 → T-013 → T-034 → T-054 → T-058 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-067 → T-050 → T-018 → T-008 → T-010 → T-009 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
+- T-060 (non-blocking `case.run()`/`runSolver()` with a stop handle, M) is the core of the runtime track. T-061 (parallel) and T-062 (`fk run`) build on it, and T-062 also needs T-023's clean CLI errors, so T-023 moved up.
+- T-064 (solver-log reader with live `update()`) lets users follow a run without function objects. T-011 and T-066 cover `postProcessing`, and T-068 reads field values. All four wait for real run output.
+- T-065 (`extractLogData` errors) and T-069 (`ofStudy` paths and sort) are small fixes to existing APIs.
+- After T-020 lands, its design note says which parts of T-031, T-032, T-033, T-056 and T-057 only matter for edited entries, and the planner shrinks those tickets.
+- T-058: the maintainer chose option A (2026-10-31): `#includeFunc x;;` raises "More than one ';'".
+- T-045 (one-element lists): a `TypeError` in 16-25 files per release; it clears the unticketed T-040 xfail. T-044 (ESI `#eval`) blocks 20 ESI files per release.
+- T-036 → T-053 → T-056 → T-057 share the quote-aware `//` and `;` handling. T-033 follows T-031.
+- T-007 now follows T-020 (see Decisions), and T-067 (optional foamlib comparison, tests only) follows T-007.
+- T-050 (`fk format`) stays after T-007: its whitespace-only safety check would refuse files that T-031, T-032, T-033 and T-045 have not fixed yet. T-051 waits for T-001, T-020 and T-050.
+- T-001 includes the "How FoamKit compares" page. API reference waits for T-010.
 
 ## Deferred
 - **Removing `SystemExit` from `FoamKitError`:** the release after T-017 ships.

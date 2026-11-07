@@ -36,4 +36,6 @@ On write:
 - Every golden file changes (whitespace only). That is a large but mechanical diff, so review it with `-w`.
 
 ## Should it precede T-007?
+**Update (2026-11-06):** T-019 and T-020 now come right after T-055, ahead of T-007, and T-020 uses `tests/releases/` as its corpus. The paragraph below is kept for history.
+
 **Yes.** It is cheap, and without it every T-007 fixture fails byte-identity for a known, uninteresting reason. T-020 does **not** need to precede T-007: T-007 records any remaining padding/layout differences as `xfail(strict=True)` referencing T-020, and those fixtures then become T-020's test corpus.

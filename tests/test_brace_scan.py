@@ -662,6 +662,17 @@ REAL_OUTCOMES = {
         "controlMeshQualityCoeffs",
     ],
     "esi-v2606.flange.faceSetDict": FoamKitError,
+    # - Added with T-052 (tests/test_several_lists_value.py): `transform (tensor) (vector);`
+    # - is one entry holding both lists (before T-052 the ESI file lost the value as an
+    # - ofNamedDimension, planingHullW3 orphaned the translation, DTCHullMoving raised).
+    "esi-v2606.floatingObject.dynamicMeshDict": [
+        "dynamicFvMesh",
+        "motionSolverLibs",
+        "motionSolver",
+        "rigidBodyMotionCoeffs",
+    ],
+    "foundation-14.planingHullW3.dynamicMeshDict": ["mover"],
+    "foundation-14.DTCHullMoving.dynamicMeshDict": ["mover"],
 }
 
 
