@@ -1,0 +1,37 @@
+name: Release window
+
+# Opens the prep issue for FoamKit's twice-yearly OpenFOAM compatibility
+# release (docs/releasing.md): 5 January (after ESI vYY12) and 15 July (after
+# ESI vYY06 and the Foundation release). Can also be run by hand.
+
+on:
+  schedule:
+    - cron: '0 13 5 1 *'
+    - cron: '0 13 15 7 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  open-issue:
+    name: Open release-window issue
+    if: github.repository == 'mcgoldba/foamkit'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Open the issue unless it is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="Release window $(date -u +%Y-%m): OpenFOAM compatibility release"
+          if gh issue list --state open --label release --json title --jq '.[].title' | grep -Fxq "$title"; then
+            echo "Already open: $title"
+            exit 0
+          fi
+          gh label create release --color 0E8A16 --description "Release planning" --force
+          gh issue create --title "$title" --label release --body-file .github/release-window-issue.md

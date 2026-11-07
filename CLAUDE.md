@@ -32,4 +32,6 @@ Agents live in `.claude/agents/`. Hand-offs happen through files, not chat histo
 
 One ticket at a time. Do not start a new ticket until the previous one's PR is merged. Never push to `main` directly.
 
+Releases follow `docs/releasing.md`: scheduled minor releases in late January and mid-August (after the OpenFOAM releases), plus fix releases as needed. The version bump lands as a `bump:` PR. Only the maintainer pushes the `v*` tag, which publishes to PyPI.
+
 CI: `release.yml` runs `pytest` on Linux and Windows (Python 3.9 and 3.12). `ci.yml` runs ruff and mypy as a ratchet against the T-002 baseline: no new findings are allowed, and when a change removes findings, lower the baseline in `ci.yml` in that PR.
