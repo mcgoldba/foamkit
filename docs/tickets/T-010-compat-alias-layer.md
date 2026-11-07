@@ -5,6 +5,7 @@
 - **Size:** M. Split into T-010a (renames: one table and the accessors) and T-010b (non-rename cases: fvOptions, solver) if T-010a alone fills a session.
 - **Plan:** docs/plans/openfoam-compatibility.md, section 2.3
 - **Depends on:** T-008 (and the T-007 fact-check table)
+- **Note (2026-11-06):** T-011 no longer waits for this ticket; it ships a local `residuals` → `solverInfo` fallback in the monitor code. This ticket moves that fallback into the name table (the `residuals` row) and removes the local copy.
 
 ## Goal
 A script can address case content by its **Foundation 14 name** on any supported case, and FoamKit finds the native file or key. Writes always keep the case's own native names.

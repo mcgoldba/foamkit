@@ -24,11 +24,17 @@ sphinx-build -W --keep-going -b html docs docs/_build/html
   - extensions `myst_parser`, theme `furo`, `source_suffix` for `.md`;
   - `exclude_patterns = ["_build", "tickets", "plans"]`, so that the planning files under `docs/tickets/` and `docs/plans/` do not trigger "not in any toctree" warnings under `-W`;
   - no autodoc yet.
-- `docs/index.md`: a short landing page (what FoamKit is) with a toctree containing only `quickstart`.
+- `docs/index.md`: a short landing page (what FoamKit is) with a toctree containing `quickstart` and `comparison`.
 - `docs/quickstart.md`:
   - Install: `python -m pip install foamkit`, plus the conda dev env (`mamba env create -f environment.yml`).
   - A minimal Python example that loads, edits and writes a case. It uses the maintainer-chosen module aliases `import foamkit.functions as fkf` / `import foamkit.types as fkt` (not `pf`/`pt`) and only API proven by `tests/test_case.py`: `fkf.init(path=...)`, attribute access such as `case.system.controlDict.endTime`, assignment, `case.save(...)` / `case.write()`. It runs against a copy of `tests/fixtures/pitzDaily` and does not need OpenFOAM.
   - A CLI section that uses `fk` only (`fk init`, `fk edit`). Mention once that `pf` is a deprecated alias. Note that the `fk edit` console currently pre-imports the modules as `pf`/`pt` (`foamkit/commandline/_iPython_env.py:4-5`), so console snippets must use those names until a code ticket changes it. Label any step that needs an OpenFOAM install or an interactive console (for example `cp $FOAM_TUTORIALS/...`, `fk edit`, `case.run()`) as "requires OpenFOAM" or "interactive".
+- `docs/comparison.md`, **"How FoamKit compares"** (added 2026-11-06): a short, factual page that states differences neutrally, with no ranking language and no reasons beyond what each project does.
+  - Projects: foamlib, PyFoam, and pybFoam/pyOFTools.
+  - One table (rows: project; columns: what it is, how it reaches OpenFOAM data (pure-Python file parsing or compiled bindings), Python versions, platforms tested, needs a sourced OpenFOAM, edits dictionaries, runs cases, reads results, licence), plus at most one short paragraph per project.
+  - FoamKit's own row uses only facts that are true on `main` when the page is written (for example Python 3.9+, Linux and Windows CI, `FoamKitError` instead of silent data changes, the `fk` CLI); planned features are not listed.
+  - Every statement about another project links to that project's own docs or repository, with the version checked and the access date. pybFoam/pyOFTools are described as compiled bindings that work inside a sourced OpenFOAM environment, which is a different approach rather than an alternative file editor.
+  - No benchmark numbers or file-count comparisons unless a script in the repository reproduces them.
 - `tests/docs/test_quickstart.py`: copies the fixture case to `tmp_path` and runs the Quickstart Python example. Keep it in sync with the page, either by extracting the fenced block or by having the page include a shared snippet file (MyST `{literalinclude}`).
 - `pyproject.toml`: add a `docs` optional extra: `sphinx`, `myst-parser`, `furo`. Do not add these to `dependencies`.
 - `environment.yml`: add the same three packages from conda-forge.
@@ -46,7 +52,8 @@ sphinx-build -W --keep-going -b html docs docs/_build/html
 ## Acceptance criteria
 - [ ] On a clean checkout, after `python -m pip install -e ".[docs]"`, `sphinx-build -W --keep-going -b html docs docs/_build/html` exits 0, both on Windows (conda env) and in CI.
 - [ ] `git status` is clean after a build.
-- [ ] Only `index` and `quickstart` are built. `docs/tickets/**` and `docs/plans/**` are excluded and produce no warnings.
+- [ ] The comparison page covers foamlib, PyFoam and pybFoam/pyOFTools; every claim about another project has a link, a version and an access date; it contains no benchmark numbers that the repository cannot reproduce.
+- [ ] Only `index`, `quickstart` and `comparison` are built. `docs/tickets/**` and `docs/plans/**` are excluded and produce no warnings.
 - [ ] The Quickstart Python example is run by `tests/docs/test_quickstart.py`, and that test passes without OpenFOAM (`WM_PROJECT_VERSION` unset).
 - [ ] Every non-executed snippet is labelled "requires OpenFOAM" or "interactive".
 - [ ] `pf` appears only in the CLI deprecation note and the `fk edit` console-alias note. `grep -nw pf docs/index.md docs/quickstart.md` shows only those lines. Script examples use `fkf`/`fkt`.
@@ -57,6 +64,7 @@ sphinx-build -W --keep-going -b html docs docs/_build/html
 - [ ] The CI `docs` job passes on the PR, and `publish` still depends only on `test` and `build`.
 
 ## Risks
+- **Comparison page goes stale:** other projects change; the version and access date on each claim make that visible. Re-check it whenever the supported-versions page (T-012) is updated.
 - **Future API reference:** autodoc imports `foamkit`. `foamkit/__init__.py` reads `WM_PROJECT_VERSION` and config at import (lines 15-18), and `foamkit/types/__init__.py:370-374` bakes the result into header defaults. So the generated reference could depend on the environment it was built in. When reference docs are ticketed, prefer `sphinx-autodoc2`, which analyses the code statically without importing it, or run autodoc with a clean environment. Note that autodoc2 releases less often than core Sphinx.
 - **Sphinx and Python versions:** recent Sphinx needs Python 3.11 or newer, while the package supports 3.9. Run the docs job on 3.12 only. Do not add docs dependencies to the 3.9 test matrix.
 - **Example drift:** a hand-copied example can drift away from the test that runs it. Fix: a single source, via `literalinclude` or block extraction.

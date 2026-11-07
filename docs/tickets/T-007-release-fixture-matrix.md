@@ -4,7 +4,8 @@
 - **Type:** code, tests only (owner: `tester`; `implementer` only for the `pyproject.toml` marker registration)
 - **Size:** M
 - **Plan:** docs/plans/openfoam-compatibility.md, section 3
-- **Depends on:** T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-021, T-040 (absorbed T-022). T-020 is **not** a dependency: remaining entry padding/layout differences are marked `xfail(strict=True, reason="T-020")`, and these fixtures become T-020's test corpus.
+- **Depends on:** T-004, T-005, T-006, T-013, T-015, T-016, T-019, T-020, T-021, T-040 (absorbed T-022).
+- **Rescoped (2026-11-06):** T-020 moved ahead of this ticket and uses `tests/releases/` as its corpus, so these fixtures no longer serve as T-020's corpus and need no T-020 `xfail`: they must round-trip byte-identically when unedited. Any remaining gap is an `xfail(strict=True)` naming a new ticket.
 
 ## Goal
 CI demonstrates, without OpenFOAM installed, that FoamKit reads, edits and writes representative cases from each **tested** release.
@@ -30,7 +31,7 @@ Older releases (Foundation 7-10, ESI v2006-v2406) are **best-effort and untested
 - A **fact-check table** in that README. For each family, record the actual file and key names found: turbulence file, RAS model key, physical-properties file, fvModels/fvConstraints/fvOptions, `application`/`solver`, banner style, residuals function object name. The plan's version-specific claims were written from memory; this table replaces them, and T-010 and T-012 use it as their source.
 - `tests/test_releases.py`, parametrized over the families:
   - all dictionary files are present in `pf.init(...)`;
-  - init → save → load → write is byte-identical for unedited files;
+  - init → save → load → write is byte-identical for unedited files (T-020 has landed; no T-020 `xfail`);
   - one `controlDict.endTime` edit lands correctly.
 - `pyproject.toml`: register `markers = ["openfoam: needs a real OpenFOAM install"]`, and deselect the marker by default or skip when `WM_PROJECT_DIR` is unset.
 
