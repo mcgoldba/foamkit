@@ -37,7 +37,7 @@ def _git(*args: str) -> str:
 
 def check(tag: str, main_ref: str, root: Path) -> list[str]:
     """Return one message per problem; an empty list means the tag can be published."""
-    problems = []
+    problems: list[str] = []
     with open(root / "pyproject.toml", "rb") as f:
         version = tomllib.load(f)["project"]["version"]
     if tag != f"v{version}":
@@ -59,8 +59,9 @@ def check(tag: str, main_ref: str, root: Path) -> list[str]:
         match = _LISTED.match(subject)
         if match and match.group("desc") not in changelog:
             problems.append(
-                f"CHANGELOG.md has no entry for {subject!r} (merged after the bump was prepared?): "
-                "re-run the bump on up-to-date main"
+                f"CHANGELOG.md has no entry for {subject!r} (merged after the bump was prepared, "
+                "or a generated CHANGELOG line reworded?): re-run the bump on up-to-date main "
+                "and add to generated lines instead of rewording them"
             )
     return problems
 

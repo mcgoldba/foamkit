@@ -102,7 +102,7 @@ The steps are the same for every release. Branch protection blocks pushes to `ma
 
    `--files-only` updates `pyproject.toml` and `CHANGELOG.md` and makes no commit or tag. For a release candidate, add `--prerelease rc`.
 
-2. **Edit the CHANGELOG entry** if needed: for a scheduled release, add a `### Supported OpenFOAM releases` list (tested and newly best-effort); name new `FoamKitError`s; spell out the user impact of any `BREAKING CHANGE`.
+2. **Edit the CHANGELOG entry** if needed. Add to the generated lines; don't reword or remove them, because the tag check (step 4) looks for each commit's text: for a scheduled release, add a `### Supported OpenFOAM releases` list (tested and newly best-effort); name new `FoamKitError`s; spell out the user impact of any `BREAKING CHANGE`.
 
 3. **Open the PR.** Commit as `bump: version 0.1.0 → 0.2.0` (commitizen leaves `bump:` commits out of the CHANGELOG) and use the same PR title. Wait for green CI, then the maintainer squash-merges.
 
@@ -113,6 +113,8 @@ The steps are the same for every release. Branch protection blocks pushes to `ma
    python -m commitizen bump --yes --files-only   # same flags as before
    git commit -am "bump: version 0.1.0 → 0.2.0" && git push --force-with-lease
    ```
+
+   This throws away the step-2 edits, so redo them before committing.
 
    `release.yml` checks this at tag time too (step 4).
 
