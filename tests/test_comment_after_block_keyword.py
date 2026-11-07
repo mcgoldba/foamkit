@@ -311,13 +311,15 @@ def test_real_baffles_dict_loads_with_baffles_group_key():
     assert d.baffles.bafflesGroup.type.value == "faceZone"
 
 
-def test_real_radiation_properties_loads_with_lo_and_hi_t_coeffs():
-    d = _load(RADIATION)
-    co2 = d.greyMeanReaction.CO2
-    assert co2 is not None
-    assert "loTcoeffs" in _all_keys(co2)
-    assert "hiTcoeffs" in _all_keys(co2)
-    assert _leaves(co2.loTcoeffs) == [0.0] * 6
+def test_real_radiation_properties_raises_for_the_comments_after_list_items():
+    """The keyword-line comments load, but the comments after the items (T-057) would be
+    dropped on write: that is a FoamKitError naming the file and the line, not a silent loss."""
+    with pytest.raises(FoamKitError) as err:
+        _load(RADIATION)
+    message = str(err.value).replace(chr(10), "")
+    assert "radiationProperties" in message
+    assert "Line 42 " in message, message
+    assert "T-057" in message
 
 
 @pytest.mark.parametrize("path", [PHYSICAL, BAFFLES], ids=lambda p: p.name)
@@ -333,14 +335,36 @@ def test_real_file_round_trip_keeps_every_comment(tmp_path, path):
     assert _load(out).toString() == text1
 
 
-@pytest.mark.parametrize(
-    "comment", ["coefss for T < Tcommon", "coefss for T > Tcommon"]
-)
-def test_real_radiation_properties_keeps_the_keyword_line_comments(comment):
-    text1 = _load(RADIATION).toString()
-    keyword_lines = [ln for ln in text1.splitlines() if comment in ln]
-    assert len(keyword_lines) == 1
-    assert re.sub(r"//.*", "", keyword_lines[0]).split()[-1].endswith("Tcoeffs")
+def test_list_with_comment_after_keyword_and_own_line_comments_loads(tmp_path):
+    text = "x // c\n(\n    // own line\n    1\n    2\n);\n"
+    first, second, text1, text2 = _read_write(tmp_path, text)
+    assert _all_keys(first) == ["x"]
+    assert "x // c" in text1 and "own line" in text1
+    assert text1 == text2
+
+
+def test_list_with_comment_after_an_item_raises_with_the_line(tmp_path):
+    path = tmp_path / "items"
+    path.write_text(HEADER + "x // c\n(\n    1 // one\n    2\n);\n")
+    with pytest.raises(FoamKitError) as err:
+        _load(path)
+    message = str(err.value).replace("\n", "")
+    assert "items" in message
+    assert f"Line {HL + 3}" in message
+    assert "T-057" in message
+
+
+def test_unclosed_brace_inside_a_verbatim_body_is_not_cut(tmp_path):
+    """The `{` that opens mid-line inside a `#codeStream { ... }` body is not split off."""
+    path = tmp_path / "verb"
+    path.write_text(HEADER + "c #codeStream\n{\n    x { y 1;\n}\n")
+    parser = fkt.DictFileParser(path)
+    before = list(parser.lines)
+    try:
+        parser._splitEntries()
+    except FoamKitError:
+        pass
+    assert parser.lines == before
 
 
 def test_real_files_pinned_in_brace_scan():

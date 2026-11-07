@@ -4376,7 +4376,7 @@ class DictFileParser:
                         #  is a line of its own
                         for kind, openLine, openCol, outer in stack:
                             if (kind == 'd' and openLine == li and outer == 0
-                                    and not self._isFoamFileKeyword(
+                                    and blocked == 0 and not self._isFoamFileKeyword(
                                         self.lines[li], openCol)):
                                 after = self._cutAfter(
                                     self.lines[li], openCol + 1, inf)
@@ -4968,6 +4968,21 @@ class DictFileParser:
                                     f"the keyword '{listOrDictName}' that "
                                     "cannot be kept: not supported yet.",
                                     "ERROR")
+                        if isinstance(value, ofSplitList):
+                            #- (comments after items and after ';' of the
+                            #  list are not kept yet: T-056, T-057)
+                            for n in range(keywordLine + 1, self.i + 1):
+                                text = self.lines[n]
+                                if (not text.lstrip().startswith('//')
+                                        and self._splitKeywordComment(
+                                            text)[1] is not None):
+                                    userMsg(
+                                        f"Line {self._ln(n)} of file "
+                                        f"{self.filepath} has a '//' comment "
+                                        "after an item of the list "
+                                        f"'{listOrDictName}': comments after "
+                                        "list items are not kept yet "
+                                        "(T-057).", "ERROR")
                         value._comment_keyword = keywordComment
 
                     # logger.debug(f"_parseLine list or dict:\n{value}")

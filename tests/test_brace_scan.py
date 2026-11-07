@@ -685,15 +685,8 @@ REAL_OUTCOMES = {
         "internalFacesOnly",
         "baffles",
     ],
-    "foundation-14.SandiaD_LTS.radiationProperties": [
-        "radiation",
-        "radiationModel",
-        "solverFreq",
-        "absorptionEmissionModel",
-        "greyMeanReaction",
-        "scatterModel",
-        "sootModel",
-    ],
+    # - (a keyword comment, then a list whose items have comments: T-057, loud for now)
+    "foundation-14.SandiaD_LTS.radiationProperties": FoamKitError,
 }
 
 
