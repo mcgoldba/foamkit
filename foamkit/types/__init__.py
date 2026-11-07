@@ -451,6 +451,14 @@ class ofHeader(_ofTypeBase):
 #                                         bases=(ofFolder,), frozen=True)
 
 
+def _keywordComment(obj) -> str:
+    """
+    The ` //` comment that followed the keyword of a dictionary or list
+    (`mixture // air`, T-055), as written back after the keyword; '' if none.
+    """
+    comment = obj.__dict__.get('_comment_keyword')
+    return "" if comment is None else " //" + str(comment)
+
 def _checkReserved(name, reserved=[]):
     """
     Check if the dictionary key is a Python reserved value or member of 
@@ -1565,7 +1573,7 @@ class ofSplitList(ofList):
         # logging.getLogger('foamkit').setLevel(logging.DEBUG)
 
         if self.name:
-            dStr = self.name+"\n(\n"
+            dStr = self.name+_keywordComment(self)+"\n(\n"
         else:
             dStr = "(\n"
         if self.value is not None:
@@ -1916,7 +1924,7 @@ class ofDict(dict, _ofTypeBase):
         self._nUnnamed = 0
         #- Keep a list of class variables to filter printed dict items:
         self._CLASS_VARS = ['_CLASS_VARS', '_name', 
-                            '_entryTypes', '_nUnnamed']
+                            '_entryTypes', '_nUnnamed', '_comment_keyword']
 
 
         if (len(args) == 1 and isinstance(args[0], list)
@@ -2148,7 +2156,7 @@ class ofDict(dict, _ofTypeBase):
         # logging.getLogger('foamkit').setLevel(logging.DEBUG)
 
         if self._name:
-            dStr = self._name+"\n{\n"
+            dStr = self._name+_keywordComment(self)+"\n{\n"
         else:
             dStr = "{\n"
         # for k, v in zip(self.keys(), self.values()):
@@ -4348,6 +4356,7 @@ class DictFileParser:
         inf = 0
         first = 0       #- column of the first non-blank character of the line
         nesting = 0     #- number of open '(' and '{'
+        openCuts = set()    #- (line, column) of cuts after an unclosed '{'
 
         def cut(li, column, entry):
             #- (a cut with only whitespace before it would make an empty line)
@@ -4361,6 +4370,19 @@ class DictFileParser:
                 if c == '\n':
                     pending = []
                     openParens = []
+                    if cached == li:
+                        #- (T-055) a '{' that opens in the middle of the line
+                        #  and stays open (`p { d // c`): the text after it
+                        #  is a line of its own
+                        for kind, openLine, openCol, outer in stack:
+                            if (kind == 'd' and openLine == li and outer == 0
+                                    and not self._isFoamFileKeyword(
+                                        self.lines[li], openCol)):
+                                after = self._cutAfter(
+                                    self.lines[li], openCol + 1, inf)
+                                if after is not None:
+                                    cut(li, after, False)
+                                    openCuts.add((li, after))
                 continue
             line = self.lines[li]
             if cached != li:
@@ -4538,7 +4560,8 @@ class DictFileParser:
                     self._checkDirectivePiece(piece, li)
                 if n > 0:
                     piece = indent + piece.lstrip()
-                    if not piece.lstrip().startswith('/*'):
+                    if (not piece.lstrip().startswith('/*')
+                            and (li, bounds[n]) not in openCuts):
                         self._checkPiece(piece, li, cuts[li][bounds[n]])
                 last = n == len(bounds) - 2
                 lines.append(piece + (line[len(body):] if last else eol))
@@ -4636,6 +4659,30 @@ class DictFileParser:
 
         """
         return line.strip().split('//')[0].split()
+
+    @staticmethod
+    def _splitKeywordComment(text):
+        """
+        Split a keyword line into the keyword and the text after its `//`
+        (None if there is no comment).  A `//` inside a double-quoted
+        keyword is not a comment.  The line ending is dropped; the rest of
+        the comment is kept as it is.
+        """
+        quote = False
+        j, n = 0, len(text)
+        while j < n:
+            ch = text[j]
+            if quote:
+                if ch == '\\':
+                    j += 1
+                elif ch == '"':
+                    quote = False
+            elif ch == '"':
+                quote = True
+            elif text.startswith('//', j):
+                return text[:j].strip(), text[j + 2:].rstrip('\r\n')
+            j += 1
+        return text.strip(), None
 
     def _getComment(self):
         """
@@ -4891,8 +4938,12 @@ class DictFileParser:
                 #                                   line=strippedLine)
                 #     logger.debug(f"_parseLine list or dict:\n{value}")
                 #     return value
-                listOrDictName = self.lines[self.i].lstrip().rstrip()
-                # logger.debug(f"listOrDictName: {listOrDictName}")                
+                #- (T-055) a `//` comment after the keyword is not part of it
+                listOrDictName, keywordComment = self._splitKeywordComment(
+                    self.lines[self.i])
+                if keywordComment is not None:
+                    self._getComment()  # (queued by `_parseComments`)
+                # logger.debug(f"listOrDictName: {listOrDictName}")
                 if any([listOrDictName is char for char in ['(', '{']]):
                     # logger.debug("Parsing unnamed list or dictionary.")
                     value = self._parseListOrDict(None)
@@ -4900,10 +4951,24 @@ class DictFileParser:
                     # logger.debug(f"_parseLine list or dict:\n{value}")
 
                     return value
-                
+
                 else:
+                    keywordLine = self.i
                     self.i += 1
-                    value = self._parseListOrDict(listOrDictName)
+                    try:
+                        value = self._parseListOrDict(listOrDictName)
+                    except ValueError as err:
+                        userMsg(f"Line {self._ln(keywordLine)} of file "
+                                f"{self.filepath}: cannot read the entry "
+                                f"'{listOrDictName}': {err}", "ERROR")
+                    if keywordComment is not None:
+                        if not isinstance(value, (ofDict, ofSplitList)):
+                            userMsg(f"Line {self._ln(keywordLine)} of file "
+                                    f"{self.filepath} has a comment after "
+                                    f"the keyword '{listOrDictName}' that "
+                                    "cannot be kept: not supported yet.",
+                                    "ERROR")
+                        value._comment_keyword = keywordComment
 
                     # logger.debug(f"_parseLine list or dict:\n{value}")
 
