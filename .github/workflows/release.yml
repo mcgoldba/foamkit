@@ -32,11 +32,20 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          # Full history and tags, for the release-tag check below
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Check the tag, its branch and the CHANGELOG
+        # Refuse a tag that would publish the wrong version, a commit that is
+        # not on main, or a CHANGELOG missing a merged PR (docs/releasing.md).
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python .github/scripts/check_release_tag.py "$GITHUB_REF_NAME" origin/main
 
       - name: Install build dependencies
         run: python -m pip install build twine

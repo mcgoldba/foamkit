@@ -72,6 +72,15 @@ follow_imports_for_stubs = true
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"
-version_scheme = "semver"
+#- Tags before 0.0.8 had no `v` prefix
+legacy_tag_formats = ["$version"]
+#- PEP 440 spelling for pre-releases (0.3.0rc1); otherwise identical to SemVer
+version_scheme = "pep440"
+#- While 0.x, breaking changes bump the minor version (docs/releasing.md)
+major_version_zero = true
+#- Release candidates start at rc1
+prerelease_offset = 1
+#- The final release's CHANGELOG entry includes its release candidates' commits
+changelog_merge_prerelease = true
 version_provider = "pep621"
 update_changelog_on_bump = true

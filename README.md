@@ -138,16 +138,4 @@ python runStudy.py
 Releasing
 ---------
 
-Releases are published automatically when a tag is pushed to GitHub.
-
-```bash
-# Set next version number
-export RELEASE=x.x.x
-
-# Create tags
-git commit --allow-empty -m "Release $RELEASE"
-git tag -a $RELEASE -m "Version $RELEASE"
-
-# Push
-git push upstream --tags
-```
+FoamKit has a release about a month after each OpenFOAM release cluster (late January and mid-August), plus fix releases in between as needed. Pushing a `v<version>` tag publishes to PyPI. See [docs/releasing.md](docs/releasing.md) for the schedule, the version-number rules and the release steps.
