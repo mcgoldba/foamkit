@@ -39,7 +39,18 @@ jobs:
           allow-prereleases: ${{ matrix.prerelease == true }}
 
       - name: Install package and test dependencies
+        if: matrix.prerelease != true
         run: python -m pip install -e ".[test]"
+
+      - name: Install package and test dependencies (wheels only)
+        # A pre-release Python often lacks wheels; refuse source builds so the
+        # job fails fast naming the missing wheel. --no-binary=foamkit takes
+        # FoamKit itself back out of --only-binary=:all: (editable checkout);
+        # it must come after :all:, which resets both lists. The command is a
+        # block scalar because `:all: ` is not valid in a plain YAML value.
+        if: matrix.prerelease == true
+        run: >-
+          python -m pip install --only-binary=:all: --no-binary=foamkit -e ".[test]"
 
       - name: Run tests
         run: python -m pytest
