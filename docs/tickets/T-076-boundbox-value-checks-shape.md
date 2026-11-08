@@ -28,7 +28,7 @@ After an edit through `.groups` leaves a box with anything other than 2 groups o
 
 ## Out of scope
 - Changing the class of the object after an edit, or validating `.groups` edits as they happen. Writing keeps what the user set, so no data is lost.
-- Reading `box ;` from a file (a bare `AttributeError` on load today; not ticketed yet).
+- Reading `box ;` from a file (a bare `AttributeError` on load at the top level today: T-079, #106).
 - Removing the deprecated view.
 
 ## Acceptance criteria
