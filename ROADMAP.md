@@ -86,6 +86,7 @@
 - **T-072** release cadence, version rules and release steps in `docs/releasing.md`; `release.yml` refuses a tag with the wrong version, off `main` or with a CHANGELOG missing a merged PR (4d3a5fa, PR #94)
 - **T-055** a `//` comment after a sub-dict or list keyword is kept out of the key and written back on the keyword line (Foundation `aerofoilNACA0012` `physicalProperties`, `simpleRushton*` `createBafflesDict`); the `radiationProperties` lists whose items carry comments raise `FoamKitError` until T-057; blocks opened mid-line no longer drop entries (9df86fe, PR #91)
 - **T-070** CI tests Python 3.9 (`ubuntu-24.04`), 3.12 and 3.15 (`ubuntu-latest`), 3.9 and 3.15 (`windows-latest`), plus a non-required 3.16 pre-release job; branch protection requires only the `All tests passed` summary job and `ruff + mypy (no new findings)` (f92f94e, PR #95)
+- **T-019** an unedited write adds no trailing whitespace: entries end in `;`, blank lines inside blocks are empty, and the FoamFile block is followed by the source's number of blank lines (cd5b83b, PR #98)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
@@ -107,7 +108,7 @@
 - **A second entry on a line** (`x 1; y 2;`) is parsed since T-041, including next to one-line `{ … }` blocks since T-040.
 - Other gaps:
   - `#codeStream` grows on every write (T-033); numbers are reformatted (T-032);
-  - writer whitespace churn (T-019, T-020);
+  - writer layout churn (T-020; T-019 fixed the trailing whitespace);
   - one-line `FoamFile { ... }` (T-021);
   - one-line sub-dicts (`p { type probes; }`) lost their entries after T-035; fixed by T-040;
   - Foundation 14 named dimension sets read as strings (T-013).
@@ -134,7 +135,7 @@
   - `#include ;` (no file name) loads silently as `""`, and `#include` alone raises a bare `IndexError`; `#includeFunc x;;` keeps a `;` in its value while `#include "f";;` raises (T-058).
 - **Found in the T-052 review (2026-11-07):** `box` entries written with exponents (`8e-3`, `1e6`; Foundation `capillaryRise`, several `topoSetDict`s) load as `ofListGroups` with `8e-3` written `0.008`, and write 2 reads them back as `ofBoundBox` written `0.0`/`1.0` (write 1 != write 2). Every `ofBoundBox` writes `0` as `0.0` and is chosen by shape for any key; assigning a bad shape to `ofBoundBox.value` is stored silently (T-071).
 - There is no docs site, and the README has broken examples.
-- **Writes are not yet lossless:** an unedited read → write changes 13-690 lines per file in the real-file corpus (T-019, T-020).
+- **Writes are not yet lossless:** an unedited read → write changes 13-690 lines per file in the real-file corpus (T-020). T-019 removed the trailing whitespace and the extra blank line after the FoamFile block; a written file still ends with one blank line more than the source, after the closing banner (T-020).
 - **Running, monitoring and results (review, 2026-11-06):**
   - A failed `Allrun` passes silently in both `case.allRun()` and `fkf.allRun()`, and a POSIX `Allrun` on Windows gives a bare `OSError` (T-059).
   - The README's `case.run()` does not exist. There is no non-blocking, solver-direct, parallel or stoppable run, and no `fk run` (T-060 to T-062).
@@ -144,14 +145,13 @@
   - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-019 writer whitespace churn (#26).
+**In progress:** T-073 pre-release job installs wheels only (#96).
 
-1. **T-019** writer whitespace churn (S, #26): the cheap first step to lossless writes, and T-020 needs it.
-2. **T-073** pre-release job installs wheels only (S, #96): removes a ~15-min wait for `All tests passed` on every PR; small and CI-only.
-3. **T-071** `ofBoundBox` as a subclass of `ofListGroups` (M, #92): one parser; box entries keep their number text, and their type no longer depends on number spelling (write 1 != write 2 today); placed after T-019 by the maintainer (2026-11-07).
-4. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
-5. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
-6. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
+1. **T-073** pre-release job installs wheels only (S, #96): removes a ~15-min wait for `All tests passed` on every PR; small and CI-only.
+2. **T-071** `ofBoundBox` as a subclass of `ofListGroups` (M, #92): one parser; box entries keep their number text, and their type no longer depends on number spelling (write 1 != write 2 today); placed after T-019 by the maintainer (2026-11-07).
+3. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
+4. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
+5. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
 
 **Interleaving:** after the layout work, runtime and parser tickets alternate so neither track stalls. Runtime fixes that give silently wrong answers go first (T-059, T-063). Then come starting and stopping runs (T-060 → T-061 → T-062), then the readers for logs, `postProcessing` and fields. The readers need real run output (see Questions); a blocked ticket (marked *) is skipped when reached. Parser tickets keep their earlier relative order.
 
