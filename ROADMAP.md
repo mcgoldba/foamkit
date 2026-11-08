@@ -89,6 +89,7 @@
 - **T-019** an unedited write adds no trailing whitespace: entries end in `;`, blank lines inside blocks are empty, and the FoamFile block is followed by the source's number of blank lines (cd5b83b, PR #98)
 - **T-073** the Python pre-release job installs dependencies from wheels only, so a missing wheel fails in ~12 s naming the package and `All tests passed` reports in ~3.5 min instead of ~15 (59c463c, PR #99)
 - **T-074** CI actions moved to their Node.js 24 majors (`checkout` v7, `setup-python` v7, `upload-artifact` v7, `download-artifact` v8); no Node.js 20 deprecation warning in the logs (ca09164, PR #100)
+- **T-071** box entries keep their number text and are one type (`ofBoundBox`, a subclass of `ofListGroups`) whatever the spelling; `ofBoundBox.value` floats deprecated for `.groups` and read-only; bad assignments raise `FoamKitError`; the `.params` cache reloads list groups (f8590d8, PR #101)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
@@ -134,7 +135,8 @@
   - **`//` comments are dropped on write** after entries, include directives and `}`/`);` (`x 1; // c`, `#include "f"; // c`; 73-85 Foundation files per release) (T-056), and after items of multi-line lists (stock `snappyHexMeshDict` `writeFlags`) (T-057).
   - `#include "a//b";` loads as `a` and is written `#include "a"` (added to T-036). `x 1; /* c */` loads `x` as a string, and `#include "f"; /* c */` raises a bare `TypeError` (added to T-031).
   - `#include ;` (no file name) loads silently as `""`, and `#include` alone raises a bare `IndexError`; `#includeFunc x;;` keeps a `;` in its value while `#include "f";;` raises (T-058).
-- **Found in the T-052 review (2026-11-07):** `box` entries written with exponents (`8e-3`, `1e6`; Foundation `capillaryRise`, several `topoSetDict`s) load as `ofListGroups` with `8e-3` written `0.008`, and write 2 reads them back as `ofBoundBox` written `0.0`/`1.0` (write 1 != write 2). Every `ofBoundBox` writes `0` as `0.0` and is chosen by shape for any key; assigning a bad shape to `ofBoundBox.value` is stored silently (T-071).
+- **Found in the T-052 review (2026-11-07):** `box` entries written with exponents (`8e-3`, `1e6`; Foundation `capillaryRise`, several `topoSetDict`s) load as `ofListGroups` with `8e-3` written `0.008`, and write 2 reads them back as `ofBoundBox` written `0.0`/`1.0` (write 1 != write 2). Every `ofBoundBox` writes `0` as `0.0` and is chosen by shape for any key; assigning a bad shape to `ofBoundBox.value` is stored silently. Fixed by T-071 (PR #101).
+- **Found in the T-071 review (2026-11-08):** list groups write `1_0` back as read, though OpenFOAM does not read it as a number (T-075); after a `.groups` edit, `ofBoundBox.value` returns a wrong-shape list with no error, and an entry with no groups is written `key ;` (T-076); `on`/`off` items in any list or list group crash the write with a bare `TypeError` (T-078).
 - There is no docs site, and the README has broken examples.
 - **Writes are not yet lossless:** an unedited read → write changes 13-690 lines per file in the real-file corpus (T-020). T-019 removed the trailing whitespace and the extra blank line after the FoamFile block; a written file still ends with one blank line more than the source, after the closing banner (T-020).
 - **Running, monitoring and results (review, 2026-11-06):**
@@ -146,16 +148,20 @@
   - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-071 `ofBoundBox` as a subclass of `ofListGroups` (#92).
+**In progress:** T-020 keep the layout of unedited entries (#27).
 
-1. **T-071** `ofBoundBox` as a subclass of `ofListGroups` (M, #92): one parser; box entries keep their number text, and their type no longer depends on number spelling (write 1 != write 2 today); placed after T-019 by the maintainer (2026-11-07).
-2. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
-3. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
-4. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
+1. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
+2. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
+3. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
+4. **T-075** numbers with `_` written without it (S, #102): since T-071, list groups write `1_0`, which OpenFOAM does not read as a number; a small fix for a recent regression.
+5. **T-078** `on`/`off` items in lists are written (S, #105): any list or list group holding a boolean word crashes the write with a bare `TypeError`.
+6. **T-027** value-position `#calc`/`#neg` (S, #38): the most frequent load failure (100+ Foundation 13/14 files).
+7. **T-060** non-blocking `case.run()`/`runSolver()` with a stop handle (M, #80): the core of the runtime track.
 
 **Interleaving:** after the layout work, runtime and parser tickets alternate so neither track stalls. Runtime fixes that give silently wrong answers go first (T-059, T-063). Then come starting and stopping runs (T-060 → T-061 → T-062), then the readers for logs, `postProcessing` and fields. The readers need real run output (see Questions); a blocked ticket (marked *) is skipped when reached. Parser tickets keep their earlier relative order.
 
-After these: T-027 → T-060 → T-026 → T-061 → T-030 → T-023 → T-062 → T-029 → T-064* → T-043 → T-011* → T-047 → T-066* → T-045 → T-068* → T-044 → T-065 → T-069 → T-039 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-021 → T-013 → T-034 → T-054 → T-058 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-067 → T-050 → T-018 → T-008 → T-010 → T-009 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
+After these: T-026 → T-076 → T-061 → T-030 → T-023 → T-062 → T-029 → T-064* → T-043 → T-011* → T-047 → T-066* → T-045 → T-068* → T-044 → T-065 → T-069 → T-039 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-021 → T-013 → T-034 → T-054 → T-058 → T-077 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-067 → T-050 → T-018 → T-008 → T-010 → T-009 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
+- T-076 (`ofBoundBox.value` shape check, S) gives an error where a deprecated getter returns a wrong shape after a user's own edit; T-077 (type hints, S, after T-076) changes no behaviour, so it sits with the small cleanups.
 - T-060 (non-blocking `case.run()`/`runSolver()` with a stop handle, M) is the core of the runtime track. T-061 (parallel) and T-062 (`fk run`) build on it, and T-062 also needs T-023's clean CLI errors, so T-023 moved up.
 - T-064 (solver-log reader with live `update()`) lets users follow a run without function objects. T-011 and T-066 cover `postProcessing`, and T-068 reads field values. All four wait for real run output.
 - T-065 (`extractLogData` errors) and T-069 (`ofStudy` paths and sort) are small fixes to existing APIs.
