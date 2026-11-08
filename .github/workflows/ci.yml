@@ -21,11 +21,11 @@ jobs:
       MYPY_BASELINE: 125
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         # The baseline was recorded with Python 3.12 (mypy targets 3.9 via config)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 

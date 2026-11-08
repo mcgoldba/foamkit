@@ -87,10 +87,11 @@
 - **T-055** a `//` comment after a sub-dict or list keyword is kept out of the key and written back on the keyword line (Foundation `aerofoilNACA0012` `physicalProperties`, `simpleRushton*` `createBafflesDict`); the `radiationProperties` lists whose items carry comments raise `FoamKitError` until T-057; blocks opened mid-line no longer drop entries (9df86fe, PR #91)
 - **T-070** CI tests Python 3.9 (`ubuntu-24.04`), 3.12 and 3.15 (`ubuntu-latest`), 3.9 and 3.15 (`windows-latest`), plus a non-required 3.16 pre-release job; branch protection requires only the `All tests passed` summary job and `ruff + mypy (no new findings)` (f92f94e, PR #95)
 - **T-019** an unedited write adds no trailing whitespace: entries end in `;`, blank lines inside blocks are empty, and the FoamFile block is followed by the source's number of blank lines (cd5b83b, PR #98)
+- **T-073** the Python pre-release job installs dependencies from wheels only, so a missing wheel fails in ~12 s naming the package and `All tests passed` reports in ~3.5 min instead of ~15 (59c463c, PR #99)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
-- **CI waits (2026-11-07, after T-070):** the non-required 3.16 pre-release job builds dependencies from source for ~15 min and fails (pillow), and `All tests passed` waits for it on every PR (T-073). Every job warns that `actions/checkout@v4` and `actions/setup-python@v5` target the deprecated Node.js 20 (T-074).
+- **CI (2026-11-08):** every job warns that `actions/checkout@v4` and `actions/setup-python@v5` target the deprecated Node.js 20 (T-074).
 - Real files: stock pitzDaily loads for Foundation 11 (since T-015) and Foundation 14 (since T-016). Foundation 12/13 and ESI v2606 headers are fine.
 - Real-tutorial inventory (2026-10-21), load failures by frequency:
   - value-position `#calc`/`#neg`: 100+ Foundation 13/14 files (T-027);
@@ -145,9 +146,9 @@
   - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-073 pre-release job installs wheels only (#96).
+**In progress:** T-074 GitHub Actions off Node.js 20 (#97).
 
-1. **T-073** pre-release job installs wheels only (S, #96): removes a ~15-min wait for `All tests passed` on every PR; small and CI-only.
+1. **T-074** GitHub Actions off Node.js 20 (S, #97): every job log warns that its actions target the deprecated Node.js 20; small and CI-only, taken before T-071 by the maintainer (2026-11-08).
 2. **T-071** `ofBoundBox` as a subclass of `ofListGroups` (M, #92): one parser; box entries keep their number text, and their type no longer depends on number spelling (write 1 != write 2 today); placed after T-019 by the maintainer (2026-11-07).
 3. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
 4. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
@@ -155,8 +156,7 @@
 
 **Interleaving:** after the layout work, runtime and parser tickets alternate so neither track stalls. Runtime fixes that give silently wrong answers go first (T-059, T-063). Then come starting and stopping runs (T-060 → T-061 → T-062), then the readers for logs, `postProcessing` and fields. The readers need real run output (see Questions); a blocked ticket (marked *) is skipped when reached. Parser tickets keep their earlier relative order.
 
-After these: T-074 → T-027 → T-060 → T-026 → T-061 → T-030 → T-023 → T-062 → T-029 → T-064* → T-043 → T-011* → T-047 → T-066* → T-045 → T-068* → T-044 → T-065 → T-069 → T-039 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-021 → T-013 → T-034 → T-054 → T-058 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-067 → T-050 → T-018 → T-008 → T-010 → T-009 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
-- T-074 (actions off Node.js 20, S, #97) leads: a deprecation warning only, since GitHub already forces Node 24.
+After these: T-027 → T-060 → T-026 → T-061 → T-030 → T-023 → T-062 → T-029 → T-064* → T-043 → T-011* → T-047 → T-066* → T-045 → T-068* → T-044 → T-065 → T-069 → T-039 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-021 → T-013 → T-034 → T-054 → T-058 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-067 → T-050 → T-018 → T-008 → T-010 → T-009 → T-012 → T-014 → T-051 (see `docs/plans/openfoam-compatibility.md`).
 - T-060 (non-blocking `case.run()`/`runSolver()` with a stop handle, M) is the core of the runtime track. T-061 (parallel) and T-062 (`fk run`) build on it, and T-062 also needs T-023's clean CLI errors, so T-023 moved up.
 - T-064 (solver-log reader with live `update()`) lets users follow a run without function objects. T-011 and T-066 cover `postProcessing`, and T-068 reads field values. All four wait for real run output.
 - T-065 (`extractLogData` errors) and T-069 (`ofStudy` paths and sort) are small fixes to existing APIs.
