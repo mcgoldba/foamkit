@@ -18,6 +18,7 @@ Entries whose value is a `#calc` or `#neg` expression load, and are written back
   - Fails with "Could not find functionEntry bracket type".
 - The ticket's earlier example, a top-level `#calc "1+2"`, occurs in **no** tutorial.
 - **More evidence (T-040 review, PR #60; planner re-run 2026-10-30 at a9a9447):** Foundation 12 `incompressibleVoF/trayedPipe/system/topoSetDict:24` (`innerBaffleOuterRadius #calc "$<scalar>{radius}/(2 - $<scalar>baffleOverlap)";`) fails with the same bare `TypeError: ofCalc.__init__() got an unexpected keyword argument 'name'` (raised from `_parseVerbatimEntry`), with no file or line. Its `#codeStream` in a list of dicts (line 31) is T-033's. `#neg` in a sub-dict (`d { b #neg $a; c 2; }`) still gives "Could not find functionEntry bracket type." with no file or line.
+- **Found in the T-075 review (2026-11-08), reproduced at 839663c:** every value-position `#calc` fails today, even the smallest ones. `x #calc "1*2";` and `x #calc "1_0*2";` both raise a bare `TypeError: ofCalc.__init__() got an unexpected keyword argument 'name'`. The `1_0` is inside the C++ string: FoamKit does not evaluate it, so neither T-075's word rule nor any number reading applies to it. (In C++ `1_0` is a user-defined-literal suffix, so OpenFOAM would fail to compile that expression; that is OpenFOAM's concern, not FoamKit's.)
 
 ## Scope
 - Value-position handling for `#calc` and `#neg` in `DictFileParser`:
@@ -33,6 +34,7 @@ Entries whose value is a `#calc` or `#neg` expression load, and are written back
 ## Acceptance criteria
 - [ ] **Failing tests first** with the real fixtures `foundation-14.cylinder.blockMeshDict` (lines 27-34: `#calc`, `#neg`, `$<scalar>`) and `foundation-13.aerofoilNACA0012Steady.U`.
 - [ ] After the fix, both parse. Every `#calc`/`#neg` entry is written back with its value text unchanged, and the key stays addressable (`d.cylRadius`).
+- [ ] `x #calc "1_0*2";` and `x #calc "1*2";` (top level and in a sub-dict) load like any `#calc`. `d.x` is addressable, and the value text is written back unchanged (`#calc "1_0*2"`), with write 1 == write 2. No error is raised for the `1_0`, and no number is read from it: it stays inside the string.
 - [ ] Top-level `#calc "1+2"` and `#calc #{ ... #}` also parse. They are not in any tutorial, but cheap to cover.
 - [ ] Any `#calc`/`#neg` form still unsupported raises `FoamKitError` naming file and line, never `TypeError` (CLAUDE.md, "Errors never pass silently").
 - [ ] All existing golden files are unchanged. `pytest -q` passes. `ruff` and `mypy foamkit/` show no new findings compared with the CI ratchet baseline.

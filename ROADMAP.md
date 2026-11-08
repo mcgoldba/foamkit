@@ -3,6 +3,7 @@
 ## Questions for the maintainer
 - **Real run output for the runtime track (2026-11-06).** T-011, T-064, T-066 and T-068 need solver logs, `postProcessing` output (including one restarted run) and written time directories from real runs; tutorial repositories do not contain these. Can you supply trimmed output from pitzDaily (plus one transient tutorial) for at least Foundation 14 and ESI v2606, ideally also Foundation 11 and ESI v2412, with the release and command recorded? Until then those four tickets are skipped when reached; the ranked seven do not depend on them.
 - **T-066 overlap rule:** pick option A (the later restart replaces overlapping rows, with a warning) or B (keep every row with a `startTime` column) at approval.
+- **T-020 split (2026-11-08):** T-020's design note finds it larger than M. The split by entry kind in the ticket does not work: every corpus file has lists or sub-dicts, so a "scalars and words" part fixes no file. The note proposes a split by depth instead. **T-020a** (#27): every top-level entry is written from source while unedited, so all 34 loading corpus files reach 0 changed lines. **T-083** (T-020b, #111): an edit inside a sub-dict keeps that dict's braces and untouched entries. Approve the split, or keep T-020 whole as L.
 
 ## Decisions (2026-10-18, 2026-10-19, 2026-11-06, 2026-11-07)
 - **Approved by maintainer:** the ranked order, the T-010 canonical name table and the `case.canonical(...)` accessor.
@@ -90,6 +91,7 @@
 - **T-073** the Python pre-release job installs dependencies from wheels only, so a missing wheel fails in ~12 s naming the package and `All tests passed` reports in ~3.5 min instead of ~15 (59c463c, PR #99)
 - **T-074** CI actions moved to their Node.js 24 majors (`checkout` v7, `setup-python` v7, `upload-artifact` v7, `download-artifact` v8); no Node.js 20 deprecation warning in the logs (ca09164, PR #100)
 - **T-071** box entries keep their number text and are one type (`ofBoundBox`, a subclass of `ofListGroups`) whatever the spelling; `ofBoundBox.value` floats deprecated for `.groups` and read-only; bad assignments raise `FoamKitError`; the `.params` cache reloads list groups (f8590d8, PR #101)
+- **T-075** a file token containing `_` (`1_0`) is a word, written back as read, never a number; `uniform 1_0` raises FoamKitError with file and line (839663c, PR #110)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
@@ -149,26 +151,26 @@
   - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-075 `_` tokens are words (#102); T-020 (#27) follows it.
+**In progress:** T-020 (#27); its design note (2026-11-08) proposes the split T-020a (#27) + T-083 (#111), awaiting approval (see Questions).
 
-1. **T-075** tokens with `_` (`1_0`) are words, written as read (S, #102): every path silently turns the OpenFOAM word `1_0` into the number 10; ranked ahead of T-020 by the maintainer (2026-11-08).
-2. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
-3. **T-014** named dimensioned entries keep their value (S, #21): **silent value loss** on write in 29 ESI v2606 and 10 Foundation 11 tutorial files; refreshed with real fixtures and ranked #3 (maintainer, 2026-11-08), awaiting re-approval. Lands before T-081.
-4. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
-5. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
-6. **T-081** dimension sets keep every token (S, #108): exponents silently shift and values are dropped; 0 tutorial lines, so it follows the real-file losses. Depends on T-014.
-7. **T-082** tensor values are written (S, #109): every `sigma`/`R` tensor field (6-9 tutorial files per release) crashes the write with a bare `AttributeError`.
+1. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 4-681 lines per file today, 1143 of the 2721 source lines across the 34 loading corpus files.
+2. **T-014** named dimensioned entries keep their value (S, #21): **silent value loss** on write in 29 ESI v2606 and 10 Foundation 11 tutorial files; refreshed with real fixtures and ranked here by the maintainer (2026-11-08). Lands before T-081.
+3. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
+4. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
+5. **T-081** dimension sets keep every token (S, #108): exponents silently shift and values are dropped; 0 tutorial lines, so it follows the real-file losses. Depends on T-014.
+6. **T-082** tensor values are written (S, #109): every `sigma`/`R` tensor field (6-9 tutorial files per release) crashes the write with a bare `AttributeError`.
+7. **T-078** `on`/`off` items in lists are written (S, #105): any list or list group holding `on`/`off`/`true` crashes the write with a bare `TypeError`.
 
 **Interleaving:** after the layout work, runtime and parser tickets alternate so neither track stalls. Runtime fixes that give silently wrong answers go first (T-059, T-063). Then come starting and stopping runs (T-060 → T-061 → T-062), then the readers for logs, `postProcessing` and fields. The readers need real run output (see Questions); a blocked ticket (marked *) is skipped when reached. Parser tickets keep their earlier relative order.
 
-After these: T-078 → T-027 → T-060 → T-026 → T-076 → T-079 → T-080 → T-061 → T-030 → T-023 → T-062 → T-029 → T-064* → T-043 → T-011* → T-047 → T-066* → T-045 → T-068* → T-044 → T-065 → T-069 → T-039 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-021 → T-013 → T-034 → T-054 → T-058 → T-077 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-067 → T-050 → T-018 → T-008 → T-010 → T-009 → T-012 → T-051 (see `docs/plans/openfoam-compatibility.md`).
-- T-081 and T-082 (2026-11-08) displace T-078 (`on`/`off` list items, bare `TypeError`, no tutorial file), T-027 (loud load failure) and T-060 from the ranked seven: silent data change ranks above a bare crash, and T-082 crashes on more real files than T-078. T-014 moves up from the tail on the same evidence (maintainer, 2026-11-08); it also reads spaces inside the brackets, which T-081 then pins. T-082 writes tensor components as floats, like vectors (option A, maintainer, 2026-11-08). T-045's `value uniform (1);` row is fixed by T-082.
+After these: T-083 (if the T-020 split is approved) → T-027 → T-060 → T-026 → T-076 → T-079 → T-080 → T-061 → T-030 → T-023 → T-062 → T-029 → T-064* → T-043 → T-011* → T-047 → T-066* → T-045 → T-068* → T-044 → T-065 → T-069 → T-039 → T-036 → T-053 → T-056 → T-057 → T-038 → T-031 → T-033 → T-021 → T-013 → T-034 → T-054 → T-058 → T-077 → T-032 → T-028 → T-049 → T-003 → T-024 → T-001 → T-007 → T-067 → T-050 → T-018 → T-008 → T-010 → T-009 → T-012 → T-051 (see `docs/plans/openfoam-compatibility.md`). T-083 comes first because edits inside `solvers`, `boundaryField` and `functions` are the usual case. If the split is rejected, T-020 covers it.
+- T-081 and T-082 (2026-11-08) displaced T-078 (`on`/`off` list items, bare `TypeError`, no tutorial file), T-027 (loud load failure) and T-060 from the ranked seven (T-078 is back at #7 now that T-075 has merged): silent data change ranks above a bare crash, and T-082 crashes on more real files than T-078. T-014 moves up from the tail on the same evidence (maintainer, 2026-11-08); it also reads spaces inside the brackets, which T-081 then pins. T-082 writes tensor components as floats, like vectors (option A, maintainer, 2026-11-08). T-045's `value uniform (1);` row is fixed by T-082.
 - T-076 (`ofBoundBox.value` shape check, S) gives an error where a deprecated getter returns a wrong shape after a user's own edit; T-077 (type hints, S, after T-076) changes no behaviour, so it sits with the small cleanups.
 - T-079 (top-level keyword-only entries such as `print;`, S) and T-080 (counted-list values such as `inGroups 2(wall viewFactorWall);`, S) fix load failures in few real files (2 Foundation 14 and 6 ESI v2606 tutorial files), so they join the small fixes after T-076.
 - T-060 (non-blocking `case.run()`/`runSolver()` with a stop handle, M) is the core of the runtime track. T-061 (parallel) and T-062 (`fk run`) build on it, and T-062 also needs T-023's clean CLI errors, so T-023 moved up.
 - T-064 (solver-log reader with live `update()`) lets users follow a run without function objects. T-011 and T-066 cover `postProcessing`, and T-068 reads field values. All four wait for real run output.
 - T-065 (`extractLogData` errors) and T-069 (`ofStudy` paths and sort) are small fixes to existing APIs.
-- After T-020 lands, its design note says which parts of T-031, T-032, T-033, T-056 and T-057 only matter for edited entries, and the planner shrinks those tickets.
+- T-020's design note (2026-11-08, point 6) says what T-029, T-031, T-032, T-033, T-045, T-056 and T-057 keep once unedited entries are written from source. The planner shrinks those tickets when T-020a merges.
 - T-058: the maintainer chose option A (2026-10-31): `#includeFunc x;;` raises "More than one ';'".
 - T-045 (one-element lists): a `TypeError` in 16-25 files per release; it clears the unticketed T-040 xfail. T-044 (ESI `#eval`) blocks 20 ESI files per release.
 - T-036 → T-053 → T-056 → T-057 share the quote-aware `//` and `;` handling. T-033 follows T-031.
