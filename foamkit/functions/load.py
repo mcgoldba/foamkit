@@ -154,6 +154,8 @@ def load(path=None, _backup=False):
                     logger.debug("%sDefined obj_: %s", tabStr, obj_)
                 elif (obj['_type'] == 'ofList' 
                 or obj['_type'] == 'ofSplitList'
+                or obj['_type'] == 'ofListGroups'
+                or obj['_type'] == 'ofBoundBox'
                 or obj['_type'] == 'ofMultilineStatement'):
                     type_ = locate('foamkit.types.'+obj['_type'])
                     obj_ = type_(

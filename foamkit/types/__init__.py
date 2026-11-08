@@ -3,6 +3,8 @@ from dataclasses import dataclass, field, make_dataclass
 from typing import List, Callable, Iterator, Literal, Optional, Tuple
 import types
 import copy
+import numbers
+import warnings
 from pathlib import Path
 import os
 import sys
@@ -1747,88 +1749,6 @@ class ofTable(ofList):
 #     def __str__(self):
 #         return self.toString().rstrip(';\n')
 
-@dataclass
-class ofBoundBox(ofList):
-    def __init__(self, arg1=None, arg2=None, name=None, value=None, _comment=None):
-        super(ofBoundBox, self).__init__(
-            arg1=arg1, arg2=arg2, name=name, value=value, _comment=_comment)
-    _value = None
-
-    @property
-    def value(self):
-        return self._value
-
-    @value.setter
-    def value(self, v):
-        """
-        Ensure value is the proper format (list of 2 lists with 3 float entries)
-        e.g. [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]
-        """
-
-        if v is None:
-            self._value = None
-            return
-        
-        # logger.debug(f"value: {v}")
-
-        valid = True
-
-        try:
-            assert hasattr(v, '__iter__') # check if iterable
-            assert len(v) == 2
-            for w in v:
-                assert hasattr(w, '__iter__')
-        except AssertionError:
-            valid = False
-
-        for w in v:
-            for i in w:
-                try:
-                    float(i)
-                except ValueError:
-                    valid = False
-             
-
-        if not valid:
-            userMsg("Invalid value.  Value must be nd.array like of size (2,3) \
-            with numeric entries")            
-        self._value = v
-
-
-    def toString(self, ofRep=False) -> str:
-        # dStr = printNameStr(self.name)+' '
-        
-        # for v in self.value:
-        #     dStr+= ofList(v).toString(ofRep=False).strip()+' '
-        # dStr+= ";"
-
-        dStr = printNameStr(self.name)+" "
-
-        if self.value is not None:
-            dStr += ofList(self.value[0]).toString(ofRep=False).strip()+" "+\
-                ofList(self.value[1]).toString(ofRep=False).strip()+";\n"
-        else:
-            dStr += ofList([0, 0, 0]).toString(ofRep=False).strip()+" "+\
-                ofList([0, 0, 0]).toString(ofRep=False).strip()+";\n"
-
-
-        if ofRep:
-            dStr = dStr.rstrip(';')
-
-        return dStr
-    # def toString(self) -> str:
-    #     return self.valueStr
-    #def toString(self) -> str:
-    #    valueStr = '('
-    #    valueStr += str(self.value[0])
-    #    for i in range(1,len(self.value)):
-    #        valueStr += ' '+str(self.value[i])
-    #    valueStr += ')'
-    #    return printNameStr(self.name)+valueStr+";\n"
-
-    def __str__(self):
-        return self.toString().rstrip(';\n')
-
 # @dataclass
 # class ofNamedSplitList(ofList, _ofListBase):
 #     #- Same as ofList except entries are split on multiple lines according the
@@ -1844,24 +1764,67 @@ class ofBoundBox(ofList):
 #     def __str__(self):
 #         return self.toString().rstrip(';\n')
 
+_BOX_VALUE_DEPRECATED = (
+    "`ofBoundBox.value` returns floats for one more release; use `.groups` "
+    "(a list of `ofList`, as for `ofListGroups`)")
+
+
+def _numberReprs(group):
+    """
+    The `repr` of each item of a group (an `ofList` or a plain list) if all
+    are numbers (`ofInt`/`ofFloat`), else None.  Used to tell whether a group
+    still holds the numbers it was read with.
+    """
+    items = group.value if isinstance(group, ofList) else list(group)
+    if all(isinstance(it, (ofInt, ofFloat)) for it in items):
+        return [repr(it.value) for it in items]
+    return None
+
+
 @dataclass
 class ofListGroups(ofList):
     """
     An entry whose value is two or more parenthesised groups, e.g.
     `transform (1 0 0 0 1 0 0 0 1) (0.5 0.45 0.1);`.  `value` holds one
     `ofList` per group, in order; the entry is written on one line.
+
+    A group of numbers read from a file remembers its source number text
+    (`8e-3`, `1e6`, `0`) and is written with it until its numbers change.
     """
     def __init__(self, arg1=None, arg2=None, name=None, value=None, _comment=None):
         super(ofListGroups, self).__init__(
             arg1=arg1, arg2=arg2, name=name, value=value, _comment=_comment)
 
+    @property
+    def groups(self) -> list:
+        """The groups, one `ofList` each (the stored list, not a copy)."""
+        return self._value
+
+    def _setSourceText(self, texts, reprs) -> None:
+        """
+        Remember the source number text of each group: `texts[i]` is the list
+        of number tokens of group `i` (None if the group is not all numbers)
+        and `reprs[i]` the `repr` of its numbers when read.  Both are plain
+        lists, so they are saved in the `.params` cache.
+        """
+        self._srcText = texts
+        self._srcReprs = reprs
+
+    def _groupString(self, i, group) -> str:
+        """`(...)` for group `i`: the source text if its numbers are unchanged."""
+        texts = getattr(self, '_srcText', None)
+        reprs = getattr(self, '_srcReprs', None)
+        if (texts and reprs and i < len(texts) and i < len(reprs)
+                and texts[i] is not None
+                and _numberReprs(group) == reprs[i]):
+            return "(" + " ".join(texts[i]) + ")"
+        if not isinstance(group, ofList):
+            group = ofList(value=list(group))
+        return group.toString(indent=False).strip()
+
     def toString(self, ofRep=False, indent=True) -> str:
         """Write `name (group 1) (group 2) ...;` on one line."""
-        groups = []
-        for group in self.value:
-            if not isinstance(group, ofList):
-                group = ofList(value=list(group))
-            groups.append(group.toString(indent=False).strip())
+        groups = [self._groupString(i, g) for i, g in enumerate(self._value)]
         dStr = (printNameStr(self.name) if indent else f"{self.name} ")
         dStr += " ".join(groups) + ";"
         if self._comment is not None:
@@ -1870,6 +1833,139 @@ class ofListGroups(ofList):
 
     def __str__(self):
         return self.toString().rstrip(';\n')
+
+
+class _ReadOnlyFloatList(list):
+    """
+    A list that refuses changes: the float view of `ofBoundBox.value` is a
+    copy, so an in-place edit of it would be lost without a word.
+    """
+
+    def _refuse(self, *args, **kwargs):
+        userMsg("`ofBoundBox.value` is a read-only copy; assign "
+                "`box.value = [...]` or edit `box.groups`.", 'ERROR')
+
+    __setitem__ = __delitem__ = __iadd__ = __imul__ = _refuse
+    append = extend = insert = pop = remove = clear = sort = reverse = _refuse
+
+    def __reduce__(self):
+        #- copies and pickles are plain lists
+        return (list, (list(self),))
+
+
+def _boxGroups(v):
+    """
+    `v` as the two `ofList` groups of three numbers of a bound box, or None if
+    it is not an iterable of 2 iterables of 3 real numbers (`bool` and
+    strings are not numbers).  Groups that already hold `ofInt`/`ofFloat`
+    items are kept as they are.
+    """
+    def iterable(x):
+        return hasattr(x, '__iter__') and not isinstance(x, (str, bytes))
+
+    if not iterable(v):
+        return None
+    outer = list(v)
+    if len(outer) != 2:
+        return None
+    groups = []
+    for g in outer:
+        if not iterable(g):
+            return None
+        items = list(g.value if isinstance(g, ofList) else g)
+        if len(items) != 3:
+            return None
+        if isinstance(g, ofList) and all(isinstance(x, (ofInt, ofFloat))
+                                         for x in items):
+            groups.append(g)
+            continue
+        out = []
+        for x in items:
+            if isinstance(x, (ofInt, ofFloat)):
+                x = x.value
+            if isinstance(x, bool) or not isinstance(x, numbers.Real):
+                return None
+            out.append(ofInt(value=int(x)) if isinstance(x, numbers.Integral)
+                       else ofFloat(value=float(x)))
+        groups.append(ofList(value=out))
+    return groups
+
+
+@dataclass
+class ofBoundBox(ofListGroups):
+    """
+    Two groups of three numbers, e.g. `box (0 0 0) (1 2 3);`; an
+    `ofListGroups` that `.groups` gives access to.  Deprecated: `.value` is a
+    float view of the groups (a read-only copy) that goes away after one
+    release.
+    """
+    def __init__(self, arg1=None, arg2=None, name=None, value=None, _comment=None):
+        #- (not through `self.value = ...`, which warns)
+        if arg1 is None and arg2 is None:
+            v, n = value, name
+        elif arg2 is None:
+            v, n = arg1, name
+        else:
+            n, v = arg1, arg2
+        if name is not None:
+            n = name
+        self.name = n
+        if v is None:
+            v = [[0, 0, 0], [0, 0, 0]]
+        groups = _boxGroups(v)
+        if groups is None:
+            self._badValue(v)
+        self._value = groups
+        self._comment = _comment
+
+    def _badValue(self, v):
+        userMsg(f"Invalid value for the bound box '{self.name}': expected 2 "
+                f"groups of 3 real numbers, e.g. [[0, 0, 0], [1, 1, 1]]; "
+                f"got {v!r}.", 'ERROR')
+
+    @property
+    def value(self):
+        """
+        Deprecated: the groups as `[[float]*3, [float]*3]`, a read-only copy.
+        Use `.groups`.
+        """
+        warnings.warn(_BOX_VALUE_DEPRECATED, DeprecationWarning, stacklevel=2)
+        try:
+            return _ReadOnlyFloatList(
+                _ReadOnlyFloatList(float(x.value if isinstance(x, (ofInt, ofFloat))
+                                         else x) for x in g.value)
+                for g in self._value)
+        except (AttributeError, TypeError, ValueError):
+            userMsg(f"The groups of the bound box '{self.name}' are not "
+                    "2 groups of 3 real numbers.", 'ERROR')
+
+    @value.setter
+    def value(self, v):
+        """
+        Deprecated: replace both groups.  `v` must be an iterable of 2
+        iterables of 3 real numbers, else `FoamKitError` is raised and nothing
+        is stored.
+        """
+        warnings.warn(_BOX_VALUE_DEPRECATED, DeprecationWarning, stacklevel=2)
+        groups = _boxGroups(v)
+        if groups is None:
+            self._badValue(v)
+        self._value = groups
+        self._srcText = None
+        self._srcReprs = None
+
+    def __iter__(self):
+        for group in self._value:
+            yield group
+
+    def __eq__(self, other):
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return ((self._value, self._comment)
+                == (other._value, other._comment))
+
+    def __repr__(self):
+        return f"ofBoundBox(value={self._value!r}, _comment={self._comment!r})"
 
 @dataclass
 class ofMultilineStatement(_ofNamedTypeBase):
@@ -6182,14 +6278,6 @@ class DictFileParser:
             logger.debug("Found dimensioned vlaue on line %s", self.i)
             return dimValue
 
-        #- Check if value is a bounging box
-        #   (e.g. box     (0.0 0.0 0.0) (1.0 1.0 1.0);
-        boxValue = self._parseBoundBoxValue()
-        # logger.debug(f"dimValue: {dimValue}")
-        if boxValue is not None:
-            logger.debug("Found bound box on line %s", self.i)
-            return boxValue
-
         #- check if the line value terminates in an open list or dict
         logger.debug("Checking for open list or dict")
         line_ = copy.deepcopy(line)
@@ -7073,94 +7161,6 @@ class DictFileParser:
         except ValueError:
             return None
 
-    def _parseBoundBoxValue(self):
-        """ 
-        Check to see if the line contains key value entry for a ofBoundBox 
-        value.  If so, return the ofType, else return None.
-
-        Example syntax: 
-
-        box      (0.0 0.0 0.0) (1.0 1.0 1.0);
-
-        """
-
-        line = self.lines[self.i]
-
-        logger.debug("Parsing bound box: '%s'", line)
-
-        lineList = self._getLinesList(line)
-
-        logger.debug("lineList: %s", lineList)
-        
-        try:
-            ofWord(lineList[0])
-        except:
-            logger.debug("Failed.  First entry not a valid key.")
-            return None  # first item is not valid key
-
-        if len(lineList) > 1 and lineList[1] == 'table':
-            return None  # e.g. 'U table ((0 (0 0 0)) (1 (1 0 0)));'
-
-        # #- determine if value has 6 numeric entries
-        # n = 0
-        # for v in lineList[1:]: 
-        #     if v.strip('();').isnumeric(): 
-        #         n+=1
-        # logger.debug(f"# numeric entries: {n}")
-        # if n != 6:
-        #     logger.debug("Failed.  Value does not contain 6 numeric entries.")
-        #     return None # value does not contain 6 entries   
-
-        # #- determine if entries are two lists of three
-        # if not all([
-        #     lineList[1].strip()[0] == '(',
-        #     lineList[3].strip()[-1] == ')',
-        #     lineList[4].strip()[0] == '(',
-        #     lineList[6].strip(';')[-1] == ')',
-        # ]):
-        #     logger.debug("Failed.  Value does not contain two lists of 3 items.")
-        #     return None
-
-        # #- determine if all items are numeric:
-        # bounds = []
-        # for j in range(2): # for each list of three
-        #     bounds.append([])
-        #     for i in range(3): # for each item in list
-        #         try:
-        #             v_ = float(lineList[3*j+i+1].strip('();'))
-        #         except ValueError:
-        #             logger.debug("Failed.  Value entry is not numeric.")
-        #             return None
-        #         bounds[-1].append(v_)
-        
-        logger.debug("match string: %s", ' '.join(lineList[1:]))
-
-        matches = re.findall(r"(?<=\()[\s\d.-]+(?=\))", " ".join(lineList[1:]))
-
-        logger.debug("matches: %s", matches)
-
-        if len(matches) != 2:
-            #- Value does not contain two lists
-            return None
-        bounds=[]
-        for match in matches:
-            bounds.append([])
-            values = match.split()
-            if len(values) != 3:
-                #- List does not have 3 values
-                return None
-            for v in values:
-                try:
-                    v_ = float(v)
-                except ValueError:
-                    #- List values are not numeric
-                    return None
-                bounds[-1].append(v_)
-                
-
-        logger.debug("Found bounding box.")
-        return ofBoundBox(name=lineList[0], value=bounds)
-
     def _parseListGroups(self):
         """
         Parse an entry whose value is two or more top-level `( ... )` groups
@@ -7168,8 +7168,9 @@ class DictFileParser:
         on one line or across lines, into an `ofListGroups`.
 
         Returns None, with nothing consumed, if the entry at the current line
-        is not that shape (the other parsers then handle it); `box (...)
-        (...)` of two numeric 3-vectors on one line stays an `ofBoundBox`.
+        is not that shape (the other parsers then handle it).  Two groups of
+        three numbers (`box (0 0 0) (1 2 3);`) give an `ofBoundBox`, any other
+        groups an `ofListGroups`; both keep the number text of each group.
         Raises `FoamKitError`, naming the file and line, for the shapes that
         are recognised but not read yet: counted groups (`2(1 2) 2(3 4)`) and
         a comment inside the value (it would be lost).
@@ -7244,21 +7245,30 @@ class DictFileParser:
             return None
         if any(g != '' for g in blank):
             return None  #- words between or after the groups
-        if end_li == i0 and self._parseBoundBoxValue() is not None:
-            return None  #- two numeric 3-vectors: an ofBoundBox
 
         values = []
+        texts = []    #- number tokens of each group, None if not all numbers
+        reprs = []
         for (a, b) in groups:
             inner = self._slice((a[0], a[1] + 1), (b[0], b[1] - 1))
             inner = re.sub(r'("(?:\\.|[^"\\])*")|\s+',
                            lambda mm: mm.group(1) or ' ', inner).strip()
             self.i = a[0]
             try:
-                values.append(ofList(value=self._parseListValues(inner)))
+                group = ofList(value=self._parseListValues(inner))
             except (IndexError, ValueError, AttributeError, TypeError):
                 userMsg(f"Line {self._ln(a[0])} of file {self.filepath}: "
                         f"cannot read a list in the value of '{key}'.",
                         'ERROR')
+            values.append(group)
+            tokens = inner.split(' ') if inner else []
+            numberReprs = _numberReprs(group)
+            if numberReprs is not None and len(tokens) == len(numberReprs):
+                texts.append(tokens)
+                reprs.append(numberReprs)
+            else:
+                texts.append(None)
+                reprs.append(None)
 
         #- Text after the ';': a `// comment` belongs to the entry, anything
         #  else is queued (or refused) as for other entries
@@ -7271,7 +7281,13 @@ class DictFileParser:
                 self.comment.pop()  #- (already read from this line)
         else:
             self._queueTrailing(self.lines[end_li])
-        return ofListGroups(name=key, value=values, _comment=comment)
+        #- two groups of three numbers: a bound box, however they are spelled
+        isBox = (len(values) == 2
+                 and all(t is not None and len(t) == 3 for t in texts))
+        cls = ofBoundBox if isBox else ofListGroups
+        entry = cls(name=key, value=values, _comment=comment)
+        entry._setSourceText(texts, reprs)
+        return entry
 
     def _slice(self, a, b):
         """The text of `self.lines` from `a` up to `b`, both (line, column)."""

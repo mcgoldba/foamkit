@@ -506,7 +506,9 @@ def test_box_of_two_vectors_stays_a_bound_box(tmp_path, cont):
     for d in (first, second):
         box = _scope(d, cont).box
         assert isinstance(box, fkt.ofBoundBox)
-        assert box.value == [
+        with pytest.warns(DeprecationWarning):
+            value = box.value
+        assert value == [
             [0.0, 0.0, -1.0],
             [0.1461, 0.292, 1.0],
         ]

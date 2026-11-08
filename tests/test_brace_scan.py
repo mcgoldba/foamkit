@@ -687,6 +687,10 @@ REAL_OUTCOMES = {
     ],
     # - (a keyword comment, then a list whose items have comments: T-057, loud for now)
     "foundation-14.SandiaD_LTS.radiationProperties": FoamKitError,
+    # - Added with T-071 (tests/test_bound_box.py): `box (0 0 -1) (1 8e-3 1);` and
+    # - `box (-1e6 -1e6 -1e6)(1e6 -0.15 0.3);` in real topoSet/setFields dictionaries.
+    "foundation-11.capillaryRise.setFieldsDict": ["defaultFieldValues", "regions"],
+    "foundation-11.pipeCyclic.topoSetDict": ["actions"],
 }
 
 

@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       #- Baseline from docs/tickets/T-002-dev-tooling-ruff-mypy.md (re-checked 2026-10-20)
-      RUFF_CHECK_BASELINE: 190
+      RUFF_CHECK_BASELINE: 189
       RUFF_FORMAT_BASELINE: 55
-      MYPY_BASELINE: 125
+      MYPY_BASELINE: 123
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
