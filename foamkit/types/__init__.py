@@ -1769,6 +1769,20 @@ _BOX_VALUE_DEPRECATED = (
     "(a list of `ofList`, as for `ofListGroups`)")
 
 
+def _fileInt(token):
+    """`int(token)` for a token read from a file; a token with `_` is a word."""
+    if isinstance(token, str) and '_' in token:
+        raise ValueError(f"'{token}' is a word, not a number")
+    return int(token)
+
+
+def _fileFloat(token):
+    """`float(token)` for a token read from a file; a token with `_` is a word."""
+    if isinstance(token, str) and '_' in token:
+        raise ValueError(f"'{token}' is a word, not a number")
+    return float(token)
+
+
 def _numberReprs(group):
     """
     The `repr` of each item of a group (an `ofList` or a plain list) if all
@@ -5240,9 +5254,9 @@ class DictFileParser:
         
         #Capture lists with specified length.  e.g. '2((0 0) (500 1))'
         try:
-            int(lineList[0])
+            _fileInt(lineList[0])
             openingChar = '('
-            listLen = int(lineList[0])
+            listLen = _fileInt(lineList[0])
             self.i+=1
             lineList = self._getLinesList(self.lines[self.i])
         except (TypeError, ValueError):
@@ -6088,6 +6102,12 @@ class DictFileParser:
         # logger.debug(f"valueStr: {valueStr_}")
         # logger.debug(f"name: {name}")
         type_, value_ = self._parseValue(valueStr_)
+        if type_ in (ofStr, ofList) and '_' in valueStr_:
+            #- (T-075) a token with `_` is a word, not a number
+            userMsg(f"Invalid uniform value '{valueStr_}' on line "
+                    f"{self._ln(self.i)} of dictionary file "
+                    f"'{self.filepath}': a token with '_' is a word, "
+                    "not a number.", level='ERROR')
         # logger.debug(f"type: {type_}")
         # logger.debug(f"value: {type_(value=value_)}")
         value__ = type_(value=value_)
@@ -6110,14 +6130,14 @@ class DictFileParser:
         # elif isinstance(value, int):
         #     return ofInt, value
         try:
-            int(value)
+            _fileInt(value)
             #check that fractional value was not truncated
             if isclose(int(value), float(value)):
                 return ofInt, int(value)
         except (ValueError, TypeError):
             pass
         try:
-            float(value)
+            _fileFloat(value)
             return ofFloat, float(value)
         except (ValueError, TypeError):
             pass
@@ -6143,12 +6163,12 @@ class DictFileParser:
 
         #try to convert to numeric
         try:
-            v_ = int(value)
+            v_ = _fileInt(value)
             return ofInt, v_
         except ValueError:
             pass
         try:
-            v_ = float(value)
+            v_ = _fileFloat(value)
             return ofFloat, v_
         except:
             pass
@@ -6166,7 +6186,7 @@ class DictFileParser:
             try:
                 value_ = []
                 for v in value.strip('()').split():
-                    value_.append(float(v))
+                    value_.append(_fileFloat(v))
                 # logger.debug(f"value_: {value_}")
             except ValueError:
                 pass
@@ -6225,7 +6245,7 @@ class DictFileParser:
                 pass
 
         try:
-            value_ = float(value)
+            value_ = _fileFloat(value)
             if '.' in value:
                 return ofFloat, value_
             else:
@@ -6934,7 +6954,7 @@ class DictFileParser:
         #- Get the dimension string
         dims = []
         try:
-            d_ = int(lineList[1].strip('['))
+            d_ = _fileInt(lineList[1].strip('['))
             dims.append(d_)
         except ValueError:
             return None #- Dimensioned quantity is not an int
@@ -6942,7 +6962,7 @@ class DictFileParser:
         for i, d in enumerate(lineList[2:10]):
             # logger.debug(f"i: {i}")
             try:
-                d_ = int(d.strip(']'))
+                d_ = _fileInt(d.strip(']'))
                 dims.append(d_)
             except ValueError:
                 return None
@@ -6963,7 +6983,7 @@ class DictFileParser:
             returnType = ofDimensionedSphericalTensor
         if type_ == ofList:
             try:
-                [float(v) for v in value]
+                [_fileFloat(v) for v in value]
             except ValueError:
                 return None # not all values in list are numeric
             if len(value) == 3:
@@ -7148,6 +7168,8 @@ class DictFileParser:
         #- try to convert list to dimension, return None if error
         dimList = []
         for value in lineList[1:]:
+            if '_' in value:
+                return None  # a word with `_` is never a dimension
             try:
                 v = int(value.strip('[];'))
                 dimList.append(v)
