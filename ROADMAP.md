@@ -88,10 +88,10 @@
 - **T-070** CI tests Python 3.9 (`ubuntu-24.04`), 3.12 and 3.15 (`ubuntu-latest`), 3.9 and 3.15 (`windows-latest`), plus a non-required 3.16 pre-release job; branch protection requires only the `All tests passed` summary job and `ruff + mypy (no new findings)` (f92f94e, PR #95)
 - **T-019** an unedited write adds no trailing whitespace: entries end in `;`, blank lines inside blocks are empty, and the FoamFile block is followed by the source's number of blank lines (cd5b83b, PR #98)
 - **T-073** the Python pre-release job installs dependencies from wheels only, so a missing wheel fails in ~12 s naming the package and `All tests passed` reports in ~3.5 min instead of ~15 (59c463c, PR #99)
+- **T-074** CI actions moved to their Node.js 24 majors (`checkout` v7, `setup-python` v7, `upload-artifact` v7, `download-artifact` v8); no Node.js 20 deprecation warning in the logs (ca09164, PR #100)
 
 ## Current state
 - The core init → cache → load → edit → write path is tested on Linux and Windows CI. Headers round-trip verbatim for Foundation, ESI and foam-extend (T-006).
-- **CI (2026-11-08):** every job warns that `actions/checkout@v4` and `actions/setup-python@v5` target the deprecated Node.js 20 (T-074).
 - Real files: stock pitzDaily loads for Foundation 11 (since T-015) and Foundation 14 (since T-016). Foundation 12/13 and ESI v2606 headers are fine.
 - Real-tutorial inventory (2026-10-21), load failures by frequency:
   - value-position `#calc`/`#neg`: 100+ Foundation 13/14 files (T-027);
@@ -146,13 +146,12 @@
   - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-074 GitHub Actions off Node.js 20 (#97).
+**In progress:** T-071 `ofBoundBox` as a subclass of `ofListGroups` (#92).
 
-1. **T-074** GitHub Actions off Node.js 20 (S, #97): every job log warns that its actions target the deprecated Node.js 20; small and CI-only, taken before T-071 by the maintainer (2026-11-08).
-2. **T-071** `ofBoundBox` as a subclass of `ofListGroups` (M, #92): one parser; box entries keep their number text, and their type no longer depends on number spelling (write 1 != write 2 today); placed after T-019 by the maintainer (2026-11-07).
-3. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
-4. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
-5. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
+1. **T-071** `ofBoundBox` as a subclass of `ofListGroups` (M, #92): one parser; box entries keep their number text, and their type no longer depends on number spelling (write 1 != write 2 today); placed after T-019 by the maintainer (2026-11-07).
+2. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
+3. **T-059** a failed `Allrun` raises (S, #79): run failures pass silently today in both `case.allRun()` and `fkf.allRun()`.
+4. **T-063** non-integer time directories (S, #83): the latest time is **silently wrong** for `0.5`/`1e-05` times, which breaks restarts and result reading.
 
 **Interleaving:** after the layout work, runtime and parser tickets alternate so neither track stalls. Runtime fixes that give silently wrong answers go first (T-059, T-063). Then come starting and stopping runs (T-060 → T-061 → T-062), then the readers for logs, `postProcessing` and fields. The readers need real run output (see Questions); a blocked ticket (marked *) is skipped when reached. Parser tickets keep their earlier relative order.
 

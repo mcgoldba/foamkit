@@ -22,6 +22,7 @@ Each row loads with the right values and write 1 == write 2, but the comment is 
 | `d` / `{ // c` / `a 1;` / `}` | no comment |
 | `x` / `(` / `1` / `); // c` | no comment |
 | `x` / `(` / `1` / `);` / `r 2; // u` (an entry after a multi-line list; also inside a sub-dict, found in the T-055 review) | `r 2;`, no comment |
+| `c (1 2) (3 4); // c`, `transform (1 0 0 0 1 0 0 0 1) (0.5 0.45 0.1); // c` (an `ofListGroups` entry; found in the T-071 review, 2026-11-08) | the groups, no comment. Since T-071 (PR #101) an `ofBoundBox` line such as `box (0 0 0) (1 2 3); // c` keeps its comment, so only the plain `ofListGroups` form still drops it |
 
 Kept today (must not change): whole-line `// c` comments at top level, in sub-dicts and inside lists; `( // c` (kept, moved to its own line); `#remove a; // c` and other verbatim directives (T-016 keeps the whole line).
 

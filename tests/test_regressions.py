@@ -75,7 +75,9 @@ def test_vector_table_round_trips(tmp_path):
 def test_bound_box_still_detected(tmp_path):
     d = _parse(tmp_path, "box (0 0 0) (1 2 3);\n")
     assert isinstance(d.box, fkt.ofBoundBox)
-    assert d.box.value == [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]
+    with pytest.warns(DeprecationWarning):
+        value = d.box.value
+    assert value == [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]
 
 
 def test_lone_keyword_round_trips(tmp_path):
