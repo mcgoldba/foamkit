@@ -4,7 +4,7 @@
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S (two parser functions; a shape that is not exactly understood is kept as text, as several already are)
 - **Related:** T-014 (#21; `nu nu [dims] value` loses its value: the real-file case, not in this ticket), T-013 (#20; named units `[m^2/s]`, `[velocity]`, `0 [deg]`, `uniform 3 [bar]`: not in this ticket), T-082 (#109; tensor classes; dimensioned tensor values here stay text and do not need it), T-032 (number text), T-075 (`1_0`), T-056 (comments).
-- **Depends on:** T-014 (#21, ranked first; maintainer, 2026-11-08). Both change `_parseDimensionValue` and `_parseDimensionedType`; T-014 also makes spaces inside the brackets work, for the named and the unnamed form.
+- **Depends on:** T-014 (#21, ranked #3, ahead of this ticket; maintainer, 2026-11-08). Both change `_parseDimensionValue` and `_parseDimensionedType`; T-014 also makes spaces inside the brackets work, for the named and the unnamed form.
 - **Maintainer decision to confirm at approval:** what happens to a shape FoamKit does not type. (A, recommended) It is kept verbatim as `ofStr`, as `nu [0 2 -1 0 0] 1e-05;` and `U [0 1 -1 0 0 0 0] (1 0 0);` already are; `FoamKitError` with file and line only where the text cannot be kept. (B) Raise `FoamKitError` for shapes OpenFOAM rejects. That needs per-release rules (5 exponents, fractional exponents) that are not checked against an OpenFOAM build, so it is not S.
 
 ## Goal

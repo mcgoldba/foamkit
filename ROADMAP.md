@@ -149,7 +149,7 @@
   - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-020 keep the layout of unedited entries (#27).
+**In progress:** T-075 `_` tokens are words (#102); T-020 (#27) follows it.
 
 1. **T-075** tokens with `_` (`1_0`) are words, written as read (S, #102): every path silently turns the OpenFOAM word `1_0` into the number 10; ranked ahead of T-020 by the maintainer (2026-11-08).
 2. **T-020** keep the layout of unedited entries (M, #27): the largest write-side gap. An unedited write changes 13-690 lines per file today.
