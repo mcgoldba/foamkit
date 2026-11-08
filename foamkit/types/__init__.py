@@ -333,7 +333,7 @@ class _ofNamedTypeBase(_ofUnnamedTypeBase):
 
 
         if ofRep:
-            str_ += "; "
+            str_ += ";"
         
         if self._comment is not None:
             str_ += " //"+str(self._comment)
@@ -1582,7 +1582,8 @@ class ofSplitList(ofList):
                     # logger.debug("Found ofDict.")
                     dStr2 = v.toString(ofRep=ofRep).split("\n")
                     for i in range(len(dStr2)):
-                        dStr2[i] = TAB_STR+dStr2[i]+"\n"
+                        #- no indent on blank lines (no trailing whitespace)
+                        dStr2[i] = (TAB_STR+dStr2[i] if dStr2[i] else '')+"\n"
                         dStr += dStr2[i]
                 elif isinstance(v, list):
                     dStr += TAB_STR+ofList(value=v).toString()
@@ -1924,7 +1925,8 @@ class ofDict(dict, _ofTypeBase):
         self._nUnnamed = 0
         #- Keep a list of class variables to filter printed dict items:
         self._CLASS_VARS = ['_CLASS_VARS', '_name', 
-                            '_entryTypes', '_nUnnamed', '_comment_keyword']
+                            '_entryTypes', '_nUnnamed', '_comment_keyword',
+                            '_blank_lines_after']
 
 
         if (len(args) == 1 and isinstance(args[0], list)
@@ -2170,12 +2172,13 @@ class ofDict(dict, _ofTypeBase):
                     # logger.debug("Found ofDict.")
                     dStr2 = v.toString(ofRep=ofRep).split("\n")
                     for i in range(len(dStr2)):
-                        dStr2[i] = TAB_STR+dStr2[i]+"\n"
+                        #- no indent on blank lines (no trailing whitespace)
+                        dStr2[i] = (TAB_STR+dStr2[i] if dStr2[i] else '')+"\n"
                         dStr += dStr2[i]
                 elif isinstance(v, ofList):
                     vList = v.toString(ofRep=ofRep).split('\n')
                     for v_ in vList:
-                        dStr+= TAB_STR+v_+'\n'
+                        dStr+= (TAB_STR+v_ if v_ else '')+'\n'
                     # dStr = dStr.rstrip()
                     # dStr+=';'
                     dStr += '\n'
@@ -2335,8 +2338,11 @@ class ofDictFile(ofDict, _ofFolderItemBase):
    
         str_ = self._header.toString() if \
             hasattr(self._header, 'toString') else ''
-        str_ += self._foamFile.toString(ofRep=True) if \
-            hasattr(self._foamFile, 'toString') else ''
+        if hasattr(self._foamFile, 'toString'):
+            #- the block's own "}\n\n" is replaced by the source's blank lines
+            fStr = self._foamFile.toString(ofRep=True).rstrip('\n')
+            str_ += fStr + '\n' + '\n' * self._foamFile.__dict__.get(
+                '_blank_lines_after', 0)
         # str_ += super(ofDictFile, self).toString(ofRep=ofRep)
         for k, v in zip(self.__dict__.keys(), self.__dict__.values()):
             # logger.debug(f"dict entry: {k}: {v}")
@@ -4751,6 +4757,12 @@ class DictFileParser:
                         +str(self.filepath), 'ERROR')
             self.dictFile._foamFile = self._parseListOrDict('FoamFile')
             foamFileEnd = self.i  #- the line with its closing brace
+            #- blank lines after the block are written back as in the source
+            nBlank = 0
+            while (foamFileEnd + 1 + nBlank < len(self.lines)
+                   and self.lines[foamFileEnd + 1 + nBlank].strip() == ""):
+                nBlank += 1
+            self.dictFile._foamFile._blank_lines_after = nBlank
 
         #- Guard against parser bugs that stop consuming input.  Each
         #  `_parseLine` call must advance the line index or consume an extra

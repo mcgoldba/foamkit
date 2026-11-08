@@ -7,20 +7,19 @@
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
-    version     2.0; 
-    format      ascii; 
-    class       volVectorField; 
-    location    "0"; 
-    object      U; 
+    version     2.0;
+    format      ascii;
+    class       volVectorField;
+    location    "0";
+    object      U;
 }
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 dimensions  [0 1 -1 0 0 0 0];
 
 internalField	uniform (0.0 0.0 0.0);
 
-convertToSIflow	6.30902e-05; 
+convertToSIflow	6.30902e-05;
 
 boundaryField
 {
@@ -28,12 +27,12 @@ boundaryField
 
     OUTLET_4
     {
-        type        flowRateOutletVelocity; 
-        volumetricFlowRate	0.26497884; 
+        type        flowRateOutletVelocity;
+        volumetricFlowRate	0.26497884;
         value       $internalField;
     }
-    
-    
+
+
 }
 
 

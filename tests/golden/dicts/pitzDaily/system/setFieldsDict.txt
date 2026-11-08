@@ -7,12 +7,11 @@
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
-    version     2.0; 
-    format      ascii; 
-    class       dictionary; 
-    object      setFieldsDict; 
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      setFieldsDict;
 }
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 defaultFieldValues
@@ -27,19 +26,19 @@ regions
     boxToCell
     {
         box          (0.0 0.0 -1.0) (0.1461 0.292 1.0);
-        
-    
+
+
         fieldValues
         (
             volScalarFieldValue
             alpha.water
             1
         );
-        
-    
+
+
     }
-    
-    
+
+
 );
 
 // ************************************************************************* //

@@ -316,7 +316,7 @@ def test_include_without_a_semicolon_is_unchanged_at_top_level(
     path = tmp_path / "g"
     path.write_text(HEADER + directive + "\nx 1;\n")
     text = _load(path).toString().split(AFTER_BANNER, 1)[1]
-    assert text == written + "\nx           1; \n\n"
+    assert text == written + "\nx           1;\n\n"
 
 
 @pytest.mark.parametrize(("directive", "written"), GUARDS)
@@ -326,7 +326,7 @@ def test_include_without_a_semicolon_is_unchanged_in_a_sub_dict(
     path = tmp_path / "g"
     path.write_text(HEADER + "sub\n{\n" + directive + "\n    x 1;\n}\n")
     text = _load(path).toString().split(AFTER_BANNER, 1)[1]
-    assert text == "sub\n{\n    " + written + "    x           1; \n}\n\n\n"
+    assert text == "sub\n{\n    " + written + "    x           1;\n}\n\n\n"
 
 
 @pytest.mark.parametrize(("directive", "written"), GUARDS)
