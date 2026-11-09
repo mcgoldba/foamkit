@@ -15,6 +15,7 @@ import pandas as pd
 import copyreg
 import json
 import hashlib
+import dataclasses
 from pydoc import locate #ref: https://stackoverflow.com/a/29831586/10592330
 import keyword # To check if ofDict, ofCase, or ofFolder attribute is reserved
 import subprocess
@@ -761,23 +762,107 @@ def _toDictObj(obj):
     return obj
 
 
+_FP_MISSING = object()
+_FP_NAMES: dict = {}      #- type -> names of the value attributes of its instances
+
+
+def _fpNames(cls):
+    """
+    Names of the attributes that hold the value of an instance of `cls`: the
+    dataclass fields (with and without a leading '_') and the private
+    attributes the parser adds.  Properties are left out (their data is in
+    the attributes behind them).  Read from the class, never from an
+    instance `__dict__`.
+    """
+    names = _FP_NAMES.get(cls)
+    if names is None:
+        base = ['_name', '_comment', '_comment_keyword', '_srcText',
+                '_srcReprs']
+        if dataclasses.is_dataclass(cls):
+            for f in dataclasses.fields(cls):
+                base += [f.name, '_' + f.name]
+        names = tuple(sorted(
+            n for n in set(base)
+            if not isinstance(getattr(cls, n, None), property)))
+        _FP_NAMES[cls] = names
+    return names
+
+
+def _fpFeed(h, x, deep=True):
+    """
+    Stream a serialisation of the value of `x` into the hash `h`, token by
+    token, keeping nothing.  `deep`: also read attributes that are not in
+    `_fpNames` from `vars(x)` (an attribute a user sets, such as `.value` on
+    a type that has none); items of lists are read through `_fpNames` only,
+    because reading `vars` of every node would keep a dict alive per node
+    (Python 3.12+).  Raises `TypeError` for a value it cannot serialise.
+    """
+    if x is None or isinstance(x, (str, bool, numbers.Number, np.generic)):
+        h.update(repr(x).encode('utf-8') + b',')
+    elif isinstance(x, Path):
+        h.update(b'P' + str(x).encode('utf-8') + b',')
+    elif isinstance(x, (list, tuple)):
+        h.update(b'[')
+        for item in x:
+            _fpFeed(h, item, False)
+        h.update(b']')
+    elif isinstance(x, pd.DataFrame):
+        _fpFeed(h, x.to_dict(), False)
+    elif isinstance(x, _ofTypeBase):
+        h.update(type(x).__name__.encode('utf-8') + b'{')
+        if isinstance(x, ofDict):
+            attrs = vars(x)
+            classVars = attrs.get('_CLASS_VARS') or []
+            for k in sorted(k for k in attrs if k in classVars):
+                h.update(repr(k).encode('utf-8') + b'=')
+                _fpFeed(h, attrs[k], True)
+            h.update(b'|')
+            for k, v in attrs.items():     #- (entries in their order)
+                if k not in classVars:
+                    h.update(repr(k).encode('utf-8') + b'=')
+                    _fpFeed(h, v, True)
+        else:
+            if deep:
+                items = sorted(vars(x).items())
+            else:
+                items = [(n, getattr(x, n, _FP_MISSING))
+                         for n in _fpNames(type(x))]
+            for n, v in items:
+                if v is _FP_MISSING:
+                    continue
+                h.update(n.encode('utf-8') + b'=')
+                _fpFeed(h, v, deep)
+        h.update(b'}')
+    elif isinstance(x, dict):
+        h.update(b'{')
+        for k in sorted(x, key=str):
+            h.update(repr(k).encode('utf-8') + b'=')
+            _fpFeed(h, x[k], False)
+        h.update(b'}')
+    else:
+        raise TypeError(f"cannot fingerprint {type(x).__name__}")
+
+
 def _fingerprint(key, obj) -> Optional[str]:
     """
-    Fingerprint of the entry `key` = `obj` (T-020): blake2b of the text the
-    writer produces for it in the standard style, hex.  An edit that changes
-    nothing the writer writes cannot change what is written, so it is
-    harmless; any other edit changes the text.  Hashing the text does not
-    read `__dict__` of every node (which would keep a dict alive per node)
-    and keeps nothing but the digest.  None if the text cannot be made: such
-    an entry is never taken as unchanged.
+    Fingerprint of the entry `key` = `obj` (T-020): blake2b-16 (hex) of the
+    text the writer produces for it in the standard style, followed by a
+    serialisation of its value streamed by `_fpFeed`.  The text alone would
+    miss an edit to a part the writer drops (`.value` of `DT DT [0 2 -1 0 0 0
+    0] 4e-05;`); the value alone would miss nothing the writer writes.  Equal
+    fingerprints mean the same value and the same standard-style text.
+    None if the entry cannot be serialised: it is then never taken as
+    unchanged.
     """
     try:
         if isinstance(obj, ofFoamFile):
             text = obj.toString(ofRep=True)
         else:
             text = ofDictFile._entryText(key, obj, True)
-        return hashlib.blake2b(text.encode('utf-8'),
-                               digest_size=16).hexdigest()
+        h = hashlib.blake2b(digest_size=16)
+        h.update(text.encode('utf-8') + b'|')
+        _fpFeed(h, obj, True)
+        return h.hexdigest()
     except Exception:
         return None
 
@@ -2478,15 +2563,20 @@ class ofDictFile(ofDict, _ofFolderItemBase):
         written as it was read (its spacing, layout and comments), and so are
         the FoamFile block, the blank lines between entries and the end of the
         file (T-020).  Changed and new entries are written in the standard
-        style.  Changes are found by comparing the value of every entry with
-        its value when it was read, so any way of editing is detected.  The
-        layout goes with the dictionary into the `.params` cache.
+        style (a new, or deleted and added again, entry after one blank
+        line).  Changes are found by comparing a fingerprint of every entry
+        with the one taken when it was read: a hash of the entry's text in the
+        standard style and of its value (every attribute, read without
+        keeping anything), so no way of editing can be missed;
+        an entry that cannot be fingerprinted is always rewritten.
+        The layout goes with the dictionary into the `.params` cache.
 
         `_preserve=False` (private, for `fk format`) writes every entry in the
         standard style.
         """
 
-        str_ = self._header.toString() if             hasattr(self._header, 'toString') else ''
+        str_ = self._header.toString() if \
+            hasattr(self._header, 'toString') else ''
         layout = self.__dict__.get('_srcLayout')
         if not (_preserve and ofRep and isinstance(layout, dict)):
             layout = None
@@ -2568,7 +2658,16 @@ class ofDictFile(ofDict, _ofFolderItemBase):
         keys = [k for k in self.__dict__ if k not in self._CLASS_VARS]
         pos = {k: n for n, k in enumerate(keys)}
         plan = {}
-        for rec in layout.get('entries', ()):
+        entries = layout.get('entries', ())
+        #- A key deleted and added again moved: it is new, whatever its old
+        #  place was.  The entries that kept their relative order are the
+        #  longest increasing run of positions.
+        anchors = [min((pos[k] for k in rec[0] if k in pos), default=None)
+                   for rec in entries]
+        stay = self._longestRun(anchors)
+        for ri, rec in enumerate(entries):
+            if anchors[ri] is not None and ri not in stay:
+                continue
             names, gap, text, prints = rec
             first = pos.get(names[0])
             intact = first is not None and all(
@@ -2583,6 +2682,30 @@ class ofDictFile(ofDict, _ofFolderItemBase):
                 else:
                     plan[k] = (gap if n == 0 else '', None)
         return plan
+
+    @staticmethod
+    def _longestRun(values) -> set:
+        """Indices of a longest strictly increasing run of `values` (None skipped)."""
+        tails: list = []
+        ends: list = []
+        prev: dict = {}
+        for i, v in enumerate(values):
+            if v is None:
+                continue
+            j = bisect_left(tails, v)
+            if j == len(tails):
+                tails.append(v)
+                ends.append(i)
+            else:
+                tails[j] = v
+                ends[j] = i
+            prev[i] = ends[j - 1] if j else None
+        out: set = set()
+        k = ends[-1] if ends else None
+        while k is not None:
+            out.add(k)
+            k = prev[k]
+        return out
 
     @staticmethod
     def _layoutText(plan, key):

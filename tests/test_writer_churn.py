@@ -103,26 +103,28 @@ def test_goldens_have_no_trailing_whitespace():
     goldens = sorted(p for p in GOLDEN.rglob("*") if p.is_file())
     assert goldens
     # - (T-020) an unedited write keeps the source, so a golden line may end in whitespace
-    # - where the same line of its source fixture does; the writer adds none of its own
+    # - where the same line (same line number) of its source fixture does; the writer adds
+    # - none of its own
     from test_golden import DICT_FILES
     from test_golden import _id as golden_id
 
-    allowed = {}
-    for src in DICT_FILES:
-        key = (GOLDEN / "dicts" / (golden_id(src) + ".txt")).relative_to(GOLDEN)
-        allowed[key.as_posix()] = {
-            ln for _, ln in _trailing_ws(src.read_text(encoding="utf-8"))
-        }
-    bad = {
-        p.relative_to(GOLDEN).as_posix(): len(
+    sources = {
+        (GOLDEN / "dicts" / (golden_id(src) + ".txt")).relative_to(GOLDEN).as_posix(): (
+            src.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n")
+        )
+        for src in DICT_FILES
+    }
+    bad = {}
+    for p in goldens:
+        name = p.relative_to(GOLDEN).as_posix()
+        src = sources.get(name, [])
+        bad[name] = len(
             [
-                ln
-                for _, ln in _trailing_ws(p.read_text(encoding="utf-8"))
-                if ln not in allowed.get(p.relative_to(GOLDEN).as_posix(), set())
+                n
+                for n, ln in _trailing_ws(p.read_text(encoding="utf-8"))
+                if not (n <= len(src) and src[n - 1] == ln)
             ]
         )
-        for p in goldens
-    }
     bad = {k: v for k, v in bad.items() if v}
     assert not bad, f"{len(bad)} golden files with trailing whitespace: {bad}"
 

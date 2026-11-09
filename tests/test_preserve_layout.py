@@ -737,3 +737,126 @@ def test_layout_is_kept_for_a_deep_copy():
     path = PITZ / "system" / "controlDict"
     d = _load(path)
     assert copy.deepcopy(d).toString() == _source(path)
+
+
+# --------------------------------------------------------------------------------------
+# an edit to a part the writer drops is never answered with the stale source text
+# (review round 1): `DT DT [0 2 -1 0 0 0 0] 4e-05;` keeps no value, so regenerating it
+# loses the edit; writing the old line back would hide that
+# --------------------------------------------------------------------------------------
+
+_DROPPED = {
+    "DT": "DT DT [0 2 -1 0 0 0 0] 4e-05;\n",
+    "nu": "nu nu [ 0 2 -1 0 0 0 0 ] 1e-5;\n",
+    "U": "U [0 1 -1 0 0 0] (1 0 0);\n",
+}
+
+
+def _edit_value(entry):
+    entry.value = 1e-4
+
+
+def _edit_dimensions(entry):
+    entry.dimensions = [0, 2, -1, 0, 0, 0, 1]
+
+
+@pytest.mark.parametrize(
+    "edit", [_edit_value, _edit_dimensions], ids=lambda f: f.__name__
+)
+@pytest.mark.parametrize("where", ["top", "sub"])
+@pytest.mark.parametrize("key", sorted(_DROPPED))
+def test_edit_of_a_part_the_writer_drops_never_writes_the_stale_source(
+    key, where, edit, tmp_path
+):
+    entry_text = _DROPPED[key]
+    if where == "top":
+        src = _HEAD + entry_text
+    else:
+        src = _HEAD + "sub\n{\n    " + entry_text + "}\n"
+    d = _reload(src, tmp_path)
+    assert d.toString() == src
+    target = d if where == "top" else d.sub
+    edit(getattr(target, key))
+    out = d.toString()
+    assert entry_text.strip() not in out, "the old entry text came back"
+    assert out != src
+
+
+def _nodes(obj, depth=0):
+    """The entry and every ofType below it (dictionary entries, list items)."""
+    yield obj
+    if depth > 6:
+        return
+    children = []
+    attrs = vars(obj)
+    if isinstance(obj, pt.ofDict):
+        children = [v for k, v in attrs.items() if k not in obj._CLASS_VARS]
+    else:
+        for v in attrs.values():
+            if isinstance(v, list):
+                children += v
+    for c in children:
+        if isinstance(c, pt._ofTypeBase):
+            yield from _nodes(c, depth + 1)
+
+
+def _primitive_attrs(node):
+    skip = getattr(node, "_CLASS_VARS", ())
+    return [
+        k
+        for k, v in vars(node).items()
+        if k not in skip and isinstance(v, (bool, int, float, str))
+    ]
+
+
+def _mutated(v):
+    if isinstance(v, bool):
+        return not v
+    if isinstance(v, (int, float)):
+        return v + 1
+    return v + "x"
+
+
+@pytest.mark.parametrize("path", _corpus_params())
+def test_changing_any_value_attribute_changes_the_fingerprint(path):
+    d = _load(path)
+    checked = 0
+    for key, entry in [(k, v) for k, v in d.__dict__.items() if k not in d._CLASS_VARS]:
+        before = pt._fingerprint(key, entry)
+        if before is None or not isinstance(entry, pt._ofTypeBase):
+            continue
+        sample = [(n, a) for n in _nodes(entry) for a in _primitive_attrs(n)]
+        stride = max(1, len(sample) // 12)
+        for node, attr in sample[::stride]:
+            old = vars(node)[attr]
+            vars(node)[attr] = _mutated(old)
+            try:
+                assert pt._fingerprint(key, entry) != before, (
+                    f"{_id(path)}: {key}.{attr} of {type(node).__name__} was changed "
+                    "but the fingerprint is the same"
+                )
+            finally:
+                vars(node)[attr] = old
+            checked += 1
+        assert pt._fingerprint(key, entry) == before
+    assert checked or len(d.__dict__) < 12
+
+
+def test_a_key_deleted_and_added_again_gets_a_blank_line_before_it(tmp_path):
+    src = _HEAD + "a 1;\nb 2;\n\nc 3;\n"
+    d = _reload(src, tmp_path)
+    del d.b
+    d.b = 5
+    out = d.toString()
+    assert (
+        out
+        == _HEAD
+        + "a 1;\n\nc 3;\n\n"
+        + pt.ofInt(name="b", value=5).toString(ofRep=True).rstrip("\n")
+        + "\n"
+    )
+    # - equal value: it moved too, so it is written anew after one blank line
+    d = _reload(src, tmp_path)
+    del d.b
+    d.b = 2
+    assert d.toString().endswith("c 3;\n\n" + d.b.toString(ofRep=True))
