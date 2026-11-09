@@ -14,35 +14,35 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-application simpleFoam;
+application     simpleFoam;
 
-startFrom   startTime;
+startFrom       startTime;
 
-startTime   0;
+startTime       0;
 
-stopAt      endTime;
+stopAt          endTime;
 
 endTime     500;
 
-deltaT      1;
+deltaT          1;
 
-writeControl	timeStep;
+writeControl    timeStep;
 
-writeInterval	100;
+writeInterval   100;
 
-purgeWrite  0;
+purgeWrite      0;
 
-writeFormat ascii;
+writeFormat     ascii;
 
-writePrecision	6;
+writePrecision  6;
 
-writeCompression	off;
+writeCompression off;
 
-timeFormat  general;
+timeFormat      general;
 
-timePrecision	6;
+timePrecision   6;
 
-runTimeModifiable	true;
+runTimeModifiable true;
 
 cacheTemporaryObjects
 (
@@ -51,37 +51,22 @@ cacheTemporaryObjects
 
 functions
 {
-    #includeFunc	streamlines
-
-    #includeFunc	writeObjects(kEpsilon:G)
+    #includeFunc streamlines
+    #includeFunc writeObjects(kEpsilon:G)
 
     probes
     {
-        type        probes;
-        libs        ( "libsampling.so");
-
-
-        writeControl	timeStep;
-        writeInterval	1;
-        fields
-        (
-            U
-            p
-        );
-
-
+        type            probes;
+        libs            ("libsampling.so");
+        writeControl    timeStep;
+        writeInterval   1;
+        fields          (U p);
         probeLocations
         (
             (0.0254 0.0253 0)
             (0.1 0.0 0)
         );
-
-
     }
-
-
 }
 
-
 // ************************************************************************* //
-

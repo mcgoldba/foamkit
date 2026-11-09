@@ -31,6 +31,26 @@ def case(tmp_path):
 
 
 @pytest.fixture
+def regenerated_style(monkeypatch):
+    """
+    Write every entry in the standard style, as `toString(_preserve=False)` does.
+
+    Since T-020 an unedited entry is written as it was read.  Tests that pin the
+    standard style of the writer (what edited and new entries get) read their input
+    and use this fixture so that the writer, not the preserved source text, is
+    what they check.
+    """
+    import foamkit.types as pt
+
+    original = pt.ofDictFile.toString
+
+    def toString(self, ofRep=True, *, _preserve=False):
+        return original(self, ofRep, _preserve=_preserve)
+
+    monkeypatch.setattr(pt.ofDictFile, "toString", toString)
+
+
+@pytest.fixture
 def chdir(monkeypatch):
     """Change the working directory for the duration of a test."""
     def _chdir(path):

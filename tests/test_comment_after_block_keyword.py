@@ -53,7 +53,15 @@ PHYSICAL = RELEASES / "foundation-14.aerofoilNACA0012.physicalProperties"
 BAFFLES = RELEASES / "foundation-14.simpleRushtonMRF.createBafflesDict.baffles"
 RADIATION = RELEASES / "foundation-14.SandiaD_LTS.radiationProperties"
 HL = HEADER.count(NL)
-PRIVATE = {"_name", "_entryTypes", "_nUnnamed", "_CLASS_VARS", "_header", "_foamFile"}
+PRIVATE = {
+    "_name",
+    "_entryTypes",
+    "_nUnnamed",
+    "_CLASS_VARS",
+    "_header",
+    "_foamFile",
+    "_srcLayout",
+}
 
 
 def _load(path):
@@ -408,6 +416,7 @@ def test_comment_on_its_own_line_before_a_keyword_is_kept(tmp_path, cont):
 
 
 @pytest.mark.parametrize("cont", CONTAINERS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_quoted_keyword_with_slashes_loads_and_is_written_quoted_as_today(
     tmp_path, cont
 ):
@@ -421,6 +430,7 @@ def test_quoted_keyword_with_slashes_loads_and_is_written_quoted_as_today(
 
 
 @pytest.mark.parametrize("cont", CONTAINERS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_comment_after_closing_brace_loads_and_is_dropped_as_today(tmp_path, cont):
     """Characterisation only (T-056): `d { a 1; } // c` loads as `d` with `a`, and the
     trailing comment is not written back."""

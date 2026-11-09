@@ -255,6 +255,7 @@ def test_value_position_include_round_trips_or_raises_foamkiterror(tmp_path, tex
         pytest.param("#includeFunc x ;", "x", "#includeFunc x;", id="includeFunc"),
     ],
 )
+@pytest.mark.usefixtures("regenerated_style")
 def test_a_space_before_the_semicolon_loads_and_writes_one_semicolon(
     tmp_path, text, value, written
 ):
@@ -310,6 +311,7 @@ GUARDS = [
 
 
 @pytest.mark.parametrize(("directive", "written"), GUARDS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_include_without_a_semicolon_is_unchanged_at_top_level(
     tmp_path, directive, written
 ):
@@ -320,6 +322,7 @@ def test_include_without_a_semicolon_is_unchanged_at_top_level(
 
 
 @pytest.mark.parametrize(("directive", "written"), GUARDS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_include_without_a_semicolon_is_unchanged_in_a_sub_dict(
     tmp_path, directive, written
 ):

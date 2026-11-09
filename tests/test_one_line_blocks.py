@@ -76,11 +76,6 @@ DUCT = RELEASES / "foundation-11.heatedDuct.snappyHexMeshDict"
 FILE = (
     "probeDict"  # a letters-only file name, so line numbers in messages are unambiguous
 )
-XF_LAYOUT = pytest.mark.xfail(
-    strict=True,
-    reason="T-020: an unedited one-line block written back byte-identical needs "
-    "T-020's source text (T-040 only has to keep every entry)",
-)
 
 # --- running a group of inputs in a child process ---------------------------------------
 
@@ -428,13 +423,13 @@ def res(tmp_path_factory):
     for k, (body, _) in EVAL_LISTS.items():
         cases[f"eval:{k}"] = case(body)
     for k, body in INCLUDE_FUNC.items():
-        cases[f"incl:{k}"] = case(body)
+        cases[f"incl:{k}"] = dict(case(body), preserve=False)
     cases["macro"] = case(
         "x 1;" + NL + "d { $x; rotationAngle 60; }" + NL + "e { $d; rotationAngle 90; }"
     )
     for k, body in UNIFORM.items():
         cases[f"uniform:{k}"] = case(body)
-    cases["evalmulti"] = case(EVAL_MULTI_LINE)
+    cases["evalmulti"] = dict(case(EVAL_MULTI_LINE), preserve=False)
     cases["codestream_list"] = case("x ( #codeStream { a } );")
     cases["includeFunc_braces"] = case("#includeFunc foo(a={b 1;})")
     for k, (body, _) in COMMENT_AFTER_BRACE.items():
@@ -450,7 +445,7 @@ def res(tmp_path_factory):
     for k, body in DEEP_INPUTS.items():
         cases[f"deep:{k}"] = case(body, limit=8.0)
     for k, path in REAL.items():
-        cases[f"real:{k}"] = _real_spec(path)
+        cases[f"real:{k}"] = dict(_real_spec(path), preserve=False)
     return probe(cases, tmp_path_factory.mktemp("probe"))
 
 
@@ -569,7 +564,6 @@ def test_unedited_one_line_block_write_1_equals_write_2_equals_write_3(res, name
 
 
 @pytest.mark.parametrize("name", sorted(WRITE))
-@XF_LAYOUT
 def test_unedited_one_line_block_is_written_on_one_line_byte_identical(res, name):
     """Goal layout: the block's source line comes back unchanged (indent aside)."""
     written = [ln.strip() for ln in loaded(res[f"write:{name}"])["w1"].split(NL)]

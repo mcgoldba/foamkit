@@ -250,10 +250,7 @@ def test_ordinary_shape_survives_the_write_with_the_same_scopes(
         ['note "a { b";'],
         ["// comment }"],
         ["/* } */"],
-        pytest.param(
-            ['x ( "}" );'],
-            marks=pytest.mark.xfail(strict=True, reason="T-020: list layout"),
-        ),
+        ['x ( "}" );'],
     ],
 )
 def test_single_line_shape_text_is_written_back(tmp_path, lines):

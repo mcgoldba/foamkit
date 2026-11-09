@@ -21,6 +21,7 @@ Every row behaves the same at the top level and inside a sub-dict unless noted; 
 | `nu [0 2 -1 0 0 0] 1;` (6 exponents) | `ofNamedDimension` | **`[0 2 -1 0 0 0 1]`** |
 | `U [0 1 -1 0 0 0] (1 0 0);` | `ofNamedDimension` | **`U [0 1 -1 0 0 0 0];`** (vector lost, a `0` exponent added) |
 | `v [0 1 -1 0 0 0] uniform 1;` | `ofNamedDimension` | **`[0 1 -1 0 0 0 1]`** (`uniform` dropped) |
+| `g [0 1 -2 0 0 0 0] (0 -9.81 0);` (7 exponents, a vector with a non-integer component; added by the planner on 839663c, 2026-11-09) | `ofNamedDimension` | **`g [0 1 -2 0 0 0 0];`** (vector lost: `(0` and `0)` are not integers, so exactly 7 tokens are left; `(1 0 0)` survives only because its middle `0` makes 8) |
 | `nu [0 2 -1 0 0 0 0] abc;`, `… $x;`, `… on;` | `ofNamedDimension` | **`nu [0 2 -1 0 0 0 0];`** (value lost) |
 | `nu [ 0 2 -1 0 0 0 0 ] 1e-05;` (spaces inside the brackets; fixed by T-014, pinned here) | `ofNamedDimension` | **`nu [0 2 -1 0 0 0 0];`** (value lost) |
 | `nu 1e-05 [0 2 -1 0 0 0 0];` | `ofNamedDimension` | **`nu [0 2 -1 0 0 0 0];`** (value lost) |

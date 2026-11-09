@@ -239,6 +239,7 @@ def test_same_line_foamfile_write_one_equals_write_two(tmp_path, variant):
 
 
 @pytest.mark.parametrize("variant", list(VARIANTS))
+@pytest.mark.usefixtures("regenerated_style")
 def test_same_line_foamfile_is_written_like_the_next_line_form(tmp_path, variant):
     banner = VARIANTS[variant][0]
     same = _written(_write_file(tmp_path, banner + SAME_LINE + BODY, "same"))

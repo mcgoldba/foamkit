@@ -362,6 +362,7 @@ def test_entry_then_sub_dict_on_one_line_keeps_the_sub_dict_content(tmp_path, ne
 
 
 @NESTING
+@pytest.mark.usefixtures("regenerated_style")
 def test_entry_then_include_on_one_line_keeps_the_include_verbatim(tmp_path, nested):
     path = _write(tmp_path, HEADER + _where('a 1; #include "f"', nested))
     first, second, text1, text2 = _cycle(tmp_path, path)
@@ -378,6 +379,7 @@ def test_entry_then_include_on_one_line_keeps_the_include_verbatim(tmp_path, nes
 
 
 @NESTING
+@pytest.mark.usefixtures("regenerated_style")
 def test_entry_then_print_directive_on_one_line_keeps_it_verbatim(tmp_path, nested):
     path = _write(tmp_path, HEADER + _where('a 1; #print "hi"', nested))
     first, second, text1, text2 = _cycle(tmp_path, path)

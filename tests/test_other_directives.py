@@ -488,6 +488,7 @@ def test_inventoried_directive_has_a_test_snippet(keyword):
 
 @WRAPPERS
 @pytest.mark.parametrize("keyword", _kw_params(ROUNDTRIP_KEYWORDS))
+@pytest.mark.usefixtures("regenerated_style")
 def test_directive_round_trips(tmp_path, wrap, keyword):
     if keyword not in SNIPPETS:
         pytest.skip("no snippet; see test_inventoried_directive_has_a_test_snippet")
@@ -531,6 +532,7 @@ def test_entries_after_directive_in_subdict_still_parse(tmp_path, keyword):
 
 @XF_T033
 @WRAPPERS
+@pytest.mark.usefixtures("regenerated_style")
 def test_real_codeStream_round_trips(tmp_path, wrap):
     snippet = SNIPPETS["codeStream"]
     _, _, text = _roundtrip(tmp_path, wrap(snippet))
@@ -539,6 +541,7 @@ def test_real_codeStream_round_trips(tmp_path, wrap):
 
 @XF_T033
 @WRAPPERS
+@pytest.mark.usefixtures("regenerated_style")
 def test_real_codeStream_second_write_is_stable(tmp_path, wrap):
     _, second, text = _roundtrip(tmp_path, wrap(SNIPPETS["codeStream"]))
     assert second.toString() == text
@@ -998,6 +1001,7 @@ def test_real_externalCoupled_sinclude_in_subdict_survives():
     ],
 )
 @XF_T029
+@pytest.mark.usefixtures("regenerated_style")
 def test_foundation_includeModel_and_includeConstraint_are_written_as_read(
     tmp_path, line, written
 ):
@@ -1259,6 +1263,7 @@ def test_real_file_loads(name):
 
 
 @pytest.mark.parametrize("name", _file_params(ALL_FILES, _ORDER_BLOCKERS))
+@pytest.mark.usefixtures("regenerated_style")
 def test_real_file_keeps_its_line_start_directives_in_order(name):
     d = fkt.DictFileParser(RELEASES / name).readDictFile()
     src = [

@@ -749,6 +749,7 @@ def test_real_file_written_transform_has_the_tensor_and_the_vector(path, groups)
 
 
 @pytest.mark.parametrize(("path", "groups"), _real_params("no-orphan"))
+@pytest.mark.usefixtures("regenerated_style")
 def test_real_file_written_has_no_orphan_statement_or_dimension(path, groups):
     written = _load(path).toString()
     assert "[0 0 0 1 0 0 0]" not in written
@@ -773,6 +774,7 @@ def test_real_file_second_write_has_the_same_tokens_as_the_first(
     strict=True,
     reason="T-045: `patches (hull);` is a one-element list, written on one line, then on three",
 )
+@pytest.mark.usefixtures("regenerated_style")
 def test_real_file_second_write_equals_the_first_text(tmp_path, name):
     path = REAL[name][0]
     text1 = _load(path).toString()

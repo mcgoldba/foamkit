@@ -14,29 +14,24 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-dimensions  [0 2 -2 0 0 0 0];
+dimensions      [0 2 -2 0 0 0 0];
 
-internalField	uniform 0;
+internalField   uniform 0;
 
 boundaryField
 {
     inlet
     {
-        type        zeroGradient;
+        type            zeroGradient;
     }
-
 
     outlet
     {
-        type        fixedValue;
-        value       uniform 0;
+        type            fixedValue;
+        value           uniform 0;
     }
 
-
     #includeEtc "caseDicts/setConstraintTypes"
-
 }
 
-
 // ************************************************************************* //
-
