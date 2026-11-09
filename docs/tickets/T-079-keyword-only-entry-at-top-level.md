@@ -3,7 +3,7 @@
 - **Issue:** [#106](https://github.com/mcgoldba/foamkit/issues/106)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** S (one top-level branch, matching the sub-dict handling that already works)
-- **Related:** T-076 (#103; after `groups.clear()` the writer emitted `box ;`, which then failed on re-read; T-076 makes that write raise), T-020 (layout of unedited entries), T-041 (several entries per line).
+- **Related:** T-087 (#115; depends on this ticket: it writes `count;` for `.value = None`, which must load back at the top level), T-076 (#103; after `groups.clear()` the writer emitted `box ;`, which then failed on re-read; T-076 makes that write raise), T-020 (layout of unedited entries), T-041 (several entries per line).
 - **Depends on:** none. Start after T-020 merges, because both change `foamkit/types/__init__.py`.
 - **Maintainer decision to confirm at approval:** how the entry is represented. (A, recommended) The same as in a sub-dict today: an `ofWord` holding the keyword, stored under an `unnamed_<n>` key, written `keyword;`. No API change. (B) A named entry with an empty value (`d.print` exists). This changes the sub-dict representation too, so it needs a deprecation path for `unnamed_<n>` and is no longer S.
 
