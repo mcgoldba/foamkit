@@ -392,6 +392,7 @@ INCLUDES = [
 
 @pytest.mark.parametrize(("text", "directive"), INCLUDES)
 @pytest.mark.parametrize("cont", CONTAINERS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_include_items_in_a_list_stay_one_item_on_one_line(
     tmp_path, text, directive, cont
 ):
@@ -439,6 +440,7 @@ def test_real_file_second_write_equals_the_first(tmp_path, path):
     'T-045: not a glued paren: `libs ("libsampling.so");` is written on one line, then on'
     " three (a one-element one-line list)"
 )
+@pytest.mark.usefixtures("regenerated_style")
 def test_sample_second_write_equals_the_first(tmp_path):
     text1 = _load(SAMPLE).toString()
     out = tmp_path / "sample"
@@ -596,6 +598,7 @@ def test_an_inner_one_element_list_keeps_its_parentheses(
 
 
 @pytest.mark.parametrize("cont", CONTAINERS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_a_quoted_item_with_parentheses_is_not_routed_as_a_glued_item(tmp_path, cont):
     path = tmp_path / "glued"
     path.write_text(HEADER + _wrap('x ("a(b)");\n', cont))

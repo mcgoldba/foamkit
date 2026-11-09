@@ -14,6 +14,7 @@ import re
 import pandas as pd
 import copyreg
 import json
+import hashlib
 from pydoc import locate #ref: https://stackoverflow.com/a/29831586/10592330
 import keyword # To check if ofDict, ofCase, or ofFolder attribute is reserved
 import subprocess
@@ -708,6 +709,79 @@ class FolderParser:  # Class is required because 'default_factory' argument
                          [], bases=(_ofFolderBase, ))(_path=self.path)
 
 
+def _toDictObj(obj):
+    """
+    Recursively convert an ofType, folder or any object to plain Python
+    types (the form `ofCase.save` writes as JSON).
+    """
+    logger.debug("Parsing obj: %s", type(obj))
+    if hasattr(obj, '__dict__'):
+        logger.debug(obj.__dict__)
+
+    if isinstance(obj, str):
+        return obj
+    elif isinstance(obj, Path):
+        return str(obj)
+    elif isinstance(obj, type):
+        return str(obj)
+    # elif isinstance(obj, ofDictFile):
+    #     logger.debug(f"attrDict: {obj.attrDict()}")
+    #     # return _toDictObj(obj.attrDict())
+    #     return dict((key, _toDictObj(val)) for 
+    #                     key, val in obj.attrDict().items())            
+    # elif isinstance(obj, ofDict):
+    #     return dict((key, _toDictObj(val)) for 
+    #                     key, val in obj.attrDict().items())
+    elif isinstance(obj, _ofTypeBase):
+        logger.debug("attrDict: %s", obj.attrDict())
+        return dict((key, _toDictObj(val)) for 
+                        key, val in obj.attrDict().items())
+        # return _toDictObj(obj.attrDict())
+    elif isinstance(obj, _ofFolderBase):
+        logger.debug("Parsing ofFolder")
+        return dict((key, _toDictObj(val)) for 
+                    key, val in obj.attrDict().items())
+    elif isinstance(obj, pd.DataFrame):
+        return obj.to_dict()
+    elif isinstance(obj, dict):
+        return dict((key, _toDictObj(val)) for key, val in obj.items())
+    elif isinstance(obj, list):
+        return [_toDictObj(val) for val in obj]
+    # elif isinstance(obj, _ofTypeBase):
+    #     return toDict(dict(obj))
+    # elif isinstance(obj, _ofFolderBase):
+    #     return toDict(dict(obj))
+    # elif isinstance(obj, Iterable):
+    #     return [toDict(val) for val in obj]
+    elif hasattr(obj, '__dict__'):
+        return _toDictObj(vars(obj))
+    elif hasattr(obj, '__slots__'):
+        return _toDictObj(dict((name, getattr(obj, name)) for 
+        name in getattr(obj, '__slots__')))
+    return obj
+
+
+def _fingerprint(key, obj) -> Optional[str]:
+    """
+    Fingerprint of the entry `key` = `obj` (T-020): blake2b of the text the
+    writer produces for it in the standard style, hex.  An edit that changes
+    nothing the writer writes cannot change what is written, so it is
+    harmless; any other edit changes the text.  Hashing the text does not
+    read `__dict__` of every node (which would keep a dict alive per node)
+    and keeps nothing but the digest.  None if the text cannot be made: such
+    an entry is never taken as unchanged.
+    """
+    try:
+        if isinstance(obj, ofFoamFile):
+            text = obj.toString(ofRep=True)
+        else:
+            text = ofDictFile._entryText(key, obj, True)
+        return hashlib.blake2b(text.encode('utf-8'),
+                               digest_size=16).hexdigest()
+    except Exception:
+        return None
+
+
 @dataclass
 class _ofCaseBase(_ofTypeBase):
     _path : Path = field(default=Path.cwd().resolve())
@@ -823,58 +897,9 @@ class _ofCaseBase(_ofTypeBase):
         if obj is None:
             obj = self
 
-        # Define inner loop to distinush between the user command case.toDict(),
-        # and the recursive function returning a `None` object.
-        def _toDict(obj):
-            logger.debug("Parsing obj: %s", type(obj))
-            if hasattr(obj, '__dict__'):
-                logger.debug(obj.__dict__)
-
-            if isinstance(obj, str):
-                return obj
-            elif isinstance(obj, Path):
-                return str(obj)
-            elif isinstance(obj, type):
-                return str(obj)
-            # elif isinstance(obj, ofDictFile):
-            #     logger.debug(f"attrDict: {obj.attrDict()}")
-            #     # return _toDict(obj.attrDict())
-            #     return dict((key, _toDict(val)) for 
-            #                     key, val in obj.attrDict().items())            
-            # elif isinstance(obj, ofDict):
-            #     return dict((key, _toDict(val)) for 
-            #                     key, val in obj.attrDict().items())
-            elif isinstance(obj, _ofTypeBase):
-                logger.debug("attrDict: %s", obj.attrDict())
-                return dict((key, _toDict(val)) for 
-                                key, val in obj.attrDict().items())
-                # return _toDict(obj.attrDict())
-            elif isinstance(obj, _ofFolderBase):
-                logger.debug("Parsing ofFolder")
-                return dict((key, _toDict(val)) for 
-                            key, val in obj.attrDict().items())
-            elif isinstance(obj, pd.DataFrame):
-                return obj.to_dict()
-            elif isinstance(obj, dict):
-                return dict((key, _toDict(val)) for key, val in obj.items())
-            elif isinstance(obj, list):
-                return [_toDict(val) for val in obj]
-            # elif isinstance(obj, _ofTypeBase):
-            #     return toDict(dict(obj))
-            # elif isinstance(obj, _ofFolderBase):
-            #     return toDict(dict(obj))
-            # elif isinstance(obj, Iterable):
-            #     return [toDict(val) for val in obj]
-            elif hasattr(obj, '__dict__'):
-                return _toDict(vars(obj))
-            elif hasattr(obj, '__slots__'):
-                return _toDict(dict((name, getattr(obj, name)) for 
-                name in getattr(obj, '__slots__')))
-            return obj
-
         #- Return dictionary with _path property added 
         # (properties are not stored in __dict__)
-        return dict(_toDict(obj), _path=str(self._path))
+        return dict(_toDictObj(obj), _path=str(self._path))
 
     def save(self, path=Path('.params') / '_case.json'):
         """
@@ -2412,6 +2437,10 @@ class ofDictFile(ofDict, _ofFolderItemBase):
         # self._CLASS_VARS.append('_location')
         self._CLASS_VARS.append('_header')
         self._CLASS_VARS.append('_foamFile')
+        #- `_srcLayout`, the source layout of the entries read from a file
+        #  (see `DictFileParser._buildLayout`), is set by the parser only;
+        #  without it every entry is written anew
+        self._CLASS_VARS.append('_srcLayout')
 
         # logger.debug(f"location: {self._location}")
 
@@ -2441,47 +2470,128 @@ class ofDictFile(ofDict, _ofFolderItemBase):
     # def __iter__(self):
 
 
-    def toString(self, ofRep=True):
+    def toString(self, ofRep=True, *, _preserve=True):
         """
         Prints as an OpenFOAM dictionary representation.
+
+        An entry that was read from a file and has not been changed since is
+        written as it was read (its spacing, layout and comments), and so are
+        the FoamFile block, the blank lines between entries and the end of the
+        file (T-020).  Changed and new entries are written in the standard
+        style.  Changes are found by comparing the value of every entry with
+        its value when it was read, so any way of editing is detected.  The
+        layout goes with the dictionary into the `.params` cache.
+
+        `_preserve=False` (private, for `fk format`) writes every entry in the
+        standard style.
         """
-   
-        str_ = self._header.toString() if \
-            hasattr(self._header, 'toString') else ''
-        if hasattr(self._foamFile, 'toString'):
-            #- the block's own "}\n\n" is replaced by the source's blank lines
-            fStr = self._foamFile.toString(ofRep=True).rstrip('\n')
-            str_ += fStr + '\n' + '\n' * self._foamFile.__dict__.get(
-                '_blank_lines_after', 0)
-        # str_ += super(ofDictFile, self).toString(ofRep=ofRep)
+
+        str_ = self._header.toString() if             hasattr(self._header, 'toString') else ''
+        layout = self.__dict__.get('_srcLayout')
+        if not (_preserve and ofRep and isinstance(layout, dict)):
+            layout = None
+        has_ff = hasattr(self._foamFile, 'toString')
+        if has_ff:
+            nBlank = self._foamFile.__dict__.get('_blank_lines_after', 0)
+            ffText = None
+            if layout is not None:
+                ffText = self._layoutFoamFile(layout)
+            if ffText is not None:
+                str_ += ffText
+                if not ffText.endswith('\n') and nBlank:
+                    str_ += '\n'
+                str_ += '\n' * nBlank
+            else:
+                #- the block's own "}\n\n" is replaced by the source's blank
+                #  lines
+                fStr = self._foamFile.toString(ofRep=True).rstrip('\n')
+                str_ += fStr + '\n' + '\n' * nBlank
+        plan = self._layoutPlan(layout) if layout is not None else {}
         for k, v in zip(self.__dict__.keys(), self.__dict__.values()):
             # logger.debug(f"dict entry: {k}: {v}")
             if k is None:
                 k=''
             if k not in self._CLASS_VARS:
-                # if isinstance(v, ofDict):
-                #     logger.debug("Found ofDict.")
-                #     tStr = v.toString().split("\n")
-                #     for i in range(len(tStr)):
-                #         tStr[i] = TAB_STR+tStr[i]+"\n"
-                #         str_ += tStr[i]
-                if hasattr(v, 'toString') and callable(getattr(v, 'toString')):
-                    # dStr += printNameStr(TAB_STR+k)+v.toString()
-                    str_ += v.toString(ofRep=ofRep)
-                    if isinstance(v, ofVerbatimDirective):
-                        str_ += '\n'  #- raw text has no line end of its own
-                    # logger.debug("Found 'toString()' method.")
+                kept = self._layoutText(plan, k) if layout is not None else None
+                if kept is not None and kept[1] is not None:
+                    piece = kept[0] + kept[1]
                 else:
-                    # logger.debug("Could not find 'toString()' method.")
-                    str_ += printNameStr(k)+str(v)+'\n'
+                    piece = self._entryText(k, v, ofRep)
+                    if layout is not None:
+                        #- changed entry: keeps its gap; new one: a blank
+                        #  line before it.  Blank lines after the entry are
+                        #  the next gap's (or the tail's).
+                        piece = (kept[0] if kept is not None else '\n'
+                                 ) + piece.rstrip('\n') + '\n'
+                if layout is not None:
+                    if piece and str_ and not str_.endswith('\n'):
+                        str_ += '\n'   #- (the source ended without one)
+                str_ += piece
+        if layout is not None:
+            tail = layout.get('tail', '')
+            if tail and str_ and not str_.endswith('\n'):
                 str_ += '\n'
-            # logger.debug(f"dict string: {str_}")
-        
+            str_ += tail
+
         if not ofRep:
             str_ = str_.replace(';', '')
         return str_
-        # return self._header.toString() + self._foamFile.toString() + \
-        #     super(ofDictFile, self).toString()
+
+    @staticmethod
+    def _entryText(k, v, ofRep) -> str:
+        """The text of the entry `k`: `v` in the standard style."""
+        if hasattr(v, 'toString') and callable(getattr(v, 'toString')):
+            text = v.toString(ofRep=ofRep)
+            if isinstance(v, ofVerbatimDirective):
+                text += '\n'  #- raw text has no line end of its own
+        else:
+            text = printNameStr(k)+str(v)+'\n'
+        return text + '\n'
+
+    def _layoutFoamFile(self, layout) -> Optional[str]:
+        """The source text of the FoamFile block, or None if it changed."""
+        rec = layout.get('foamFile')
+        if (not isinstance(rec, list) or len(rec) != 2 or rec[1] is None
+                or rec[1] != _fingerprint('FoamFile', self._foamFile)):
+            return None
+        return rec[0]
+
+    def _layoutPlan(self, layout) -> dict:
+        """
+        Decide, for every key of the source record that is still in the
+        dictionary, what is written (T-020): `{key: (gap, text)}`.  `text` is
+        the source text to keep, '' for a member of a shared-line group whose
+        text is written with the first member, or None to write the entry in
+        the standard style (it changed, or a member of its group did, was
+        deleted or moved).  A key that is not in the plan is new.
+        """
+        keys = [k for k in self.__dict__ if k not in self._CLASS_VARS]
+        pos = {k: n for n, k in enumerate(keys)}
+        plan = {}
+        for rec in layout.get('entries', ()):
+            names, gap, text, prints = rec
+            first = pos.get(names[0])
+            intact = first is not None and all(
+                pos.get(k) == first + n and prints[n] is not None
+                and prints[n] == _fingerprint(k, self.__dict__[k])
+                for n, k in enumerate(names))
+            for n, k in enumerate(names):
+                if k not in pos:
+                    continue
+                if intact:
+                    plan[k] = (gap, text) if n == 0 else ('', '')
+                else:
+                    plan[k] = (gap if n == 0 else '', None)
+        return plan
+
+    @staticmethod
+    def _layoutText(plan, key):
+        """
+        The single hook of the writer (T-020, for T-050): `(gap, text)` of
+        `key` from the layout plan, `text` None to write the entry anew; None
+        if the key has no source record.
+        """
+        return plan.get(key)
 
     # def __delattr__(self, name):
     #     # super(ofDictFile, self).__delitem__(self, name)
@@ -4215,6 +4325,13 @@ class DictFileParser:
         #- Original line number of every line, once `_splitEntries` has
         #  split lines (None while the lines are as read)
         self._lineMap = None
+        #- Last original line of every line (differs from `_lineMap` for a
+        #  joined `#includeFunc`); None while it equals `_lineMap`
+        self._endMap = None
+        #- The lines as read, and (key, first line, last line) of every
+        #  top-level entry in them (T-020; None: not recordable)
+        self._srcLines = None
+        self._spans = []
         #- Line index the last queued extra line came from
         self._extraLineAt = None
         #- Names of unknown directives already warned about (once per file)
@@ -4273,6 +4390,12 @@ class DictFileParser:
         if self._lineMap is None:
             return i + 1
         return self._lineMap[min(i, len(self._lineMap) - 1)]
+
+    def _lnEnd(self, i):
+        """The 1-based last line of the file that line index `i` came from."""
+        if self._endMap is None:
+            return self._ln(i)
+        return self._endMap[min(i, len(self._endMap) - 1)]
 
     def _cutAfter(self, line, pos, tail):
         """
@@ -4639,12 +4762,13 @@ class DictFileParser:
         openAt = {}
         for li, lj in sorted(openers):
             openAt.setdefault(li, []).append(lj)
-        lines, lineMap = [], []
+        lines, lineMap, endMap = [], [], []
         for li, line in enumerate(self.lines):
             columns = sorted(cuts.get(li, ()))
             if not columns:
                 lines.append(line)
                 lineMap.append(self._ln(li))
+                endMap.append(self._lnEnd(li))
                 continue
             body = line.rstrip('\r\n')
             eol = line[len(body):] or '\n'
@@ -4682,8 +4806,10 @@ class DictFileParser:
                 last = n == len(bounds) - 2
                 lines.append(piece + (line[len(body):] if last else eol))
                 lineMap.append(self._ln(li))
+                endMap.append(self._lnEnd(li))
         self.lines = lines
         self._lineMap = lineMap
+        self._endMap = endMap
 
     def _joinIncludeFunc(self):
         """
@@ -4693,10 +4819,11 @@ class DictFileParser:
         ')' that closes the first '(' (brackets in strings and comments do
         not count, see `_lex`).  A span with a comment in it, or one that is
         not closed, is left as it is for the directive parser to report.
-        `_lineMap` records the first line of each joined directive.  The
+        `_lineMap` records the first line of each joined directive, `_endMap`
+        its last.  The
         work is linear in the length of the file.
         """
-        lines, lineMap = [], []
+        lines, lineMap, endMap = [], [], []
         i, n = 0, len(self.lines)
         joined = False
         while i < n:
@@ -4706,6 +4833,7 @@ class DictFileParser:
             if word == ['#includeFunc']:
                 end = self._includeFuncEnd(i)
             lineMap.append(self._ln(i))
+            endMap.append(self._lnEnd(end))
             if end == i:
                 lines.append(line)
                 i += 1
@@ -4721,6 +4849,7 @@ class DictFileParser:
         if joined:
             self.lines = lines
             self._lineMap = lineMap
+            self._endMap = endMap
 
     def _includeFuncEnd(self, i):
         """
@@ -4818,6 +4947,8 @@ class DictFileParser:
         #- Fail early, naming the file and line, on a string, `/* */` comment
         #  or `#{ #}` block that is never closed.
         self._checkLexical()
+        self._srcLines = self.lines
+        self._spans = []
         self._joinIncludeFunc()
         self._splitEntries()
 
@@ -4830,12 +4961,15 @@ class DictFileParser:
         #- A header-less file starts directly with the FoamFile block; it keeps
         #  no header so that none is written back.
         firstLine = next((ln for ln in self.lines if ln.strip() != ''), '')
+        headerEnd = len(self._srcLines)
         if re.match(r'FoamFile(?=[\s{]|$)', firstLine):
             self.i = 0
             self.dictFile._header = None
         else:
             self.i = self._findEndOfHeader()
             self.dictFile._header = ofHeader(self.lines[:self.i])
+            if self.i < len(self.lines):
+                headerEnd = self._ln(self.i) - 1
 
         # logger.debug(f"End of header at line {self.i+1}.")
 
@@ -4855,6 +4989,7 @@ class DictFileParser:
         #  are accepted; in the latter `_parseListOrDict` reads the `{` from
         #  the keyword line itself.
         foamFileEnd = None
+        foamFileStart = self.i
         foamFileLine = self.lines[self.i].strip()
         if foamFileLine == 'FoamFile' or re.fullmatch(
                 r'FoamFile\s+\{', foamFileLine):
@@ -4873,6 +5008,10 @@ class DictFileParser:
                    and self.lines[foamFileEnd + 1 + nBlank].strip() == ""):
                 nBlank += 1
             self.dictFile._foamFile._blank_lines_after = nBlank
+            ffSpan = (self._ln(foamFileStart) - 1, self._lnEnd(foamFileEnd) - 1,
+                      nBlank)
+        else:
+            ffSpan = (None, None, headerEnd)
 
         #- Guard against parser bugs that stop consuming input.  Each
         #  `_parseLine` call must advance the line index or consume an extra
@@ -4884,6 +5023,7 @@ class DictFileParser:
                 break
             attempts += 1
             state = (self.i, tuple(self.extraLine))
+            start, wasExtra = self.i, bool(self.extraLine)
             if attempts > maxAttempts:
                 userMsg("Error reading dictionary file.  Parser made no "
                     f"progress near line {self._ln(self.i)} of:\n{self.filepath}",
@@ -4896,6 +5036,7 @@ class DictFileParser:
                 userMsg(f"Unexpected '}}' on line {self._ln(self.i)} of file "
                         f"{self.filepath}.", "ERROR")
 
+            nKeys = len(self.dictFile.__dict__)
             value = self._parseLine()
 
             if (self.i, tuple(self.extraLine)) == state:
@@ -4942,6 +5083,7 @@ class DictFileParser:
                             value.feType, 0)+1
                 else:
                     userMsg(f"Invalid value type: {type(value)}.", "ERROR")
+                self._noteEntry(nKeys, wasExtra, start)
 
             # [status, lineStatus] = _readDictEntry(status, ofType, lines, i)
 
@@ -4956,12 +5098,81 @@ class DictFileParser:
             rest = text.strip()
             if len(rest) >= 4 and rest.startswith('/*') \
                     and rest.endswith('*/'):
+                nKeys = len(self.dictFile.__dict__)
                 self.dictFile.update({COMMENT_TAG+str(self.nComments):
                                       ofComment(rest[2:-2], block=True)})
                 self.nComments += 1
+                self._noteEntry(nKeys, True, self.i)
         self.extraLine = []
+        self.dictFile._srcLayout = self._buildLayout(ffSpan)
 
         return self.dictFile
+
+    def _noteEntry(self, nKeys, fromExtra, start):
+        """
+        Note the original lines of the entry just added to the dictionary
+        file (T-020): from the line where its `_parseLine` call started to the
+        last line it consumed, or the line the queued text came from.
+        `nKeys` is the number of attributes before the call.
+        """
+        d = self.dictFile.__dict__
+        if self._spans is None:
+            return
+        if len(d) != nKeys + 1:
+            #- (an entry replaced another one: no layout to keep)
+            self._spans = None
+            return
+        if fromExtra:
+            first = last = (start if self._extraLineAt is None
+                            else self._extraLineAt)
+        else:
+            first, last = start, max(start, self.i - 1)
+        self._spans.append((next(reversed(d)), self._ln(first) - 1,
+                            self._lnEnd(last) - 1))
+
+    def _buildLayout(self, ffSpan):
+        """
+        The source layout of the top level of the file (T-020), stored as
+        `ofDictFile._srcLayout`:
+        `{"foamFile": [text, fingerprint] or None,
+          "entries": [[[key, ...], gap, text, [fingerprint, ...]], ...],
+          "tail": text}`.
+        `text` is the original lines of an entry; entries whose lines overlap
+        (`x1 14; x2 6;`, an entry and the comment after it) form one group
+        with one text and one gap.  The gap is what lies between the
+        previous entry and this one (blank lines), the tail what follows the
+        last one.  Only plain lists and strings.  None if the lines of the
+        entries cannot be told apart (the file is written entry by entry).
+        """
+        spans, lines = self._spans, self._srcLines
+        if spans is None or lines is None:
+            return None
+        ffStart, ffEnd, nBlank = ffSpan
+        if ffStart is None:
+            #- no FoamFile block: the entries follow the header
+            ffRec, pos = None, nBlank
+        else:
+            ffRec = [''.join(lines[ffStart:ffEnd + 1]),
+                     _fingerprint('FoamFile', self.dictFile._foamFile)]
+            pos = ffEnd + 1 + nBlank
+        groups = []     #- [first line, last line, [keys]]
+        for key, first, last in spans:
+            if groups and first <= groups[-1][1]:
+                groups[-1][1] = max(groups[-1][1], last)
+                groups[-1][2].append(key)
+            elif first < pos or (groups and first < groups[-1][0]):
+                return None
+            else:
+                groups.append([first, last, [key]])
+        entries = []
+        for first, last, keys in groups:
+            gap = ''.join(lines[pos:first])
+            entries.append([keys, gap, ''.join(lines[first:last + 1]),
+                            [_fingerprint(k, self.dictFile.__dict__[k])
+                             for k in keys]])
+            pos = last + 1
+        return {"foamFile": ffRec, "entries": entries,
+                "tail": ''.join(lines[pos:])}
 
     def _parseLine(self):
     

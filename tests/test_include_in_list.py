@@ -196,6 +196,7 @@ def test_loads_and_models_the_directive_as_one_include_item(tmp_path, text, dire
 
 
 @pytest.mark.parametrize(("text", "directive"), PARAMS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_written_text_has_the_directive_on_one_line_unchanged(
     tmp_path, text, directive
 ):
@@ -226,6 +227,7 @@ ARGS_CASES = [
 
 
 @pytest.mark.parametrize("text", ARGS_CASES)
+@pytest.mark.usefixtures("regenerated_style")
 def test_includefunc_arguments_in_a_list_round_trip_or_raise_with_file_and_line(
     tmp_path, text
 ):
@@ -311,6 +313,7 @@ AFTER_BANNER = "//\n\n"
 
 
 @pytest.mark.parametrize(("directive", "written"), DICT_LEVEL)
+@pytest.mark.usefixtures("regenerated_style")
 def test_dict_level_include_output_is_unchanged_at_top_level(
     tmp_path, directive, written
 ):
@@ -321,6 +324,7 @@ def test_dict_level_include_output_is_unchanged_at_top_level(
 
 
 @pytest.mark.parametrize(("directive", "written"), DICT_LEVEL)
+@pytest.mark.usefixtures("regenerated_style")
 def test_dict_level_include_output_is_unchanged_in_a_sub_dict(
     tmp_path, directive, written
 ):
@@ -341,6 +345,7 @@ TOKENS = [
 
 @pytest.mark.parametrize(("item", "tokens"), TOKENS, ids=[t[0] for t in TOKENS])
 @pytest.mark.parametrize("container", CONTAINERS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_other_directives_in_a_plain_list_stay_separate_tokens(
     tmp_path, item, tokens, container
 ):
@@ -386,6 +391,7 @@ for _name, _text, _directive, _kind in ROWS:
 
 
 @pytest.mark.parametrize(("text", "directive"), TAB_ROWS)
+@pytest.mark.usefixtures("regenerated_style")
 def test_tabs_around_the_directive_still_give_one_include_item(
     tmp_path, text, directive
 ):
@@ -396,6 +402,7 @@ def test_tabs_around_the_directive_still_give_one_include_item(
     assert text1 == text2
 
 
+@pytest.mark.usefixtures("regenerated_style")
 def test_tab_indented_includefunc_arguments_never_lose_the_parentheses(tmp_path):
     text = (
         f"x\n(\n\t{FUNC}\n\t#includeFunc\tmag(U)\n    #includeFunc mag(U)\t// c\n);\n"

@@ -15,26 +15,23 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-dimensions  [0 1 -1 0 0 0 0];
+dimensions      [0 1 -1 0 0 0 0];
 
-internalField	uniform (0.0 0.0 0.0);
+internalField	uniform (0 0 0);
 
-convertToSIflow	6.30902e-05;
+convertToSIflow 6.30902e-05;  //units:  gpm
 
 boundaryField
 {
-    #includeEtc "caseDicts/setConstraintTypes"
 
+    #includeEtc    "caseDicts/setConstraintTypes"
+    
     OUTLET_4
     {
         type        flowRateOutletVelocity;
         volumetricFlowRate	0.26497884;
         value       $internalField;
     }
-
-
 }
 
-
 // ************************************************************************* //
-

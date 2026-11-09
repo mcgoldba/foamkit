@@ -123,6 +123,7 @@ def test_includeFunc_is_still_an_ofIncludeFunc_with_arguments(tmp_path):
 
 
 @pytest.mark.parametrize("comment", ["// note", "/* note */"])
+@pytest.mark.usefixtures("regenerated_style")
 def test_includeFunc_trailing_comment_is_not_part_of_the_arguments(tmp_path, comment):
     """Comments are dropped on read today (also for `#include`); the arguments stay intact."""
     first, second, text = _roundtrip(

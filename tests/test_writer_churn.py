@@ -102,9 +102,24 @@ def test_synthetic_blank_lines_after_foamfile(blanks, tmp_path):
 def test_goldens_have_no_trailing_whitespace():
     goldens = sorted(p for p in GOLDEN.rglob("*") if p.is_file())
     assert goldens
+    # - (T-020) an unedited write keeps the source, so a golden line may end in whitespace
+    # - where the same line of its source fixture does; the writer adds none of its own
+    from test_golden import DICT_FILES
+    from test_golden import _id as golden_id
+
+    allowed = {}
+    for src in DICT_FILES:
+        key = (GOLDEN / "dicts" / (golden_id(src) + ".txt")).relative_to(GOLDEN)
+        allowed[key.as_posix()] = {
+            ln for _, ln in _trailing_ws(src.read_text(encoding="utf-8"))
+        }
     bad = {
         p.relative_to(GOLDEN).as_posix(): len(
-            _trailing_ws(p.read_text(encoding="utf-8"))
+            [
+                ln
+                for _, ln in _trailing_ws(p.read_text(encoding="utf-8"))
+                if ln not in allowed.get(p.relative_to(GOLDEN).as_posix(), set())
+            ]
         )
         for p in goldens
     }

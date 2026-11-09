@@ -62,6 +62,7 @@ def test_multiline_scalar_table(tmp_path):
     assert d.t.value.loc[1, 0] == 10
 
 
+@pytest.mark.usefixtures("regenerated_style")
 def test_vector_table_round_trips(tmp_path):
     """Vector tables crashed, or were mistaken for a bounding box."""
     d = _parse(tmp_path, "U table ((0 (0 0 0)) (1 (10 0 0)));\n")
@@ -80,6 +81,7 @@ def test_bound_box_still_detected(tmp_path):
     assert value == [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]
 
 
+@pytest.mark.usefixtures("regenerated_style")
 def test_lone_keyword_round_trips(tmp_path):
     """`grad(U);` was written as `grad(U)     ;`, which failed to re-parse."""
     d = _parse(tmp_path, "cache\n{\n    grad(U);\n}\n")

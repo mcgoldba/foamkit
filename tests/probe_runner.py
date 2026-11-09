@@ -58,7 +58,8 @@ def _run_load(spec, out, tmp):
         d = fkt.DictFileParser(path).readDictFile()
         out[f"tree{n}"] = summary(d)
         out["stage"] = f"write {n}"
-        out[f"w{n}"] = d.toString()
+        # - (T-020) "preserve": False writes in the standard style, as an edited entry is
+        out[f"w{n}"] = d.toString(_preserve=spec.get("preserve", True))
         _write(path, out[f"w{n}"])
 
 
