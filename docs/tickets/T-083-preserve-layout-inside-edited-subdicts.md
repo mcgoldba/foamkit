@@ -3,7 +3,7 @@
 - **Issue:** [#111](https://github.com/mcgoldba/foamkit/issues/111)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** M
-- **Split from:** T-020 (#27), design note of 2026-11-08 (proposed; the maintainer must approve the split). T-020 keeps the top level (T-020a); this ticket is the nested part.
+- **Split from:** T-020 (#27), design note of 2026-11-08; the split was approved by the maintainer on 2026-11-08 (this ticket itself still awaits approval). T-020 keeps the top level (T-020a); this ticket is the nested part.
 - **Depends on:** T-020 (#27): its `_srcLayout` records, value fingerprints and the single preserve-or-regenerate hook.
 - **Followed by:** T-050 (#67), which must force "regenerate" for nested entries too and drop nested layouts after a format write.
 

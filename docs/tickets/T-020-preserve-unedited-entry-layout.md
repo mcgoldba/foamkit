@@ -3,7 +3,7 @@
 - **Issue:** [#27](https://github.com/mcgoldba/foamkit/issues/27)
 - **Type:** code (owner: `tester` first, then `implementer`)
 - **Size:** M. The first step is a short design note in this ticket. If that note shows more than M, split by entry kind: T-020a scalars and words, T-020b lists and sub-dictionaries.
-  - **Design note (2026-11-08): more than M as a whole. Proposed split by depth, not by entry kind** (see "Size verdict" below; the maintainer must approve it). This ticket becomes **T-020a**, covering the top level of a file. **T-083 (T-020b, #111)** covers keeping the layout inside an edited sub-dictionary.
+  - **Design note (2026-11-08): more than M as a whole. Split by depth, not by entry kind; approved by the maintainer, 2026-11-08** (see "Size verdict" below). This ticket becomes **T-020a**, covering the top level of a file. **T-083 (T-020b, #111)** covers keeping the layout inside an edited sub-dictionary.
 - **Plan:** docs/plans/openfoam-compatibility.md, bug B9
 - **Depends on:** T-019.
 - **Rescoped (2026-11-06):** moved up to right after T-055 (maintainer). It no longer waits for T-007: its corpus is the real files already in `tests/releases/` plus `tests/fixtures/pitzDaily`. T-007 now lands after this ticket, and its fixtures must round-trip byte-identically with no T-020 `xfail`.
@@ -27,7 +27,7 @@ An unedited read → write reproduces each entry's original spacing and layout. 
 ## Gap today (planner, 839663c, 2026-11-08)
 Unedited `DictFileParser(f).readDictFile().toString()` vs the source text, line diff (`difflib`). Corpus: the 25 of 41 files in `tests/releases/` that load, plus the 9 pitzDaily dictionaries. Every one of the 34 files changes. In total, 1143 of 2721 source lines are changed or lost, and 2314 output lines differ.
 
-Kinds of change: **P** key/value padding (including the tab after `#includeFunc`, `#include`, `#sinclude`); **B** blank lines between entries dropped, or added after lists/dicts; **L** lists re-flowed (one-line → multi-line; item spacing `(  0 -10  10)` → `(0 -10 10)`; `hex (…) $cells simpleGrading (…)` items split over 5 lines); **1** one-element list written `( "x")` (T-045); **N** number spelling (`1e-6` → `1e-06`, `1e-2` → `0.01`, `(0 0 0)` → `(0.0 0.0 0.0)`; T-032); **C** `//` comment after an entry or list item dropped, moved or **duplicated** (T-056, T-057); **K** `/* */` block comment flattened onto one line (T-031); **D** a one-line `{ … }` block or a line of several entries opened out (T-040/T-041 output); **E** `};` written `}`; **F** FoamFile block padding; **I** `#includeModel heatSource` written quoted (T-029); **U** a top-level unnamed list written with an `unnamed_1` keyword (no ticket yet, see note 3).
+Kinds of change: **P** key/value padding (including the tab after `#includeFunc`, `#include`, `#sinclude`); **B** blank lines between entries dropped, or added after lists/dicts; **L** lists re-flowed (one-line → multi-line; item spacing `(  0 -10  10)` → `(0 -10 10)`; `hex (…) $cells simpleGrading (…)` items split over 5 lines); **1** one-element list written `( "x")` (T-045); **N** number spelling (`1e-6` → `1e-06`, `1e-2` → `0.01`, `(0 0 0)` → `(0.0 0.0 0.0)`; T-032); **C** `//` comment after an entry or list item dropped, moved or **duplicated** (T-056, T-057); **K** `/* */` block comment flattened onto one line (T-031); **D** a one-line `{ … }` block or a line of several entries opened out (T-040/T-041 output); **E** `};` written `}`; **F** FoamFile block padding; **I** `#includeModel heatSource` written quoted (T-029); **U** a top-level unnamed list written with an `unnamed_1` keyword (T-084, see note 3).
 
 | File | Lines | Changed (−src/+out) | Kinds |
 |---|---|---|---|
@@ -71,8 +71,8 @@ Not loading on main (16 files, picked up when their ticket lands): T-026 `esi-v2
 Notes:
 1. No `#codeStream` (T-033) entry is in a corpus file that loads. Header (T-006) and the blank lines after FoamFile (T-019) are already exact.
 2. The FoamFile block's padding (**F**, `collapseDict`) is not covered by T-019, which only fixed blank lines. Without it, that file cannot reach 0, so T-020a covers the block as one atomic entry.
-3. **U** (`parcelInBox.cloudPositions`, a file whose content is one bare list) is a **silent data change on every write today**: the output gains a keyword (`unnamed_1 ( … );`), and OpenFOAM's reader expects a bare list. With T-020a an unedited write keeps the source, but a regenerated one still adds the keyword. No ticket covers this yet.
-4. Line ends: `case.write()` and `writeCase` open files in text mode (`'w'`). On Windows an LF source is written CRLF. The byte-identical criterion here is on `toString()` vs the source read with universal newlines. On-disk line-end preservation is not covered by any ticket yet.
+3. **U** (`parcelInBox.cloudPositions`, a file whose content is one bare list) is a **silent data change on every write today**: the output gains a keyword (`unnamed_1 ( … );`), and OpenFOAM's reader expects a bare list. With T-020a an unedited write keeps the source, but a regenerated one still adds the keyword. Ticketed as T-084.
+4. Line ends: `case.write()` and `writeCase` open files in text mode (`'w'`). On Windows an LF source is written CRLF. The byte-identical criterion here is on `toString()` vs the source read with universal newlines. On-disk line-end preservation is ticketed as T-085 (maintainer, 2026-11-08).
 
 ## Design note (planner, 2026-11-08)
 **1. Where source text is captured.**
@@ -143,7 +143,7 @@ Notes:
 
 **7. Size verdict: more than M.** The whole ticket would cover parser spans and line groups, fingerprints, partial preservation in two writers, the cache and a 34-file corpus with regenerated goldens.
 - **The split by entry kind does not work.** Every corpus file has lists or sub-dicts, so a "scalars and words" part (T-020a) would reach 0 changed lines on none of them.
-- **Proposed split by depth (needs maintainer approval):**
+- **Split by depth (approved by the maintainer, 2026-11-08):**
   - **T-020a** (this ticket, M): records for the top level, the FoamFile block and the tail. Every top-level entry of any kind is atomic. All 34 loading files reach 0.
   - **T-083 / T-020b** (#111, M): partial preservation inside an edited sub-dict at any depth.
 - **Lists stay atomic in both.** Keeping the untouched items of an edited list is deferred.
@@ -158,7 +158,7 @@ Notes:
 - Formatting of edited entries (keeps today's style)
 - Header (T-006). Blank lines after the FoamFile block stay with T-019; the block's padding is in scope (Gap note 2).
 - Partial preservation inside an edited sub-dict (T-083) or list (deferred)
-- The `unnamed_1` keyword on a regenerated bare top-level list, and on-disk line ends (Gap notes 3 and 4)
+- The `unnamed_1` keyword on a regenerated bare top-level list (T-084) and on-disk line ends (T-085) (Gap notes 3 and 4)
 
 ## Acceptance criteria
 - [ ] **Corpus:** every file in `tests/releases/` that loads on main, and every dictionary in `tests/fixtures/pitzDaily`, round-trips byte-identically when unedited (`toString()` == source text read with universal newlines). That is all 34 files in the Gap table. The 16 files that do not load yet are listed in the test with the ticket that blocks them (list above), and are picked up automatically once they load.
@@ -177,7 +177,7 @@ Notes:
 
 ## Risks
 - **Overlap with open writer tickets:** keeping the source text of unedited entries also keeps their comments (T-056, T-057), block comments (T-031), number spelling (T-032) and `#codeStream` text (T-033). The design note says which of these become "edited entries only" after this ticket, so the planner can shrink them; this ticket does not close them.
-- **Size:** the corpus covers more entry kinds than T-007's pitzDaily set would have. The design note proposes the depth split (T-083); if the maintainer rejects it, this ticket is L.
+- **Size:** the corpus covers more entry kinds than T-007's pitzDaily set would have. The depth split (T-083) was approved by the maintainer on 2026-11-08, so this ticket stays M.
 - **Memory:** about +8 % on the largest corpus file (design note, point 5); well within `dict_filesize_limit`.
 - **Modified detection:** only fingerprints decide. Nested edits change the top-level entry's fingerprint, so they cannot be missed. Anything that mutates an entry on read would show as "modified" (regenerated, never stale); the corpus test catches it.
 - **Output change:** users who relied on FoamKit normalizing formatting will see that stop. Say so in the commit body (the `fix:` commit).
