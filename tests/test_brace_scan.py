@@ -571,7 +571,7 @@ REAL_OUTCOMES = {
     "esi-v2606.externalCoupled": ["externalCoupled"],
     "foundation-11.controlDict": ["application", "solver", "startFrom"],
     # - Named dimensioned entries (`DT DT [0 2 -1 0 0 0 0] 4e-05;`): they load, and the
-    # - unedited write is the source (the value is lost only on a regeneration, T-014).
+    # - unedited write is the source, and the value survives a regeneration (T-014).
     "foundation-11.flange.physicalProperties": ["DT"],
     "esi-v2606.annularCombustorTurbine.combustionProperties": [
         "laminarFlameSpeedCorrelation",

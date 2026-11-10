@@ -7359,6 +7359,11 @@ class DictFileParser:
             elif len(value) == 9:
                 returnType = ofDimensionedTensor
 
+        if dimName is not None and returnType is not ofDimensionedScalar:
+            #- only the scalar type keeps an inner name (T-014); a named entry
+            # with any other value stays on the old path (kept as read)
+            return None
+
         if returnType:
             self.i = i_
             kwargs = {}

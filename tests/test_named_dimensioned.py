@@ -11,7 +11,7 @@ level and inside a sub-dict.
 
 Integer-valued named entries (`E E [1 -1 -3 0 0 0 0] 0;`) load as `ofStr` text today and keep
 their text only by luck; after the fix they are typed and have a numeric value (type change,
-noted in the xfail reasons).  Vector values and named units are out of scope (controls that
+noted in the commit body).  Vector values and named units are out of scope (controls that
 record today's behaviour).
 
 Real files (byte-exact copies in tests/releases/, outside the golden glob; `git hash-object`
@@ -92,56 +92,15 @@ ROWS = [
 ]
 ROW_IDS = [r[0] for r in ROWS]
 
-# - Failures today (strict xfails): test name -> predicate(row id, container).  Calibrated
-# - against main at b32ec85 (T-020a).
-LOSSY = {
-    "named",
-    "named-spaced",
-    "unnamed-spaced",
-    "exponent-value",
-}  # ofNamedDimension today
 
-
-def _xfail_object(rid, cont):
-    return False
-
-
-def _xfail_regen(rid, cont):
-    return False
-
-
-def _xfail_edit(rid, cont):
-    return False
-
-
-def _xfail_sibling(rid, cont):
-    return False
-
-
-REASONS = {
-    "object": "T-014: ofNamedDimension has no value (integer rows: ofStr text, not typed)",
-    "regen": "T-014: the regenerated entry is `nu [dims];` without the value",
-    "edit": "",
-    "sibling": "T-014: an edit in the sub-dict regenerates the block and loses the value",
-}
-PREDICATES = {
-    "object": _xfail_object,
-    "regen": _xfail_regen,
-    "edit": _xfail_edit,
-    "sibling": _xfail_sibling,
-}
-
-
-def _rows(kind, rows=ROWS):
-    """`pytest.param` for each row and container, with the strict xfail of `kind`."""
-    out = []
-    for row in rows:
-        for cont in CONTAINERS:
-            marks = []
-            if kind and PREDICATES[kind](row[0], cont):
-                marks.append(pytest.mark.xfail(strict=True, reason=REASONS[kind]))
-            out.append(pytest.param(*row, cont, id=f"{row[0]}-{cont}", marks=marks))
-    return out
+def _rows(kind=None, rows=ROWS):
+    """`pytest.param` for each row and container (`kind` names the test group; the T-014
+    xfails were removed when the fix landed)."""
+    return [
+        pytest.param(*row, cont, id=f"{row[0]}-{cont}")
+        for row in rows
+        for cont in CONTAINERS
+    ]
 
 
 # --- helpers ---------------------------------------------------------------------------------
@@ -382,9 +341,6 @@ def _real_params(kind, edit=False):
     for path in (FLANGE, ANNULAR):
         for key, dims, value in _named_entries(path):
             marks = []
-            # - integer values are ofStr text today and survive a regeneration as text
-            if kind and PREDICATES[kind](key, "top"):
-                marks.append(pytest.mark.xfail(strict=True, reason=REASONS[kind]))
             out.append(
                 pytest.param(
                     path,
@@ -490,3 +446,29 @@ def test_named_entry_with_the_value_on_the_next_line_is_read(tmp_path):
 def test_named_entry_with_the_brackets_on_another_line_is_an_error(tmp_path):
     with pytest.raises(FoamKitError, match="line"):
         _read(tmp_path, "nu nu\n[0 2 -1 0 0 0 0]\n1e-5;", "top")
+
+
+# --- named entries with a non-scalar value (T-014 review round 1) --------------------------------
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param(
+            "s s [0 0 0 0 0 0 0] (1);",
+            id="spherical",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="T-081: the value of a named entry with a tensor value is dropped on "
+                "regeneration (as on main; it no longer raises a bare TypeError)",
+            ),
+        ),
+        pytest.param("s s [0 0 0 0 0 0 0] (1 0 0 1 0);", id="symm"),
+    ],
+)
+@pytest.mark.parametrize("cont", CONTAINERS)
+def test_named_entry_with_a_tensor_value_loads_and_keeps_its_text(tmp_path, line, cont):
+    """Only the scalar form keeps an inner name; a named entry with a tensor value stays on
+    the old path (never a bare TypeError), and its text is kept on every write path."""
+    d = _read(tmp_path, line, cont)
+    assert d.toString() == HEADER + _wrap(line + NL, cont)
+    regen = _regen(d)
+    assert _has(regen, _toks(line)), regen
