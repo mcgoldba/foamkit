@@ -457,6 +457,7 @@ def test_named_entry_with_the_brackets_on_another_line_is_an_error(tmp_path):
             id="spherical",
             marks=pytest.mark.xfail(
                 strict=True,
+                raises=AssertionError,  # - a bare TypeError on load must fail the test
                 reason="T-081: the value of a named entry with a tensor value is dropped on "
                 "regeneration (as on main; it no longer raises a bare TypeError)",
             ),
