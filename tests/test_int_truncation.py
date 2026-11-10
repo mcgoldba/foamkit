@@ -590,3 +590,62 @@ def test_uncaught_bad_assignment_prints_the_message_and_exits_nonzero(tmp_path):
     assert res.returncode != 0
     assert "count" in res.stdout + res.stderr
     assert "not a number" in res.stdout + res.stderr
+
+
+# --------------------------------------------------------------------------------------
+# huge exponents, '/' and the stored value in the warning
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("v", ["1e5000", "1e1000000", "1e5000000"])
+def test_huge_exponent_string_is_out_of_range_and_fast(v):
+    import time
+
+    entry = fkt.ofInt("count", 4)
+    start = time.monotonic()
+    err = _error_of(entry, v)
+    assert time.monotonic() - start < 0.5
+    assert "count" in str(err)
+    assert "out of range" in str(err)
+    assert entry.value == 4
+
+
+@pytest.mark.parametrize("v", ["3/1", "1/2"])
+def test_string_with_slash_is_not_a_number(v):
+    entry = fkt.ofInt("count", 4)
+    err = _error_of(entry, v)
+    assert "not a number" in str(err)
+    assert entry.value == 4
+
+
+def test_warning_names_the_stored_float_when_it_differs(capsys):
+    entry = fkt.ofInt("count", 4)
+    capsys.readouterr()
+    entry.value = "1e-400"
+    out = _out(capsys)
+    assert type(entry) is fkt.ofFloat
+    assert "stored as the float 0.0" in out
+
+
+def test_warning_names_the_stored_float_for_a_long_decimal_string(capsys):
+    entry = fkt.ofInt("count", 4)
+    capsys.readouterr()
+    entry.value = "4.0000000000000000001"
+    assert "stored as the float 4.0" in _out(capsys)
+
+
+def test_warning_keeps_the_short_text_when_the_float_is_the_same(capsys):
+    entry = fkt.ofInt("count", 4)
+    capsys.readouterr()
+    entry.value = 4.5
+    out = _out(capsys)
+    assert "4.5 is not a whole number; stored as a float (the entry" in out
+
+
+def test_python_int_beyond_the_str_limit_is_out_of_range():
+    import sys
+
+    if not hasattr(sys, "get_int_max_str_digits") or not sys.get_int_max_str_digits():
+        pytest.skip("no int-to-str limit on this Python")
+    err = _error_of(fkt.ofInt("count", 4), 10**5000)
+    assert "out of range" in str(err)

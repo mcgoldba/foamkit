@@ -1450,7 +1450,11 @@ def _notANumber(entry, v, kind, boolHint=False):
 
 def _outOfRange(entry, v, kind):
     """Report (`userMsg` ERROR, raising `FoamKitError`) that `v` is too large."""
-    userMsg(f"{_entryLabel(entry, kind)}: {v!r} is out of range.", 'ERROR')
+    try:
+        shown = repr(v)
+    except ValueError:  # an int beyond the int-to-str digit limit
+        shown = f"an integer of {int(v).bit_length()} bits"
+    userMsg(f"{_entryLabel(entry, kind)}: {shown} is out of range.", 'ERROR')
 
 
 def _asFloat(entry, v, kind):
@@ -1492,13 +1496,39 @@ class ofInt(_ofNamedTypeBase):
         what = _entryLabel(self, 'Integer')
         if isinstance(v, bool):
             _notANumber(self, v, "Integer", boolHint=True)
-        if isinstance(v, (str, Decimal, numbers.Rational)):
-            try:
-                fr = Fraction(v)
-            except (ValueError, OverflowError, ZeroDivisionError):
+        if isinstance(v, (str, Decimal)):
+            #- Judge a string or Decimal exactly, but never build an exact
+            #  integer from a huge exponent (`1e5000000` is slow).
+            bad = isinstance(v, str) and '/' in v
+            if not bad:
+                try:
+                    dec = Decimal(v)
+                except (ArithmeticError, ValueError):
+                    bad = True
+            if bad or not dec.is_finite():
                 _notANumber(self, v, "Integer")
-            if fr.denominator == 1:
+            if dec == 0:
+                self._value = 0
+                return
+            if dec.adjusted() > 308:
+                _outOfRange(self, v, "Integer")
+            if dec.adjusted() < 0:
+                whole = False
+            else:
+                fr = Fraction(dec)
+                whole = fr.denominator == 1
+            if whole:
                 self._value = int(fr)
+                return
+            f = _asFloat(self, v, "Integer")
+        elif isinstance(v, numbers.Rational):
+            fr = Fraction(v)
+            if fr.denominator == 1:
+                n = int(fr)
+                limit = getattr(sys, 'get_int_max_str_digits', lambda: 0)()
+                if limit and n.bit_length() * 0.30103 > limit:
+                    _outOfRange(self, v, "Integer")
+                self._value = n
                 return
             f = _asFloat(self, v, "Integer")
         elif isinstance(v, numbers.Real):
@@ -1515,11 +1545,14 @@ class ofInt(_ofNamedTypeBase):
         if type(self) is not ofInt:
             userMsg(f"{what}: {v} is not a whole number and cannot be "
                     f"stored in a {type(self).__name__}.", 'ERROR')
-        if getattr(self, '_name', None) is None:
-            msg = (f"{what}: {v} is not a whole number; stored as a float.")
+        if str(v).strip() == str(f):
+            shown = f"{v} is not a whole number; stored as a float"
         else:
-            msg = (f"{what}: {v} is not a whole number; stored as a float "
-                   f"(the entry is now an ofFloat).")
+            shown = f"{v} is not a whole number; stored as the float {f}"
+        if getattr(self, '_name', None) is None:
+            msg = f"{what}: {shown}."
+        else:
+            msg = f"{what}: {shown} (the entry is now an ofFloat)."
         userMsg(msg, 'WARNING')
         self.__class__ = ofFloat
         self._value = f
@@ -1590,6 +1623,8 @@ class ofBool(_ofNamedTypeBase):
             try:
                 value = OF_BOOL_VALUES[v]
             except (KeyError, TypeError):
+                value = None
+            if value is None:
                 userMsg(
                     f"{_entryLabel(self, 'Boolean')}: {v!r} is not a boolean; "
                     f"use True, False or one of "
