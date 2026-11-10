@@ -50,7 +50,9 @@ def _call(fn):
 
 
 def _write_script(path, body, executable=True):
-    path.write_text("#!/bin/sh\n" + body, newline="\n")
+    # - bytes, not write_text(newline=...): that argument needs Python 3.10, and the project
+    # - supports 3.9; writing bytes also keeps the stub LF-only on every OS
+    path.write_bytes(("#!/bin/sh\n" + body).encode("utf-8"))
     if executable:
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
@@ -151,7 +153,7 @@ def test_non_executable_script_raises_foamkiterror_naming_the_path(spaced_case, 
 def test_posix_script_on_windows_raises_foamkiterror_not_winerror_193(
     spaced_case, runner
 ):
-    (spaced_case / "Allrun").write_text("#!/bin/sh\nexit 3\n", newline="\n")
+    _write_script(spaced_case / "Allrun", "exit 3\n", executable=False)
     msg = _flat(str(_expect_error(runner(spaced_case))))
     assert _flat(str(spaced_case)) in msg
     assert "Allrun" in msg
