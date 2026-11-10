@@ -91,6 +91,8 @@ FRACTIONAL = [
     pytest.param(Decimal("4.5"), id="Decimal-4.5"),
     pytest.param(Fraction(9, 2), id="Fraction-9/2"),
     pytest.param("4.5", id="str-4.5"),
+    pytest.param("4.0000000000000000001", id="str-4.0000000000000000001"),
+    pytest.param(Decimal("4.0000000000000000001"), id="Decimal-4.0000000000000000001"),
 ]
 
 # - values that are whole numbers: stay ofInt, silently
@@ -214,7 +216,7 @@ def test_list_item_prints_one_warning_for_an_unnamed_item(tmp_path, capsys, cont
     _scope(d, cont).l.value[0].value = 2.5
     out = _out(capsys)
     assert _warning_count(out) == 1, out
-    assert "Integer list item" in out
+    assert "Integer value" in out
     assert "2.5" in out
 
 
@@ -263,7 +265,7 @@ def test_group_item_prints_one_warning_for_an_unnamed_item(
     getattr(_scope(d, cont), which).groups[1].value[0].value = 2.5
     out = _out(capsys)
     assert _warning_count(out) == 1, out
-    assert "Integer list item" in out
+    assert "Integer value" in out
     assert "2.5" in out
 
 
@@ -504,3 +506,87 @@ def test_changed_entry_survives_deepcopy_and_pickle(copier):
     clone = copier(d.deltaT)
     assert type(clone) is fkt.ofFloat
     assert clone.value == 0.001
+
+
+# --------------------------------------------------------------------------------------
+# exact integrality of strings, Decimal and Fraction (not judged through a float)
+# --------------------------------------------------------------------------------------
+
+EXACT_WHOLE = [
+    pytest.param("1e23", 10**23, id="str-1e23"),
+    pytest.param("9007199254740993.0", 9007199254740993, id="str-2**53+1.0"),
+    pytest.param(" 4 ", 4, id="str-padded"),
+    pytest.param(Decimal("9007199254740993"), 9007199254740993, id="Decimal-2**53+1"),
+    pytest.param(Fraction(2**61 + 2, 2), 2**60 + 1, id="Fraction-whole"),
+]
+
+
+@pytest.mark.parametrize("v,expected", EXACT_WHOLE)
+def test_whole_value_is_stored_as_the_exact_int(capsys, v, expected):
+    entry = fkt.ofInt("count", 4)
+    capsys.readouterr()
+    entry.value = v
+    assert type(entry) is fkt.ofInt
+    assert entry.value == expected
+    assert capsys.readouterr().out == ""
+
+
+def test_fractional_fraction_beyond_float_precision_warns(capsys):
+    entry = fkt.ofInt("count", 4)
+    capsys.readouterr()
+    entry.value = Fraction(2**61 + 1, 2)
+    assert type(entry) is fkt.ofFloat
+    assert _warning_count(_out(capsys)) == 1
+
+
+# --------------------------------------------------------------------------------------
+# the error reaches the user (userMsg ERROR), also when nothing catches it
+# --------------------------------------------------------------------------------------
+
+
+class _Sub(fkt.ofInt):
+    """A subclass of ofInt, to reach the subclass guard."""
+
+
+def _guard_entry():
+    entry = _Sub("count", 4)
+    return entry, 4.5
+
+
+REPORTED = [
+    pytest.param(lambda: (fkt.ofInt("count", 4), "abc"), id="not-a-number"),
+    pytest.param(
+        lambda: (fkt.ofInt("count", 4), Fraction(10**400 + 1, 2)), id="out-of-range"
+    ),
+    pytest.param(_guard_entry, id="subclass-guard"),
+    pytest.param(lambda: (fkt.ofBool("flag", "on"), "maybe"), id="ofBool"),
+]
+
+
+@pytest.mark.parametrize("make", REPORTED)
+def test_error_is_printed_and_marked_reported(capsys, make):
+    entry, v = make()
+    capsys.readouterr()
+    with pytest.raises(FoamKitError) as info:
+        entry.value = v
+    assert getattr(info.value, "reported", False) is True
+    assert "ERROR:" in capsys.readouterr().out
+
+
+def test_unnamed_standalone_object_is_called_a_value(capsys):
+    fkt.ofInt(value=4.5)
+    assert "Integer value" in _out(capsys)
+
+
+def test_uncaught_bad_assignment_prints_the_message_and_exits_nonzero(tmp_path):
+    import subprocess
+    import sys
+
+    script = tmp_path / "bad.py"
+    script.write_text("import foamkit.types as t\nt.ofInt('count', 4).value = 'abc'\n")
+    res = subprocess.run(
+        [sys.executable, "-I", str(script)], capture_output=True, text=True, timeout=100
+    )
+    assert res.returncode != 0
+    assert "count" in res.stdout + res.stderr
+    assert "not a number" in res.stdout + res.stderr

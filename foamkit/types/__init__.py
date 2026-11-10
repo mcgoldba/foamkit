@@ -22,13 +22,13 @@ import subprocess
 import numpy as np
 import shutil
 from decimal import Decimal
+from fractions import Fraction
 from math import isfinite
 from bisect import bisect_left
 
 from inspect import signature #- just for debugging
 
-from foamkit import (setLoggerLevel, userMsg, getFoamKitConfig, FOAM_VERSION,
-    FoamKitError)
+from foamkit import setLoggerLevel, userMsg, getFoamKitConfig, FOAM_VERSION
 from ._isDictFile import _isDictFile
 from ._isCase import _isCase
 
@@ -1431,30 +1431,38 @@ class _ofDimensionedScalarBase(_ofFloatBase):
 #         self._CLASS_VARS.append('_location')
 
 def _entryLabel(entry, kind):
-    """`Integer entry 'name'`, or `Integer list item` for an unnamed entry."""
+    """`Integer entry 'name'`, or `Integer value` for an unnamed entry."""
     name = getattr(entry, '_name', None)
     if name is None:
-        return f"{kind} list item"
+        return f"{kind} value"
     return f"{kind} entry '{name}'"
 
 
 def _notANumber(entry, v, kind, boolHint=False):
-    """Raise `FoamKitError`: `v` cannot be stored in the numeric `entry`."""
+    """Report (`userMsg` ERROR, raising `FoamKitError`) that `v` cannot be
+    stored in the numeric `entry`."""
     msg = f"{_entryLabel(entry, kind)}: {v!r} is not a number."
     name = getattr(entry, '_name', None)
     if boolHint and name is not None:
         msg += f" For a boolean, use `d.{name} = {v}`."
-    raise FoamKitError(msg)
+    userMsg(msg, 'ERROR')
+
+
+def _outOfRange(entry, v, kind):
+    """Report (`userMsg` ERROR, raising `FoamKitError`) that `v` is too large."""
+    userMsg(f"{_entryLabel(entry, kind)}: {v!r} is out of range.", 'ERROR')
 
 
 def _asFloat(entry, v, kind):
-    """`float(v)` for a real number, `Decimal` or numeric string, else raise
-    `FoamKitError` naming `entry`."""
+    """`float(v)` for a real number, `Decimal` or numeric string, else report
+    an error naming `entry`."""
     if isinstance(v, (numbers.Real, Decimal, str)):
         try:
             return float(v)
-        except (ValueError, OverflowError):
+        except ValueError:
             pass
+        except OverflowError:
+            _outOfRange(entry, v, kind)
     _notANumber(entry, v, kind)
 
 
@@ -1473,8 +1481,10 @@ class ofInt(_ofNamedTypeBase):
         """
         Set the value.  A whole number is stored as an `int`.  A value with a
         fractional part is stored exactly as a float: the entry becomes an
-        `ofFloat` (same object) and a warning is printed.  A value that is not
-        a finite number raises `FoamKitError` and keeps the old value.
+        `ofFloat` (same object) and a warning is printed.  A `bool`, a
+        non-number or a non-finite value raises `FoamKitError` (also printed
+        as `ERROR:`) and keeps the old value.  Strings, `Decimal` and rational
+        values are judged exactly, not through a float.
         """
         if v is None:
             self._value = None
@@ -1482,19 +1492,29 @@ class ofInt(_ofNamedTypeBase):
         what = _entryLabel(self, 'Integer')
         if isinstance(v, bool):
             _notANumber(self, v, "Integer", boolHint=True)
-        f = _asFloat(self, v, "Integer")
-        if not isfinite(f):
-            _notANumber(self, v, "Integer")
-        if f.is_integer():
+        if isinstance(v, (str, Decimal, numbers.Rational)):
             try:
+                fr = Fraction(v)
+            except (ValueError, OverflowError, ZeroDivisionError):
+                _notANumber(self, v, "Integer")
+            if fr.denominator == 1:
+                self._value = int(fr)
+                return
+            f = _asFloat(self, v, "Integer")
+        elif isinstance(v, numbers.Real):
+            f = _asFloat(self, v, "Integer")
+            if not isfinite(f):
+                _notANumber(self, v, "Integer")
+            if f.is_integer():
                 self._value = int(v)
-            except (ValueError, TypeError):
-                self._value = int(f)
-            return
+                return
+        else:
+            _notANumber(self, v, "Integer")
+        if not isfinite(f):
+            _outOfRange(self, v, "Integer")
         if type(self) is not ofInt:
-            raise FoamKitError(
-                f"{what}: {v} is not a whole number and cannot be stored "
-                f"in a {type(self).__name__}.")
+            userMsg(f"{what}: {v} is not a whole number and cannot be "
+                    f"stored in a {type(self).__name__}.", 'ERROR')
         if getattr(self, '_name', None) is None:
             msg = (f"{what}: {v} is not a whole number; stored as a float.")
         else:
@@ -1570,10 +1590,10 @@ class ofBool(_ofNamedTypeBase):
             try:
                 value = OF_BOOL_VALUES[v]
             except (KeyError, TypeError):
-                raise FoamKitError(
+                userMsg(
                     f"{_entryLabel(self, 'Boolean')}: {v!r} is not a boolean; "
                     f"use True, False or one of "
-                    f"{', '.join(OF_BOOL_VALUES)}.") from None
+                    f"{', '.join(OF_BOOL_VALUES)}.", 'ERROR')
             self._valueStr = v
             self._value = value
         else:
