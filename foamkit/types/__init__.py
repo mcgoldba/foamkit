@@ -1093,19 +1093,54 @@ class _ofCaseBase(_ofTypeBase):
         Parameters:
             cmd [str]:  The script to run.  Default value is 'Allrun'.
 
+
+        Raises:
+            FoamKitError:  If the script is missing, cannot be run, or exits
+                with a non-zero status.  The message names the case, the
+                script and the exit code, and shows the last 20 lines of
+                its output.
         """
-        script_ = str(Path(self._path)/ cmd)
+        casePath_ = Path(self._path).resolve()
+        script_ = casePath_ / cmd
         userMsg(f"Running Allrun script from {self._path}.")
+
+        def _tail(data):
+            #- Never crash on non-UTF-8 output; keep the last 20 lines.
+            text_ = (data or b'')
+            if isinstance(text_, bytes):
+                text_ = text_.decode(errors='replace')
+            return "\n".join(text_.rstrip().splitlines()[-20:])
+
         try:
             #- `run` drains both pipes while waiting; `check_call` with PIPE
             #  deadlocks once the script fills the OS pipe buffer.
-            subprocess.run(script_, capture_output=True, check=True)
+            subprocess.run([str(script_)], cwd=str(casePath_),
+                           capture_output=True, check=True)
         except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed with return code: {e.returncode}")
-            if e.output:
-                logger.error(f"Output: {e.output.decode()}")  # stdout, if captured
-            if e.stderr:
-                logger.error(f"Error output: {e.stderr.decode()}")  # stderr, if captured
+            msg_ = f"{cmd} failed in case {casePath_} "\
+                f"(exit code {e.returncode})."
+            out_, err_ = _tail(e.output), _tail(e.stderr)
+            if out_:
+                msg_ += f"\nLast lines of standard output:\n{out_}"
+            if err_:
+                msg_ += f"\nLast lines of standard error:\n{err_}"
+        except OSError as e:
+            if not casePath_.is_dir():
+                msg_ = f"Cannot run {cmd}: case directory {casePath_} "\
+                    "does not exist."
+            elif isinstance(e, FileNotFoundError):
+                msg_ = f"Cannot run {cmd}: script {script_} not found."
+            elif isinstance(e, PermissionError):
+                msg_ = f"Cannot run {cmd}: no permission to execute "\
+                    f"{script_} (is it executable?)."
+            elif getattr(e, 'winerror', None) == 193:
+                msg_ = f"Cannot run {cmd} ({script_}): POSIX scripts cannot "\
+                    "be run on Windows; use WSL or a POSIX system."
+            else:
+                msg_ = f"Cannot run {cmd} ({script_}): {e}"
+        else:
+            return
+        userMsg(msg_, 'ERROR')
 
 #for deepcopy; ref: https://stackoverflow.com/a/34152960/10592330
 def pickleOfCase(f):
