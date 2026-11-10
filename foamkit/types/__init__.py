@@ -777,7 +777,7 @@ def _fpNames(cls):
     names = _FP_NAMES.get(cls)
     if names is None:
         base = ['_name', '_comment', '_comment_keyword', '_srcText',
-                '_srcReprs']
+                '_srcReprs', '_dimName']
         if dataclasses.is_dataclass(cls):
             for f in dataclasses.fields(cls):
                 base += [f.name, '_' + f.name]
@@ -1893,6 +1893,39 @@ def _fileFloat(token):
     return float(token)
 
 
+def _readDimensionSet(tokens, pos):
+    """
+    Read the dimension set `[d0 d1 d2 d3 d4 d5 d6]` whose `[` starts
+    `tokens[pos]` (a whitespace split of the entry), with or without spaces
+    inside the brackets (`[ 0 2 -1 0 0 0 0 ]`).  Returns `(dims, end)`: the
+    seven integer exponents and the index of the first token after the `]`.
+    Returns None, reading nothing, for any shape it does not read exactly
+    (a non-integer token, a count other than seven, text glued to the `]`, no
+    `]`, or nothing after it).
+    """
+    parts = []
+    for end in range(pos, len(tokens)):
+        tok = tokens[end]
+        if end == pos:
+            tok = tok[1:]
+        head, closed, tail = tok.partition(']')
+        if head:
+            parts.append(head)
+        if closed:
+            if tail:
+                return None
+            break
+    else:
+        return None
+    try:
+        dims = [_fileInt(p) for p in parts]
+    except ValueError:
+        return None
+    if len(dims) != 7 or end + 1 >= len(tokens):
+        return None
+    return dims, end + 1
+
+
 def _numberReprs(group):
     """
     The `repr` of each item of a group (an `ofList` or a plain list) if all
@@ -2830,14 +2863,17 @@ class ofNamedDimension(ofDimension):
 
 @dataclass
 class ofDimensionedScalar(ofFloat):
-    def __init__(self, arg1=None, arg2=None, name=None, value=None, 
-        dimensions=None, _comment=None):
-        # super(ofDimensionedScalar, self).__init__(arg1=arg1, arg2=arg2, name=name, 
+    def __init__(self, arg1=None, arg2=None, name=None, value=None,
+        dimensions=None, _comment=None, dimName=None):
+        # super(ofDimensionedScalar, self).__init__(arg1=arg1, arg2=arg2, name=name,
         #     value=value, dimensions=dimensions, _comment=_comment )
-        ofFloat.__init__(self, arg1=arg1, arg2=arg2, name=name, value=value, 
+        ofFloat.__init__(self, arg1=arg1, arg2=arg2, name=name, value=value,
             _comment=None)
         self.dimension = ofDimension(dimensions)
-     
+        #- the name repeated before the dimension set in the legacy form
+        #  `nu nu [0 2 -1 0 0 0 0] 1e-05;` (None for `nu [0 2 -1 0 0 0 0] 1e-05;`)
+        self._dimName = dimName
+
 
     def toString(self, ofRep=False) -> str:
         # #- format the dimensions list properly
@@ -2846,7 +2882,9 @@ class ofDimensionedScalar(ofFloat):
         #     dimStr+= str(self.dimensions[i])+' '
         # dimStr+= str(self.dimensions[6])+']'
 
-        str_ = printNameStr(self.name)+str(self.dimension)+" "\
+        dimName = getattr(self, '_dimName', None)
+        inner = '' if dimName is None else dimName+" "
+        str_ = printNameStr(self.name)+inner+str(self.dimension)+" "\
             +str(self.value)
             
         if ofRep:
@@ -7268,43 +7306,37 @@ class DictFileParser:
         # lineList = line.split()
         lineList = self._getLinesList(line)
 
-        if not len(lineList) >= 9:
-            return None # Need at least nine entries to define a dimensioned type 
+        if len(lineList) < 9:
+            return None # Need at least nine entries to define a dimensioned type
 
-        try: 
+        try:
             ofWord(lineList[0])
         except ValueError:
             return None  # First item is not a ofWord, and can't be a keyword
-        
-        if '[' not in lineList[1]:
-            return None # Second item does not start a dimension specification
-        
-        if not any([']' in val for val in lineList[7:10]]): # handle 
-            return None                                     # [0 1 2 0 0 0 0]
-                                                            # [ 0 1 2 0 0 0 0]
-                                                            # [0 1 2 0 0 0 0 ]
-                                                            # [ 0 1 2 0 0 0 0 ]
 
-        #- Get the dimension string
-        dims = []
-        try:
-            d_ = _fileInt(lineList[1].strip('['))
-            dims.append(d_)
-        except ValueError:
-            return None #- Dimensioned quantity is not an int
-
-        for i, d in enumerate(lineList[2:10]):
-            # logger.debug(f"i: {i}")
+        #- The dimension set follows the key, or a name (the legacy form
+        #  `nu nu [0 2 -1 0 0 0 0] 1.5e-05;`)
+        dimName = None
+        pos = 1
+        if not lineList[1].startswith('['):
+            if not lineList[2].startswith('['):
+                return None # No dimension specification after the key
             try:
-                d_ = _fileInt(d.strip(']'))
-                dims.append(d_)
+                ofWord(lineList[1])
             except ValueError:
                 return None
-            if ']' in d:
-                break
-        
+            dimName = lineList[1]
+            pos = 2
+
+        #- Get the dimension set, with or without spaces inside the brackets;
+        #  anything it does not read exactly is left to the other parsers
+        dimSet = _readDimensionSet(lineList, pos)
+        if dimSet is None:
+            return None
+        dims, end = dimSet
+
         #- parse the value
-        strValue = " ".join(lineList[i+3:]).strip(';')
+        strValue = " ".join(lineList[end:]).strip(';')
         type_ , value = self._parseValue(strValue)
 
         # logger.debug(f'type_: {type_}')
@@ -7328,9 +7360,13 @@ class DictFileParser:
                 returnType = ofDimensionedTensor
 
         if returnType:
-            self.i = i_ 
+            self.i = i_
+            kwargs = {}
+            if dimName is not None:
+                kwargs['dimName'] = dimName
             return returnType(value=value, name=lineList[0],
-                              dimensions=dims, _comment=self._getComment())
+                              dimensions=dims, _comment=self._getComment(),
+                              **kwargs)
 
         return None #- Could not find a suitable dimensioned type based on
                     # length of list 
