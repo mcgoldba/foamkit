@@ -21,12 +21,14 @@ import keyword # To check if ofDict, ofCase, or ofFolder attribute is reserved
 import subprocess
 import numpy as np
 import shutil
-from math import isclose
+from decimal import Decimal
+from math import isfinite
 from bisect import bisect_left
 
 from inspect import signature #- just for debugging
 
-from foamkit import setLoggerLevel, userMsg, getFoamKitConfig, FOAM_VERSION
+from foamkit import (setLoggerLevel, userMsg, getFoamKitConfig, FOAM_VERSION,
+    FoamKitError)
 from ._isDictFile import _isDictFile
 from ._isCase import _isCase
 
@@ -264,14 +266,14 @@ class _ofNamedTypeBase(_ofUnnamedTypeBase):
     def __init__(self, arg1=None, arg2=None, name=None, value=None, 
         _comment=None):
         # logger.debug(f"Initializing _ofNamedType.  arg1: {arg1}; arg2: {arg2}")
+        #- The name is set before the value, so a value setter can name the
+        #  entry in its messages.
         if arg1 == None and arg2 == None:
+            self.name : str = name
             self.value : str = value
-            # logger.debug("Setting ofNamedType .name")
-            self.name : str = name
         elif arg2 == None:
-            self.value : str = arg1
-            # logger.debug("Setting ofNamedType .name")
             self.name : str = name
+            self.value : str = arg1
         else:
             # logger.debug("Setting ofNamedType .name")
             self.name : str = arg1
@@ -1428,6 +1430,34 @@ class _ofDimensionedScalarBase(_ofFloatBase):
 #         super().__init__(*args, **kwargs)
 #         self._CLASS_VARS.append('_location')
 
+def _entryLabel(entry, kind):
+    """`Integer entry 'name'`, or `Integer list item` for an unnamed entry."""
+    name = getattr(entry, '_name', None)
+    if name is None:
+        return f"{kind} list item"
+    return f"{kind} entry '{name}'"
+
+
+def _notANumber(entry, v, kind, boolHint=False):
+    """Raise `FoamKitError`: `v` cannot be stored in the numeric `entry`."""
+    msg = f"{_entryLabel(entry, kind)}: {v!r} is not a number."
+    name = getattr(entry, '_name', None)
+    if boolHint and name is not None:
+        msg += f" For a boolean, use `d.{name} = {v}`."
+    raise FoamKitError(msg)
+
+
+def _asFloat(entry, v, kind):
+    """`float(v)` for a real number, `Decimal` or numeric string, else raise
+    `FoamKitError` naming `entry`."""
+    if isinstance(v, (numbers.Real, Decimal, str)):
+        try:
+            return float(v)
+        except (ValueError, OverflowError):
+            pass
+    _notANumber(entry, v, kind)
+
+
 @dataclass
 # class ofInt(_ofDictFileBase, _ofIntBase):
 class ofInt(_ofNamedTypeBase):
@@ -1440,13 +1470,39 @@ class ofInt(_ofNamedTypeBase):
     
     @value.setter
     def value(self, v):
-        if v is not None:
-            try: 
-                self._value = int(v)
-            except ValueError:
-                raise ValueError("ofInt value must be an integer.")
-        else:
+        """
+        Set the value.  A whole number is stored as an `int`.  A value with a
+        fractional part is stored exactly as a float: the entry becomes an
+        `ofFloat` (same object) and a warning is printed.  A value that is not
+        a finite number raises `FoamKitError` and keeps the old value.
+        """
+        if v is None:
             self._value = None
+            return
+        what = _entryLabel(self, 'Integer')
+        if isinstance(v, bool):
+            _notANumber(self, v, "Integer", boolHint=True)
+        f = _asFloat(self, v, "Integer")
+        if not isfinite(f):
+            _notANumber(self, v, "Integer")
+        if f.is_integer():
+            try:
+                self._value = int(v)
+            except (ValueError, TypeError):
+                self._value = int(f)
+            return
+        if type(self) is not ofInt:
+            raise FoamKitError(
+                f"{what}: {v} is not a whole number and cannot be stored "
+                f"in a {type(self).__name__}.")
+        if getattr(self, '_name', None) is None:
+            msg = (f"{what}: {v} is not a whole number; stored as a float.")
+        else:
+            msg = (f"{what}: {v} is not a whole number; stored as a float "
+                   f"(the entry is now an ofFloat).")
+        userMsg(msg, 'WARNING')
+        self.__class__ = ofFloat
+        self._value = f
 
     # def toString(self) -> str:
     #     return printNameStr(self.name)+str(self.value)+";\n"
@@ -1469,13 +1525,12 @@ class ofFloat(_ofNamedTypeBase):
 
     @value.setter
     def value(self, v):
-        if v is not None:
-            try: 
-                self._value = float(v)
-            except ValueError:
-                raise ValueError("ofFloat value must be a numeric.")
-        else:
+        if v is None:
             self._value = None
+            return
+        if isinstance(v, bool):
+            _notANumber(self, v, "Float", boolHint=True)
+        self._value = _asFloat(self, v, "Float")
 
 
 TYPE_REGISTRY.append(ofFloat)
@@ -1512,8 +1567,15 @@ class ofBool(_ofNamedTypeBase):
             self._valueStr=str(v).lower()
             self._value=v
         elif v is not None:
+            try:
+                value = OF_BOOL_VALUES[v]
+            except (KeyError, TypeError):
+                raise FoamKitError(
+                    f"{_entryLabel(self, 'Boolean')}: {v!r} is not a boolean; "
+                    f"use True, False or one of "
+                    f"{', '.join(OF_BOOL_VALUES)}.") from None
             self._valueStr = v
-            self._value = OF_BOOL_VALUES[v]
+            self._value = value
         else:
             self._valueStr = ""
             self._value = None
@@ -6504,7 +6566,7 @@ class DictFileParser:
         try:
             _fileInt(value)
             #check that fractional value was not truncated
-            if isclose(int(value), float(value)):
+            if float(value).is_integer():
                 return ofInt, int(value)
         except (ValueError, TypeError):
             pass
