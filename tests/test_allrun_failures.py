@@ -9,6 +9,7 @@ from the code under test is converted by `_expect_error` / `_call`.
 """
 
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -28,6 +29,13 @@ posix_only = pytest.mark.skipif(
 def _flat(text):
     """Remove all whitespace so that terminal line wrapping does not matter."""
     return "".join(text.split())
+
+
+def _assert_names_case_and_script(msg, case):
+    """`msg` names the case directory and the script (whitespace ignored)."""
+    flat = _flat(msg)
+    assert _flat(str(case)) in flat
+    assert "Allrun" in flat
 
 
 def _expect_error(fn):
@@ -60,8 +68,6 @@ def _write_script(path, body, executable=True):
 @pytest.fixture
 def spaced_case(tmp_path):
     """A pitzDaily copy whose path contains a space (no shell involved)."""
-    import shutil
-
     path = tmp_path / "pitz daily"
     shutil.copytree(FIXTURES / "pitzDaily", path)
     return path
@@ -101,8 +107,7 @@ def test_exit_0_returns_normally(spaced_case, runner):
 def test_exit_3_raises_foamkiterror_naming_case_script_and_code(spaced_case, runner):
     _write_script(spaced_case / "Allrun", NOISY)
     msg = _flat(str(_expect_error(runner(spaced_case))))
-    assert _flat(str(spaced_case)) in msg
-    assert "Allrun" in msg
+    _assert_names_case_and_script(msg, spaced_case)
     assert "3" in msg
     assert "stdoutline30" in msg
     assert "stderrline30" in msg
@@ -135,8 +140,7 @@ def test_failure_is_printed_to_the_user(spaced_case, capsys):
 def test_missing_script_raises_foamkiterror_naming_the_path(spaced_case, runner):
     assert not (spaced_case / "Allrun").exists()
     msg = _flat(str(_expect_error(runner(spaced_case))))
-    assert _flat(str(spaced_case)) in msg
-    assert "Allrun" in msg
+    _assert_names_case_and_script(msg, spaced_case)
 
 
 @posix_only
@@ -144,8 +148,7 @@ def test_missing_script_raises_foamkiterror_naming_the_path(spaced_case, runner)
 def test_non_executable_script_raises_foamkiterror_naming_the_path(spaced_case, runner):
     _write_script(spaced_case / "Allrun", "exit 0\n", executable=False)
     msg = _flat(str(_expect_error(runner(spaced_case))))
-    assert _flat(str(spaced_case)) in msg
-    assert "Allrun" in msg
+    _assert_names_case_and_script(msg, spaced_case)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows cannot run POSIX scripts")
@@ -155,8 +158,7 @@ def test_posix_script_on_windows_raises_foamkiterror_not_winerror_193(
 ):
     _write_script(spaced_case / "Allrun", "exit 3\n", executable=False)
     msg = _flat(str(_expect_error(runner(spaced_case))))
-    assert _flat(str(spaced_case)) in msg
-    assert "Allrun" in msg
+    _assert_names_case_and_script(msg, spaced_case)
 
 
 @posix_only
@@ -173,13 +175,12 @@ def test_script_runs_with_the_case_directory_as_working_directory(
     assert not os.path.samefile(elsewhere, spaced_case)
 
 
-def _make_study(tmp_path, chdir, stub_body):
-    import shutil
-
+def _make_study(tmp_path, chdir, stub_body=None):
     chdir(tmp_path)
     template = tmp_path / "study.template"
     shutil.copytree(FIXTURES / "pitzDaily", template)
-    _write_script(template / "Allrun", stub_body)
+    if stub_body is not None:
+        _write_script(template / "Allrun", stub_body)
     return fkt.ofStudy(
         templatePath=template,
         parameterNames=["a"],
@@ -264,8 +265,8 @@ def test_called_process_error_message_and_reporting(spaced_case, fake_run, capsy
     err = _expect_error(_via_method(spaced_case))
     assert err.reported is True
     msg = _flat(str(err))
-    assert _flat(str(spaced_case)) in msg
-    assert "Allrun" in msg and "3" in msg
+    _assert_names_case_and_script(msg, spaced_case)
+    assert "3" in msg
     for stream in ("stdout", "stderr"):
         assert f"{stream}line11" in msg and f"{stream}line30" in msg
         assert f"{stream}line10" not in msg
@@ -294,8 +295,7 @@ def test_output_none_is_handled(spaced_case, fake_run):
 def test_oserrors_raise_foamkiterror_naming_the_path(spaced_case, fake_run, exc):
     fake_run.raises = exc
     msg = _flat(str(_expect_error(_via_method(spaced_case))))
-    assert _flat(str(spaced_case)) in msg
-    assert "Allrun" in msg
+    _assert_names_case_and_script(msg, spaced_case)
 
 
 def test_windows_193_says_posix_scripts_cannot_run(spaced_case, fake_run):
@@ -307,9 +307,7 @@ def test_windows_193_says_posix_scripts_cannot_run(spaced_case, fake_run):
     assert "POSIX" in msg and "Windows" in msg
 
 
-def test_missing_case_directory_is_reported(tmp_path, fake_run, spaced_case):
-    import shutil
-
+def test_missing_case_directory_is_reported(fake_run, spaced_case):
     case = fkt.CaseParser(spaced_case).initOFCase()
     shutil.rmtree(spaced_case)
     fake_run.raises = FileNotFoundError(2, "nope")
@@ -322,17 +320,7 @@ def test_function_and_study_use_the_same_path(tmp_path, chdir, spaced_case, fake
     assert "3" in str(_expect_error(_via_function(spaced_case)))
     fake_run.clear()
 
-    import shutil
-
-    chdir(tmp_path)
-    template = tmp_path / "study.template"
-    shutil.copytree(FIXTURES / "pitzDaily", template)
-    study = fkt.ofStudy(
-        templatePath=template,
-        parameterNames=["a"],
-        samples=[[1.0], [2.0]],
-        updateFunction=lambda case_, values: case_,
-    )
+    study = _make_study(tmp_path, chdir)
     msg = str(_expect_error(study.run))
     assert "study.0" in msg and "3" in msg
     assert len(fake_run) == 1, "study went on to the next sample"

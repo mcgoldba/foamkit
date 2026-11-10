@@ -1104,43 +1104,55 @@ class _ofCaseBase(_ofTypeBase):
         script_ = casePath_ / cmd
         userMsg(f"Running Allrun script from {self._path}.")
 
-        def _tail(data):
-            #- Never crash on non-UTF-8 output; keep the last 20 lines.
-            text_ = (data or b'')
-            if isinstance(text_, bytes):
-                text_ = text_.decode(errors='replace')
-            return "\n".join(text_.rstrip().splitlines()[-20:])
-
         try:
             #- `run` drains both pipes while waiting; `check_call` with PIPE
             #  deadlocks once the script fills the OS pipe buffer.
             subprocess.run([str(script_)], cwd=str(casePath_),
                            capture_output=True, check=True)
-        except subprocess.CalledProcessError as e:
-            msg_ = f"{cmd} failed in case {casePath_} "\
-                f"(exit code {e.returncode})."
-            out_, err_ = _tail(e.output), _tail(e.stderr)
-            if out_:
-                msg_ += f"\nLast lines of standard output:\n{out_}"
-            if err_:
-                msg_ += f"\nLast lines of standard error:\n{err_}"
-        except OSError as e:
-            if not casePath_.is_dir():
-                msg_ = f"Cannot run {cmd}: case directory {casePath_} "\
-                    "does not exist."
-            elif isinstance(e, FileNotFoundError):
-                msg_ = f"Cannot run {cmd}: script {script_} not found."
-            elif isinstance(e, PermissionError):
-                msg_ = f"Cannot run {cmd}: no permission to execute "\
-                    f"{script_} (is it executable?)."
-            elif getattr(e, 'winerror', None) == 193:
-                msg_ = f"Cannot run {cmd} ({script_}): POSIX scripts cannot "\
-                    "be run on Windows; use WSL or a POSIX system."
-            else:
-                msg_ = f"Cannot run {cmd} ({script_}): {e}"
+        except (subprocess.CalledProcessError, OSError) as e:
+            msg_ = _allRunFailureMsg(e, cmd, casePath_, script_)
         else:
             return
         userMsg(msg_, 'ERROR')
+
+def _tailLines(data, n=20):
+    """
+    The last `n` lines of captured subprocess output (bytes or None), as text.
+
+    The tail is cut from the bytes before decoding, so a very large output is
+    never decoded or split in full; invalid UTF-8 is replaced, not raised.
+    """
+    data = (data or b'').rstrip()
+    pos = len(data)
+    for _ in range(n):
+        pos = data.rfind(b'\n', 0, pos)
+        if pos < 0:
+            break
+    return "\n".join(
+        data[pos + 1:].decode(errors='replace').splitlines()[-n:])
+
+
+def _allRunFailureMsg(e, cmd, casePath, script):
+    """The message for a run script that failed with `e` (see `allRun`)."""
+    if isinstance(e, subprocess.CalledProcessError):
+        msg_ = f"{cmd} failed in case {casePath} (exit code {e.returncode})."
+        for title_, data_ in (("output", e.output), ("error", e.stderr)):
+            tail_ = _tailLines(data_)
+            if tail_:
+                msg_ += f"\nLast lines of standard {title_}:\n{tail_}"
+        return msg_
+    if not casePath.is_dir():
+        return f"Cannot run {cmd}: case directory {casePath} does not exist."
+    if isinstance(e, FileNotFoundError):
+        return f"Cannot run {cmd}: script {script} not found."
+    if isinstance(e, PermissionError):
+        return f"Cannot run {cmd}: no permission to execute {script} "\
+            "(is it executable?)."
+    if getattr(e, 'winerror', None) == 193:
+        return f"Cannot run {cmd} ({script}): POSIX scripts cannot be run "\
+            "on Windows; use WSL or a POSIX system."
+    return f"Cannot run {cmd} ({script}): {e}"
+
 
 #for deepcopy; ref: https://stackoverflow.com/a/34152960/10592330
 def pickleOfCase(f):
