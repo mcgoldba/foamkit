@@ -1093,7 +1093,6 @@ class _ofCaseBase(_ofTypeBase):
         Parameters:
             cmd [str]:  The script to run.  Default value is 'Allrun'.
 
-
         Raises:
             FoamKitError:  If the script is missing, cannot be run, or exits
                 with a non-zero status.  The message names the case, the
@@ -1113,6 +1112,8 @@ class _ofCaseBase(_ofTypeBase):
             msg_ = _allRunFailureMsg(e, cmd, casePath_, script_)
         else:
             return
+        #- Reported outside the `except`, so the FoamKitError carries no
+        #  chained traceback of the internal exception.
         userMsg(msg_, 'ERROR')
 
 def _tailLines(data, n=20):
