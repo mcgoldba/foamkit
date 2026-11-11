@@ -1047,9 +1047,27 @@ class _ofCaseBase(_ofTypeBase):
         """
 
 
-        # logger.debug(f'self._path: {self._path}')
+        def _dictFiles(obj, loc=None):
+            """Yield (file path, ofDictFile) for every dictionary file."""
+            if loc is None:
+                loc = Path(self._path).parent
+            if any([isinstance(obj, t) for t in [_ofCaseBase, _ofFolderBase]]):
+                if isinstance(obj, _ofCaseBase):
+                    loc_ = Path(loc) / obj._name
+                else:
+                    loc_ = obj._path
+                for key, item in obj.attrDict().items():
+                    if not key.startswith('_'):
+                        yield from _dictFiles(item, loc_)
+            elif isinstance(obj, ofDictFile):
+                yield loc, self._path / loc / obj._name, obj
 
-        #caseFromFile = CaseParser(self._path).makeOFCase()
+        #- Check every file first, so a mixed file leaves the case untouched
+        for _, loc_, obj in _dictFiles(self):
+            if obj._mixedLine is not None:
+                userMsg(f"{loc_}:{obj._mixedLine}: line ending differs "
+                    "from line 1 (a file must use one line ending); "
+                    "nothing was written.", "ERROR")
 
         #- Save the existing case to file as backup
         self.save(path=self._path)
@@ -1067,28 +1085,14 @@ class _ofCaseBase(_ofTypeBase):
                 with open(backupPath, 'w') as f:
                     f.write(savedCase)
 
-        def _writeCaseObj(obj, loc=None):
-            if loc is None:
-                loc = Path(self._path).parent
-            # logger.debug(f"_writeCaseObj: parsing obj: {obj}")
-            if any([isinstance(obj, t) for t in [_ofCaseBase, _ofFolderBase]]):
-                if isinstance(obj, _ofCaseBase):
-                    loc_ = Path(loc) / obj._name
-                else:
-                    loc_ = obj._path
-                for key, item in obj.attrDict().items():
-                    if not key.startswith('_'):
-                        # loc_ = Path(loc) / name_ 
-                        _writeCaseObj(item, loc_)
-            elif isinstance(obj, ofDictFile):
-                # logger.debug(f"ofDictFile obj: {obj}")
-                loc_ = self._path / loc / obj._name
-                userMsg(f"Writing dictionary {obj._name} to "\
-                    f"{str(Path(self.name()) / loc)}.")
-                loc_.parent.mkdir(exist_ok=True, parents=True)
-                loc_.write_text(obj.toString())
-
-        _writeCaseObj(self)
+        for loc, loc_, obj in _dictFiles(self):
+            userMsg(f"Writing dictionary {obj._name} to "\
+                f"{str(Path(self.name()) / loc)}.")
+            loc_.parent.mkdir(exist_ok=True, parents=True)
+            #- `newline` writes `\n` as the file's own ending (not
+            #  `os.linesep`); `Path.write_text(newline=)` needs 3.10
+            with open(loc_, 'w', newline=obj._newline) as f:
+                f.write(obj.toString())
 
 
     def allRun(self, cmd='Allrun'):
@@ -2735,6 +2739,14 @@ class ofDictFile(ofDict, _ofFolderItemBase):
         #  (see `DictFileParser._buildLayout`), is set by the parser only;
         #  without it every entry is written anew
         self._CLASS_VARS.append('_srcLayout')
+        #- Line ending the file is written with (T-085): the one it was read
+        #  with; `\n` for a new file and for a cache without it.
+        #  `_mixedLine` is the first line (1-based) whose ending differs
+        #  from line 1 (None: no such line); `write()` refuses such a file.
+        self._newline = '\n'
+        self._mixedLine = None
+        self._CLASS_VARS.append('_newline')
+        self._CLASS_VARS.append('_mixedLine')
 
         # logger.debug(f"location: {self._location}")
 
@@ -4642,14 +4654,32 @@ class ofStudy:
         pass
 
 class DictFileParser:
+    def _readNewline(self, filepath):
+        """
+        Record the file's line ending (from its bytes) on the dictionary: the
+        ending of line 1, and the first line whose ending differs from it
+        (a lone `\\r` counts as differing).
+        """
+        #- A last line with no ending has no match, so it cannot differ
+        endings = re.findall(rb'\r\n|\n|\r', Path(filepath).read_bytes())
+        if not endings:
+            return
+        if endings[0] == b'\r\n':
+            self.dictFile._newline = '\r\n'
+        for n, e in enumerate(endings, 1):
+            if e != endings[0] or e not in (b'\n', b'\r\n'):
+                self.dictFile._mixedLine = n
+                return
+
     def __init__(self, filepath):
         self.filepath = filepath
         with open(filepath, 'r') as f:
             self.lines = f.readlines()
         self.status = None
         # logger.debug(f"Setting dictFile name to {Path(filepath).name}...")
-        self.dictFile = ofDictFile(_name=Path(filepath).name) 
+        self.dictFile = ofDictFile(_name=Path(filepath).name)
                             #_location=Path(filepath).parent)
+        self._readNewline(filepath)
         self.i=0
         self.extraLine = []
         self.comment = []
