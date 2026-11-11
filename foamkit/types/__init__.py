@@ -11,6 +11,7 @@ import sys
 import string #- to check for whitespace
 import textwrap
 import re
+from itertools import islice
 import pandas as pd
 import copyreg
 import json
@@ -4963,6 +4964,7 @@ class DictFileParser:
         first = 0       #- column of the first non-blank character of the line
         nesting = 0     #- number of open '(' and '{'
         openCuts = set()    #- (line, column) of cuts after an unclosed '{'
+        bareLine = None     #- line where a list that starts a statement opened
 
         def cut(li, column, entry):
             #- (a cut with only whitespace before it would make an empty line)
@@ -5008,6 +5010,11 @@ class DictFileParser:
             elif c in ')}':
                 nesting = max(0, nesting - 1)
             if c == '(':
+                if paren == 0:
+                    #- (T-090) a list that starts a statement
+                    bareLine = (li if blocked == 0 and
+                                line[:lj].rstrip()[-1:] in ('', ';', '}')
+                                else None)
                 paren += 1
                 openParens.append((li, self._cutAfter(line, lj + 1, inf)))
                 continue
@@ -5015,6 +5022,12 @@ class DictFileParser:
                 paren = max(0, paren - 1)
                 if openParens:
                     openParens.pop()
+                if paren == 0 and bareLine == li:
+                    #- it closes on its line: the entry after it (not after
+                    #  a ';', which cuts below) starts a line of its own
+                    bareLine = None
+                    if line[lj+1:].lstrip()[:1] != ';':
+                        cut(li, self._cutAfter(line, lj + 1, tail), True)
                 continue
             if c == '{':
                 if lj > 0 and line[lj-1] == '$':
@@ -5607,6 +5620,11 @@ class DictFileParser:
                         f"'{lineList[1]}' after the keyword '{lineList[0]}' "
                         "(an include directive as the value of an entry) "
                         "cannot be parsed.", "ERROR")
+            elif (lineList[0].startswith('(')
+                    and (bareList := self._parseBareListLine(
+                        parsingExtraLine)) is not None):
+                #- a bare list that closes on its own line (T-090)
+                return bareList
             elif (not parsingExtraLine
                     and (groupsValue := self._parseListGroups()) is not None):
                 #- `key (...) (...);`: an entry of several lists
@@ -5714,6 +5732,49 @@ class DictFileParser:
                                                      #  just parsed.
             else:
                 self.i += 1
+
+    def _parseBareListLine(self, parsingExtraLine):
+        """
+        Read a statement that starts with '(' and whose brackets balance on
+        its line (a one-line bare list, T-090) as an unnamed `ofSplitList`
+        that ends at its closing ')' plus an optional ';' (`_semicolon` is
+        kept as read).  Text after that is queued as the next entry; a lone
+        word there raises `FoamKitError`.  Returns None if the list does not
+        close on this line (the multi-line path reads it).
+        """
+        text = (self.extraLine[0] if parsingExtraLine
+                else self.lines[self.i])
+        depth, end = 0, None
+        for _, lj, c in self._lex([text], 0, strict=False):
+            if c in '({':
+                depth += 1
+            elif c in ')}':
+                depth -= 1
+                if depth <= 0:
+                    end = lj + 1
+                    break
+        if end is None:
+            return None
+        rest = text[end:].lstrip()
+        semicolon = rest.startswith(';')
+        rest = rest[1:].strip() if semicolon else rest.strip()
+        if rest != '' and not rest.startswith('//'):
+            userMsg(f"Line {self._ln(self.i)} of file {self.filepath} has "
+                    f"text ('{rest}') after a bare list: it cannot be "
+                    "parsed.", "ERROR")
+        if not semicolon and not any(
+                ln.strip() for ln in islice(self.lines, self.i + 1, None)):
+            userMsg(f"Invalid Syntax.  Could not find end of statement "
+                    f"starting on line {self._ln(self.i)} in "
+                    f"{self.filepath}: a bare list needs a ';' or an entry "
+                    "after it.", "ERROR")
+        list_ = ofSplitList(name=None)
+        start = len(text) - len(text.lstrip())
+        list_.value = self._parseListValues(text[start + 1:end - 1])
+        if not semicolon:
+            list_._semicolon = False
+        list_._comment = self._getComment()
+        return list_
 
     def _parseLineLenTwo(self):
         # logger.debug("Parsing line of length 2.")

@@ -404,16 +404,7 @@ def test_one_line_nested_bare_list_raises_foamkiterror_with_file_and_line(tmp_pa
 @pytest.mark.parametrize(
     "text",
     [
-        pytest.param(
-            "a 1;\n( x y )\nb 2;\n",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=AssertionError,
-                reason="T-090 (not T-084): a one-line bare list silently "
-                "swallows the next entry",
-            ),
-            id="one-line-list-between-entries",
-        ),
+        pytest.param("a 1;\n( x y )\nb 2;\n", id="one-line-list-between-entries"),
     ],
 )
 def test_one_line_bare_list_either_loads_every_entry_or_raises(tmp_path, text):
