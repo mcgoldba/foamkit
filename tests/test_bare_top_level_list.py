@@ -482,13 +482,43 @@ def test_a_hand_written_generated_looking_key_is_written_bare(tmp_path):
     """
     Known limitation, not wanted behaviour: a key the user wrote as `unnamed_<n>`
     is indistinguishable from one the reader generated, so regenerating the
-    entry writes the list without its keyword (the reader's reserved-name
-    warning is the only signal).  It repairs files that older FoamKit versions
-    wrote with the keyword (`unnamed_1 (...);`).  A reader-side marker for
-    generated keys would remove the ambiguity.
+    entry writes the list without its keyword, and nothing warns.  It repairs
+    files that older FoamKit versions wrote with the keyword
+    (`unnamed_1 (...);`).  A reader-side marker for generated keys would remove
+    the ambiguity (T-092).
     """
     path = tmp_path / "f"
     path.write_text(HEADER + "a 1;\nunnamed_3 (1 2 3);\nb 2;\n")
     text = _load(path).toString(_preserve=False)
     assert "unnamed_3" not in text
     assert _norm(text) == "a1;(123);b2;"
+
+
+@pytest.mark.parametrize(
+    "shape, flag, delta",  # delta: the change in the number of `);` written
+    [
+        ("between-entries", True, 1),
+        ("parcel-injection", False, -1),
+        ("in-sub-dict", True, 1),
+    ],
+)
+def test_changing_the_semicolon_flag_is_an_edit(tmp_path, shape, flag, delta):
+    """The edit check sees the flag through the entry text, with no name of its own."""
+    d = _load(_write_source(tmp_path, shape))
+    assert d.toString() == _body(shape)
+    entry = d
+    for name in _edit_path(shape):
+        entry = getattr(entry, name)
+    entry._semicolon = flag
+    text = d.toString()
+    assert text != _body(shape)
+    assert text.count(");") == _body(shape).count(");") + delta
+
+
+def test_the_flag_on_a_named_list_never_drops_its_semicolon(tmp_path):
+    """The flag is an edit (the entry is regenerated), but a keyword list keeps its ';'."""
+    path = tmp_path / "f"
+    path.write_text(HEADER + "l (1 2 3);\n")
+    d = _load(path)
+    d.l._semicolon = False
+    assert _norm(d.toString()) == "l(123);"

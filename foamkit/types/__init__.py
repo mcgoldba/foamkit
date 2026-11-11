@@ -88,7 +88,7 @@ SPECIAL_CHARS = {'(': '_',  # Replacement of special chars attribute
                  '"': '_',
                  '|': '_'}
 def _isGeneratedKey(name) -> bool:
-    """True for a key made by the reader (`unnamed_<n>`), not one in the file."""
+    """True for the generated `unnamed_<n>` key (a file-written one looks the same, T-092)."""
     return (isinstance(name, str)
             and re.match(UNNAMED_TAG+'[0-9]+$', name) is not None)
 
@@ -784,7 +784,7 @@ def _fpNames(cls):
     names = _FP_NAMES.get(cls)
     if names is None:
         base = ['_name', '_comment', '_comment_keyword', '_srcText',
-                '_srcReprs', '_dimName', '_semicolon']
+                '_srcReprs', '_dimName']
         if dataclasses.is_dataclass(cls):
             for f in dataclasses.fields(cls):
                 base += [f.name, '_' + f.name]
