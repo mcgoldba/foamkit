@@ -1047,9 +1047,27 @@ class _ofCaseBase(_ofTypeBase):
         """
 
 
-        # logger.debug(f'self._path: {self._path}')
+        def _dictFiles(obj, loc=None):
+            """Yield (file path, ofDictFile) for every dictionary file."""
+            if loc is None:
+                loc = Path(self._path).parent
+            if any([isinstance(obj, t) for t in [_ofCaseBase, _ofFolderBase]]):
+                if isinstance(obj, _ofCaseBase):
+                    loc_ = Path(loc) / obj._name
+                else:
+                    loc_ = obj._path
+                for key, item in obj.attrDict().items():
+                    if not key.startswith('_'):
+                        yield from _dictFiles(item, loc_)
+            elif isinstance(obj, ofDictFile):
+                yield loc, self._path / loc / obj._name, obj
 
-        #caseFromFile = CaseParser(self._path).makeOFCase()
+        #- Check every file first, so a mixed file leaves the case untouched
+        for _, loc_, obj in _dictFiles(self):
+            if obj._mixedLine is not None:
+                userMsg(f"{loc_}:{obj._mixedLine}: line ending differs "
+                    "from line 1 (a file must use one line ending); "
+                    "nothing was written.", "ERROR")
 
         #- Save the existing case to file as backup
         self.save(path=self._path)
@@ -1067,35 +1085,14 @@ class _ofCaseBase(_ofTypeBase):
                 with open(backupPath, 'w') as f:
                     f.write(savedCase)
 
-        def _writeCaseObj(obj, loc=None):
-            if loc is None:
-                loc = Path(self._path).parent
-            # logger.debug(f"_writeCaseObj: parsing obj: {obj}")
-            if any([isinstance(obj, t) for t in [_ofCaseBase, _ofFolderBase]]):
-                if isinstance(obj, _ofCaseBase):
-                    loc_ = Path(loc) / obj._name
-                else:
-                    loc_ = obj._path
-                for key, item in obj.attrDict().items():
-                    if not key.startswith('_'):
-                        # loc_ = Path(loc) / name_ 
-                        _writeCaseObj(item, loc_)
-            elif isinstance(obj, ofDictFile):
-                # logger.debug(f"ofDictFile obj: {obj}")
-                loc_ = self._path / loc / obj._name
-                if obj._mixedLine is not None:
-                    userMsg(f"{loc_}:{obj._mixedLine}: line ending differs "
-                        "from line 1 (a file must use one line ending); "
-                        "not written.", "ERROR")
-                userMsg(f"Writing dictionary {obj._name} to "\
-                    f"{str(Path(self.name()) / loc)}.")
-                loc_.parent.mkdir(exist_ok=True, parents=True)
-                #- `newline` writes `\n` as the file's own ending (not
-                #  `os.linesep`); `Path.write_text(newline=)` needs 3.10
-                with open(loc_, 'w', newline=obj._newline) as f:
-                    f.write(obj.toString())
-
-        _writeCaseObj(self)
+        for loc, loc_, obj in _dictFiles(self):
+            userMsg(f"Writing dictionary {obj._name} to "\
+                f"{str(Path(self.name()) / loc)}.")
+            loc_.parent.mkdir(exist_ok=True, parents=True)
+            #- `newline` writes `\n` as the file's own ending (not
+            #  `os.linesep`); `Path.write_text(newline=)` needs 3.10
+            with open(loc_, 'w', newline=obj._newline) as f:
+                f.write(obj.toString())
 
 
     def allRun(self, cmd='Allrun'):

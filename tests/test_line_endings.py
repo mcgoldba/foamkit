@@ -17,6 +17,7 @@ written with `os.linesep` today, so it fails on Windows only.  The mixed-ending 
 (option A of the ticket, ROADMAP's stated default) fails on every OS.
 """
 
+import json
 import re
 import shutil
 
@@ -31,6 +32,7 @@ PITZ = FIXTURES / "pitzDaily"
 ENDINGS = {"LF": b"\n", "CRLF": b"\r\n"}
 
 
+LF, CR = ENDINGS["LF"], b"\r"
 ENDING_PARAMS = ["LF", "CRLF"]
 
 
@@ -171,3 +173,63 @@ def test_mixed_endings_raise_foamkiterror_naming_file_and_line(tmp_path):
     assert "controlDict" in msg
     assert re.search(r"\b4\b", msg), msg
     assert target.read_bytes() == mixed  # the mixed file is not written
+
+
+def test_mixed_file_leaves_every_other_file_and_the_cache_untouched(tmp_path):
+    case = _make_case(tmp_path, "LF")
+    target = case / "system" / "fvSchemes"
+    lines = target.read_bytes().split(LF)
+    lines[3] += CR  # line 4 ends CRLF, line 1 ends LF
+    target.write_bytes(LF.join(lines))
+    before = _files(case)
+    case_obj = pf.init(path=case)
+    case_obj.system.controlDict.endTime = 3000
+    with pytest.raises(FoamKitError, match="fvSchemes"):
+        case_obj.write()
+    assert _files(case) == before
+    assert not (case / ".params").exists()  # no cache save or backup either
+
+
+def _edit_cache(case, edit):
+    """Apply `edit(key, parent_dict)` to every `_newline` / `_mixedLine` in the cache."""
+    path = case / ".params" / "_case.json"
+    data = json.loads(path.read_text())
+
+    def walk(o):
+        if isinstance(o, dict):
+            for key in list(o):
+                if key in ("_newline", "_mixedLine"):
+                    edit(key, o)
+                walk(o[key] if key in o else None)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    walk(data)
+    path.write_text(json.dumps(data))
+
+
+def test_old_cache_without_line_ending_keys_loads_and_writes_lf(tmp_path):
+    case = _make_case(tmp_path, "LF")
+    pf.init(path=case).save(path=case)
+    _edit_cache(case, lambda key, d: d.pop(key))
+    loaded = pf.load(path=case)
+    assert loaded.system.controlDict._newline == "\n"
+    loaded.system.controlDict.endTime = 3000
+    loaded.write()
+    data = (case / "system" / "controlDict").read_bytes()
+    assert b"3000" in data
+    _assert_all_endings({"controlDict": data}, "LF")
+
+
+def test_cache_holding_a_mixed_line_still_errors_after_load(tmp_path):
+    case = _make_case(tmp_path, "LF")
+    pf.init(path=case).save(path=case)
+    _edit_cache(
+        case, lambda key, d: d.update(_mixedLine=4) if key == "_mixedLine" else None
+    )
+    loaded = pf.load(path=case)
+    before = _files(case)
+    with pytest.raises(FoamKitError, match=r":4\b"):
+        loaded.write()
+    assert _files(case) == before
