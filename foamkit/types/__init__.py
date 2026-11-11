@@ -1093,19 +1093,67 @@ class _ofCaseBase(_ofTypeBase):
         Parameters:
             cmd [str]:  The script to run.  Default value is 'Allrun'.
 
+        Raises:
+            FoamKitError:  If the script is missing, cannot be run, or exits
+                with a non-zero status.  The message names the case, the
+                script and the exit code, and shows the last 20 lines of
+                its output.
         """
-        script_ = str(Path(self._path)/ cmd)
+        casePath_ = Path(self._path).resolve()
+        script_ = casePath_ / cmd
         userMsg(f"Running Allrun script from {self._path}.")
+
         try:
             #- `run` drains both pipes while waiting; `check_call` with PIPE
             #  deadlocks once the script fills the OS pipe buffer.
-            subprocess.run(script_, capture_output=True, check=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed with return code: {e.returncode}")
-            if e.output:
-                logger.error(f"Output: {e.output.decode()}")  # stdout, if captured
-            if e.stderr:
-                logger.error(f"Error output: {e.stderr.decode()}")  # stderr, if captured
+            subprocess.run([str(script_)], cwd=str(casePath_),
+                           capture_output=True, check=True)
+        except (subprocess.CalledProcessError, OSError) as e:
+            msg_ = _allRunFailureMsg(e, cmd, casePath_, script_)
+        else:
+            return
+        #- Reported outside the `except`, so the FoamKitError carries no
+        #  chained traceback of the internal exception.
+        userMsg(msg_, 'ERROR')
+
+def _tailLines(data, n=20):
+    """
+    The last `n` lines of captured subprocess output (bytes or None), as text.
+
+    The tail is cut from the bytes before decoding, so a very large output is
+    never decoded or split in full; invalid UTF-8 is replaced, not raised.
+    """
+    data = (data or b'').rstrip()
+    pos = len(data)
+    for _ in range(n):
+        pos = data.rfind(b'\n', 0, pos)
+        if pos < 0:
+            break
+    return "\n".join(
+        data[pos + 1:].decode(errors='replace').splitlines()[-n:])
+
+
+def _allRunFailureMsg(e, cmd, casePath, script):
+    """The message for a run script that failed with `e` (see `allRun`)."""
+    if isinstance(e, subprocess.CalledProcessError):
+        msg_ = f"{cmd} failed in case {casePath} (exit code {e.returncode})."
+        for title_, data_ in (("output", e.output), ("error", e.stderr)):
+            tail_ = _tailLines(data_)
+            if tail_:
+                msg_ += f"\nLast lines of standard {title_}:\n{tail_}"
+        return msg_
+    if not casePath.is_dir():
+        return f"Cannot run {cmd}: case directory {casePath} does not exist."
+    if isinstance(e, FileNotFoundError):
+        return f"Cannot run {cmd}: script {script} not found."
+    if isinstance(e, PermissionError):
+        return f"Cannot run {cmd}: no permission to execute {script} "\
+            "(is it executable?)."
+    if getattr(e, 'winerror', None) == 193:
+        return f"Cannot run {cmd} ({script}): POSIX scripts cannot be run "\
+            "on Windows; use WSL or a POSIX system."
+    return f"Cannot run {cmd} ({script}): {e}"
+
 
 #for deepcopy; ref: https://stackoverflow.com/a/34152960/10592330
 def pickleOfCase(f):
