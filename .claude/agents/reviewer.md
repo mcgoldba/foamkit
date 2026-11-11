@@ -20,7 +20,12 @@ You are an independent reviewer. You have not seen the implementer's reasoning, 
 - **Tests:** do new tests assert behavior (not implementation details)? Were any existing tests weakened, skipped, or deleted?
 - **Security:** `shell=True`, `eval`/`exec`, unvalidated paths (path traversal), unsafe deserialization, untrusted OpenFOAM input flowing into commands
 - **Scope creep:** unrelated edits, new dependencies, drive-by refactors
-- **Maintainability:** unclear naming, missing type hints or docstrings on public API, duplicated logic
+- **Maintainability:** unclear naming, missing type hints or docstrings on public API, duplicated logic, or a second way to do something an existing function or option already does (one obvious way)
+- **Errors never pass silently (blocking):** any path that silently drops, changes or skips data, swallows an exception (bare or broad `except`, `pass`, returning a default), or guesses instead of raising `FoamKitError` naming the file and line. Any change from a loud error to silent loss is a regression. Check that every unsupported or malformed input the ticket touches has a test expecting `FoamKitError`.
+- **Simplicity (Zen of Python):** could the same acceptance criteria be met with less code, fewer branches or shallower nesting? Flag needless complexity, special cases that could be a general rule, and hand-rolled code that duplicates an existing helper. Explicit beats implicit; readability counts. Flag as blocking only when it hides a bug risk or makes the code clearly harder to maintain; otherwise list it as a non-blocking suggestion.
+- **Easy to explain (Zen of Python):** if you cannot summarize what the change does in a sentence or two, or a docstring cannot say what a function does simply, that is a finding. Flag dense code too: clever one-liners and nested comprehensions where a few plain lines would read better (sparse is better than dense).
+- **Practicality vs. purity:** a pragmatic compromise is acceptable if it is commented in the code and listed as a follow-up, but never at the expense of the errors-never-pass-silently rule.
+- **Namespaces and public surface:** new public names must go through the package's public surface (`__all__` or the public module), internals stay private, and there are no star imports. A rename or removal of a public name needs a deprecated alias with a warning.
 
 ## Rules
 - Read-only. Do not edit files, even for trivial fixes. Use Bash only for read-only commands and running checks. Do not comment on, approve or merge the PR; the coordinator posts your report on the PR.

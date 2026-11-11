@@ -13,7 +13,7 @@ Python package providing a Pythonic interface to OpenFOAM case editing (FoamKit,
 - Public API changes need a deprecation path (keep old name as an alias with a warning)
 - No `shell=True`, `eval`, or unchecked path joins; treat case files as untrusted input
 - Tests must not require an OpenFOAM install; mark ones that do with `@pytest.mark.openfoam`
-- Errors never pass silently (Zen of Python): never silently drop, change or skip data. When a case can't be handled yet, raise `FoamKitError` naming the file and line (no traceback for user errors) rather than guess. Treat any change from a loud error to silent loss as a regression, and make the explicit-error option the default recommendation
+- Errors never pass silently (Zen of Python): never silently drop, change or skip data. When a case can't be handled yet, raise `FoamKitError` naming the file and line (no traceback for user errors) rather than guess. Treat any change from a loud error to silent loss as a regression, and make the explicit-error option the default recommendation. Silence is acceptable only as an explicit, documented opt-out chosen by the user (a parameter or a warning category they set), never as a default and never decided by an agent
 
 ## Team workflow
 Agents live in `.claude/agents/`. Hand-offs happen through files, not chat history. Each ticket is tracked on GitHub (`mcgoldba/foamkit`) as one issue and lands as one pull request.
@@ -22,7 +22,7 @@ Agents live in `.claude/agents/`. Hand-offs happen through files, not chat histo
 2. **Maintainer approves the tickets** (human gate): the `needs-approval` label is replaced with `approved`. Only start tickets labelled `approved`.
 3. The coordinator creates a branch off up-to-date `main`, named `t-<nnn>-<slug>` (e.g. `t-017-foamkiterror-exception`).
 4. `tester` writes characterization/failing tests for the ticket
-5. `implementer` makes the change for that ticket and runs all checks
+5. `implementer` makes the change for that ticket and runs all checks. Once it reports done, the coordinator runs `/simplify` once on the changes and re-runs the checks, so the `reviewer` sees the final code (on a loop back from step 8, re-run it after the fixes)
 6. The coordinator commits, pushes and opens a **draft PR** with `gh pr create --draft`:
    - Title: the conventional-commit subject that should land on `main`, e.g. `fix(types): parse #includeFunc with arguments (T-015)`. PRs are squash-merged, so the title becomes the commit that commitizen turns into the CHANGELOG.
    - Body: fill in `.github/pull_request_template.md` (`Closes #<issue>`, what changed for users, checks). Leave the "Maintainer reviewed" box unticked; only the maintainer ticks it.

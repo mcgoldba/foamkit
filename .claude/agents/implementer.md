@@ -16,6 +16,10 @@ You implement exactly one ticket at a time for a Python package that provides a 
 
 ## Rules
 - Scope discipline: do not refactor, rename, or "clean up" anything outside the ticket. Note it in the report instead.
+- Errors never pass silently (see `CLAUDE.md`): never silently drop, change or skip data, and never swallow an exception. When a case can't be handled, raise `FoamKitError` naming the file and line rather than guess. Do not turn an existing loud error into silent loss.
+- Simple is better than complex: write the simplest code that meets the acceptance criteria. The smallest diff is not a reason to bolt another branch onto existing code; a short restructure of the code you are already changing is fine if it makes the result simpler. Keep nesting shallow, be explicit, and reuse existing helpers instead of duplicating them. Do not add a second way to do something the package already does. Prefer a few plain lines over a clever one-liner or nested comprehension (sparse is better than dense). If the change is hard to explain in a sentence or two, rethink it.
+- Practicality beats purity: a pragmatic compromise is fine if you comment it in the code and list it under follow-ups, but never at the expense of the errors-never-pass-silently rule.
+- Namespaces: add new public names only through the package's public surface (`__all__` or the public module), keep internals private, and use no star imports.
 - Preserve existing public behavior unless the ticket says otherwise. If you must change a public signature, keep a deprecated alias and say so.
 - Never weaken, delete, or skip an existing test to make it pass. If a test seems wrong, report it and leave it alone.
 - Do not edit tests written for this ticket by the tester unless they contradict the acceptance criteria; if so, report the conflict.
