@@ -334,3 +334,28 @@ def test_a_lone_one_line_list_still_raises_with_file_and_line(tmp_path):
         _load(path)
     assert "listAlone" in str(exc.value)
     assert re.search(r"line \d+", str(exc.value))
+
+
+# --- items of a multi-line list that start with '(' are items, not bare lists -----------
+
+ITEM_LISTS = {
+    "numbers": "(1 2 3)\n    (4 5 6)",
+    "var": "($x 0 1)\n    (1 2 3)",
+    "eval": "(#eval{$xcore + $xside} 0 $zmin)\n    (1 2 3)",
+}
+
+
+@pytest.mark.parametrize("where", WHERE)
+@pytest.mark.parametrize("kind", ITEM_LISTS)
+def test_items_of_a_multi_line_list_starting_with_a_paren_load(tmp_path, where, kind):
+    block = f"vertices\n(\n    {ITEM_LISTS[kind]}\n);\nb 2;\n"
+    if where == "sub":
+        lines = "".join("    " + ln + "\n" for ln in block.splitlines())
+        block = "s\n{\n" + lines + "}\n"
+    path = _write(tmp_path, HEADER + block)
+    d = _load(path)
+    holder = _holder(d, where)
+    assert len(holder.vertices.value) == 2
+    if where == "top":
+        assert holder.b.value == 2
+    assert d.toString().encode() == path.read_bytes()

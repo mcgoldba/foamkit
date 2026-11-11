@@ -4702,6 +4702,9 @@ class DictFileParser:
         self._spans = []
         #- Line index the last queued extra line came from
         self._extraLineAt = None
+        #- True while the items of a multi-line list are read line by line:
+        #  a line starting with '(' is an item there, not a bare list
+        self._inListItems = False
         #- Names of unknown directives already warned about (once per file)
         self._warnedDirectives = set()
 
@@ -5620,7 +5623,7 @@ class DictFileParser:
                         f"'{lineList[1]}' after the keyword '{lineList[0]}' "
                         "(an include directive as the value of an entry) "
                         "cannot be parsed.", "ERROR")
-            elif (lineList[0].startswith('(')
+            elif (lineList[0].startswith('(') and not self._inListItems
                     and (bareList := self._parseBareListLine(
                         parsingExtraLine)) is not None):
                 #- a bare list that closes on its own line (T-090)
@@ -6020,10 +6023,14 @@ class DictFileParser:
 
             self.i+=1
 
-            while self.i < i_end:
-                value_ = self._parseLine()
-                if value_ is not None:
-                    list_.value.append(value_)
+            outer, self._inListItems = self._inListItems, True
+            try:
+                while self.i < i_end:
+                    value_ = self._parseLine()
+                    if value_ is not None:
+                        list_.value.append(value_)
+            finally:
+                self._inListItems = outer
 
             # logger.debug(f"list_:\n{list_}")
 
