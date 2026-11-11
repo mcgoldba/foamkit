@@ -61,6 +61,8 @@ PRIVATE = {
     "_header",
     "_foamFile",
     "_srcLayout",
+    "_newline",
+    "_mixedLine",
 }
 
 
