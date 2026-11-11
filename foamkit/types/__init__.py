@@ -6513,20 +6513,26 @@ class DictFileParser:
                 self._addExtraLine(extraLine) 
         self.i += 1
 
-        while self.i <= i_end:
-            value_ = self._parseLine()
-            if value_ is not None:
-                if isinstance(value_, ofDict):
-                    dict_.update({value_._name: value_})
-                elif hasattr(value_, 'name'):
-                    dict_.update({value_.__getattribute__('name'): value_})    
-                else:
+        #- a bare list inside this dict is a statement, even when the dict
+        #  is an item of a multi-line list
+        outer, self._inListItems = self._inListItems, False
+        try:
+            while self.i <= i_end:
+                value_ = self._parseLine()
+                if value_ is not None:
+                    if isinstance(value_, ofDict):
+                        dict_.update({value_._name: value_})
+                    elif hasattr(value_, 'name'):
+                        dict_.update({value_.__getattribute__('name'): value_})    
+                    else:
+                        # logger.debug(f"{type(value_)} attributes: {vars(value_).keys()}")
+                        # logger.error("Invalid type returned to dictionary")
+                        # sys.exit()
+                        dict_.update({None: value_})
                     # logger.debug(f"{type(value_)} attributes: {vars(value_).keys()}")
-                    # logger.error("Invalid type returned to dictionary")
-                    # sys.exit()
-                    dict_.update({None: value_})
-                # logger.debug(f"{type(value_)} attributes: {vars(value_).keys()}")
-                # dict_.update({value_.__getattribute__(name_): value_})
+                    # dict_.update({value_.__getattribute__(name_): value_})
+        finally:
+            self._inListItems = outer
 
         # logger.debug(f"dict_:\n{dict_}")
 

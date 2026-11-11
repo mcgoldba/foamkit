@@ -359,3 +359,39 @@ def test_items_of_a_multi_line_list_starting_with_a_paren_load(tmp_path, where, 
     if where == "top":
         assert holder.b.value == 2
     assert d.toString().encode() == path.read_bytes()
+
+
+# --- a bare list inside a dict that is an item of a multi-line list ---------------------
+
+DICT_ITEM_BARE = {
+    "one-line": "( x y )",
+    "one-line-semicolon": "( x y );",
+}
+
+
+@pytest.mark.parametrize("where", WHERE)
+@pytest.mark.parametrize("kind", DICT_ITEM_BARE)
+def test_bare_list_inside_dict_item_of_a_list_keeps_next_entry(tmp_path, where, kind):
+    block = (
+        "L\n(\n    {\n        a 1;\n"
+        f"        {DICT_ITEM_BARE[kind]}\n"
+        "        b 2;\n    }\n);\nc 3;\n"
+    )
+    if where == "sub":
+        lines = "".join("    " + ln + "\n" for ln in block.splitlines())
+        block = "s\n{\n" + lines + "}\n"
+    path = _write(tmp_path, HEADER + block)
+    try:
+        d = _load(path)
+    except FoamKitError as exc:
+        # a loud, located error is acceptable; a hidden entry is not
+        assert path.name in str(exc)
+        assert re.search(r"line \d+", str(exc))
+        return
+    holder = _holder(d, where)
+    item = holder.L.value[0]
+    assert item.a.value == 1
+    assert item.b.value == 2
+    assert holder.c.value == 3
+    assert len(holder.L.value) == 1
+    assert d.toString().encode() == path.read_bytes()
