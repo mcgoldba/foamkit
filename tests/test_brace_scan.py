@@ -696,6 +696,10 @@ REAL_OUTCOMES = {
     # - `box (-1e6 -1e6 -1e6)(1e6 -0.15 0.3);` in real topoSet/setFields dictionaries.
     "foundation-11.capillaryRise.setFieldsDict": ["defaultFieldValues", "regions"],
     "foundation-11.pipeCyclic.topoSetDict": ["actions"],
+    # - Added with T-084 (tests/test_bare_top_level_list.py): a bare list as the whole
+    # - content of the file; it loads as the entries `unnamed_1` (and `unnamed_2`).
+    "foundation-11.filter.parcelInjectionProperties": ["unnamed_1"],
+    "foundation-11.iglooWithFridges.fridgeA.eMesh": ["unnamed_1", "unnamed_2"],
 }
 
 

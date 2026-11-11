@@ -87,9 +87,14 @@ SPECIAL_CHARS = {'(': '_',  # Replacement of special chars attribute
                  ' ': '_',
                  '"': '_',
                  '|': '_'}
+def _isGeneratedKey(name) -> bool:
+    """True for a key made by the reader (`unnamed_<n>`), not one in the file."""
+    return (isinstance(name, str)
+            and re.match(UNNAMED_TAG+'[0-9]+$', name) is not None)
+
+
 def printNameStr(name) -> str:
-    if (name is None 
-    or re.match(UNNAMED_TAG+'[0-9]+$', name)):
+    if name is None or _isGeneratedKey(name):
         # name=''
         return ''
     if len(name) >= 12:
@@ -779,7 +784,7 @@ def _fpNames(cls):
     names = _FP_NAMES.get(cls)
     if names is None:
         base = ['_name', '_comment', '_comment_keyword', '_srcText',
-                '_srcReprs', '_dimName']
+                '_srcReprs', '_dimName', '_semicolon']
         if dataclasses.is_dataclass(cls):
             for f in dataclasses.fields(cls):
                 base += [f.name, '_' + f.name]
@@ -1819,12 +1824,7 @@ class ofList(_ofNamedTypeBase):
                     dStr += v.toString(ofRep=False, indent=False).strip()+" "
                 else:
                     dStr += str(v).strip()+" "
-        dStr = dStr.rstrip()
-        if ofRep:
-            dStr+= ");\n"
-        else:
-            dStr+= ")\n"
-        return dStr
+        return dStr.rstrip() + self._closing(ofRep)
 
 
     def __str__(self):
@@ -1833,6 +1833,17 @@ class ofList(_ofNamedTypeBase):
     def __iter__(self):
         for item in self.value:
             yield item
+
+    #- False for a bare list (key `unnamed_<n>`) whose source had no closing
+    #  ';', set by the reader.  Same idea as `ofInclude._semicolon`, but the
+    #  default is True: any other list is always written with its ';'.
+    _semicolon = True
+
+    def _closing(self, ofRep) -> str:
+        """The end of the list: `)` and, for an OpenFOAM entry, `;`."""
+        if ofRep and (self._semicolon or not _isGeneratedKey(self.name)):
+            return ");\n"
+        return ")\n"
 
 TYPE_REGISTRY.append(ofList)
 
@@ -1849,7 +1860,7 @@ class ofSplitList(ofList):
         """
         # logging.getLogger('foamkit').setLevel(logging.DEBUG)
 
-        if self.name:
+        if self.name and not _isGeneratedKey(self.name):
             dStr = self.name+_keywordComment(self)+"\n(\n"
         else:
             dStr = "(\n"
@@ -1876,7 +1887,7 @@ class ofSplitList(ofList):
                     dStr += TAB_STR+v.toString(ofRep=False, indent=False)
                 else:
                     dStr += TAB_STR+str(v)+'\n'
-        dStr+= ");\n"
+        dStr += self._closing(ofRep)
         if not ofRep:
             dStr = dStr.replace(';', '')
         return dStr
@@ -2575,7 +2586,7 @@ class ofDict(dict, _ofTypeBase):
         """
         # logging.getLogger('foamkit').setLevel(logging.DEBUG)
 
-        if self._name:
+        if self._name and not _isGeneratedKey(self._name):
             dStr = self._name+_keywordComment(self)+"\n{\n"
         else:
             dStr = "{\n"
@@ -2583,7 +2594,7 @@ class ofDict(dict, _ofTypeBase):
         for k, v in zip(self.__dict__.keys(), self.__dict__.values()):
             k = k.rstrip('_') # remove possible "_" added in _checkReserved
             # logger.debug(f"dict entry: {k}: {v}")
-            if k is None or re.match(UNNAMED_TAG+'_[0-9]+$', k):
+            if k is None or _isGeneratedKey(k):
                 k=''
             if k not in self._CLASS_VARS:
                 if isinstance(v, ofDict):
@@ -5930,6 +5941,7 @@ class DictFileParser:
         # logger.debug("Parsing list without dictionary values...")
 
         entryList = []
+        hasSemicolon = False
 
         while self.i <= i_end:
             line = self.lines[self.i]
@@ -5959,6 +5971,7 @@ class DictFileParser:
                 head = line.split(';')[0].rstrip()
                 if head.endswith(')'):
                     line = head[:-1]
+                    hasSemicolon = True
             elif self.i == i_end:
                 #- the list closes on this line with no ';' (e.g. a ')' on
                 #  a line of its own): drop that closing ')'
@@ -6020,6 +6033,7 @@ class DictFileParser:
                             f"list whose ';' is on its own line; this shape "
                             f"is not supported yet (see T-036).", 'ERROR')
             self.i += 1
+            hasSemicolon = True
 
         # strValue = " ".join(entryList)
 
@@ -6038,6 +6052,8 @@ class DictFileParser:
         #         list_.value = self._parseListValues(" ".join(entry))
 
         list_.value = entryList
+        if not hasSemicolon:
+            list_._semicolon = False
 
         list_._comment = self._getComment()
 
