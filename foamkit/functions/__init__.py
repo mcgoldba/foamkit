@@ -26,6 +26,7 @@ from ._interpretUnitsAndConvert import _interpretUnitsAndConvert
 from ._unitDecoder import _unitDecoder
 from .appendEntry import appendEntry
 from .getLatestTime import getLatestTime
+from .timeDirs import timeDirs as timeDirs
 from .replaceEntry import replaceEntry
 from .removeEntry import removeEntry
 from .removeBlockEntries import removeBlockEntries
