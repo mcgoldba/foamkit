@@ -19,7 +19,6 @@ written with `os.linesep` today, so it fails on Windows only.  The mixed-ending 
 
 import re
 import shutil
-import sys
 
 import pytest
 
@@ -30,26 +29,9 @@ from conftest import FIXTURES
 
 PITZ = FIXTURES / "pitzDaily"
 ENDINGS = {"LF": b"\n", "CRLF": b"\r\n"}
-ON_WINDOWS = sys.platform == "win32"
 
 
-def _bug_on(windows):
-    """Strict xfail on Windows (`windows=True`) or on every other OS (`False`)."""
-    return pytest.mark.xfail(
-        ON_WINDOWS == windows,
-        strict=True,
-        raises=AssertionError,
-        reason="T-085: case.write() writes text mode, so the ending becomes "
-        "os.linesep and the source ending is lost "
-        f"({'Windows' if windows else 'Linux'} only)",
-    )
-
-
-# An LF source breaks on Windows, a CRLF source breaks on Linux.
-ENDING_PARAMS = [
-    pytest.param("LF", marks=_bug_on(True), id="LF"),
-    pytest.param("CRLF", marks=_bug_on(False), id="CRLF"),
-]
+ENDING_PARAMS = ["LF", "CRLF"]
 
 
 def _files(case):
@@ -158,12 +140,6 @@ def test_write_never_doubles_the_carriage_return(tmp_path, ending):
     assert all(b"\r\r" not in d for d in _files(case).values())
 
 
-@pytest.mark.xfail(
-    ON_WINDOWS,
-    strict=True,
-    raises=AssertionError,
-    reason="T-085: a new file is written with os.linesep (CRLF on Windows), not LF",
-)
 def test_new_file_is_written_with_lf(tmp_path):
     case = _make_case(tmp_path, "CRLF")
     c = pf.init(path=case)
@@ -176,12 +152,6 @@ def test_new_file_is_written_with_lf(tmp_path):
     _assert_all_endings({"extraDict": data}, "LF")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-085: a file mixing line endings is written without any error "
-    "(option A: FoamKitError naming the file and the first differing line)",
-)
 def test_mixed_endings_raise_foamkiterror_naming_file_and_line(tmp_path):
     case = _make_case(tmp_path, "LF")
     target = case / "system" / "controlDict"
