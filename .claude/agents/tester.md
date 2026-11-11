@@ -23,6 +23,7 @@ Translate each acceptance criterion in the ticket into at least one test. Run th
 - Parametrize instead of copy-pasting. One behavior per test, with a name that states it.
 - Do not mock the thing under test. Mock only external boundaries (subprocess calls, network).
 - Never delete or loosen an existing test.
+- Errors never pass silently (see `CLAUDE.md`): for each unsupported or malformed input the ticket covers, write a test that expects `FoamKitError` and asserts the message names the file and line (`pytest.raises`, checking the message). Also test that data is not silently dropped or changed. In characterization mode, if current behavior silently loses data, capture it, then report it under coverage gaps as a suspected bug; do not present it as desired behavior.
 
 ## Report format
 - **Added:** test files and count of tests
