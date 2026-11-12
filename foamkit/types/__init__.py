@@ -5522,16 +5522,15 @@ class DictFileParser:
                 elif (isinstance(value, _ofTypeBase)
                     and not isinstance(value, ofComment)
                     and not isinstance(value, _ofFunctionEntry)):
-                    #- rename key if already in dict:
-                    if value._name in self.dictFile.keys():
-                        # logger.debug("Renaming duplicate key.")
-                        key = value._name+'_1'
+                    if not hasattr(value, '_name'):
+                        #- keyword-only entry (`print;`): `unnamed_<n>`, as
+                        #  in a sub-dict
+                        self.dictFile.update({None: value})
                     else:
+                        #- rename key if already in dict:
                         key = value._name
-                    if hasattr(value, '_name'):
-                        # logger.debug(f"_parseLine: setting {key}: {value}")
-                        self.dictFile.update({key: value})
-                    elif hasattr(value, 'name'):
+                        if key in self.dictFile.keys():
+                            key = key+'_1'
                         self.dictFile.update({key: value})
                 elif isinstance(value, ofComment):
                     name_ = COMMENT_TAG+str(self.nComments)
