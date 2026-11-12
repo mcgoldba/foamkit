@@ -506,11 +506,16 @@ def test_pitzdaily_unedited_init_save_load_write_prints_no_warning(case, capsys)
 
 
 def test_str_keeps_the_value_cache_key():
-    """An `ofStr` stores its value as `value`, so `.params` caches and layout
-    fingerprints saved before T-087 stay valid (no `_value` key)."""
+    """An `ofStr` stores its value as a plain `value` attribute, so `.params`
+    caches and layout fingerprints saved before T-087 stay valid, also those
+    of lists holding strings (no `_value` key, value still fingerprinted)."""
     s = fkt.ofStr(name="s", value="abc")
     assert "value" in vars(s)
     assert "_value" not in vars(s)
     s.value = "def"
     assert vars(s)["value"] == "def"
-    assert s._value == "def"
+    items = [fkt.ofStr(value="a.so"), fkt.ofStr(value="b.so")]
+    lst = fkt.ofSplitList(name="libs", value=items)
+    before = fkt._fingerprint("libs", lst)
+    items[1].value = "c.so"
+    assert fkt._fingerprint("libs", lst) != before

@@ -1496,10 +1496,14 @@ def _entryLabel(entry, kind):
     return f"{kind} entry '{name}'"
 
 
+def _valueAttr(entry) -> str:
+    """Name of the attribute holding the value (`ofStr` keeps `value`)."""
+    return 'value' if isinstance(entry, ofStr) else '_value'
+
+
 def _holdsValue(entry) -> bool:
-    """True once the entry has a value slot (`ofStr` keeps it as `value`)."""
-    attrs = vars(entry)
-    return '_value' in attrs or ('value' in attrs and isinstance(entry, ofStr))
+    """True once the entry has a value slot."""
+    return _valueAttr(entry) in vars(entry)
 
 
 def _setKeywordOnly(entry, default=None) -> None:
@@ -1510,10 +1514,11 @@ def _setKeywordOnly(entry, default=None) -> None:
     yet) gets `default` silently, and one that is already `None` stays so.
     A list or group item (no name) cannot be keyword-only: `FoamKitError`.
     """
-    if not _holdsValue(entry):
-        entry._value = default
+    attr = _valueAttr(entry)
+    if attr not in vars(entry):
+        object.__setattr__(entry, attr, default)
         return
-    if entry._value is None:
+    if vars(entry)[attr] is None:
         return
     name = getattr(entry, '_name', None)
     if name is None:
@@ -1521,7 +1526,7 @@ def _setKeywordOnly(entry, default=None) -> None:
                 "keyword-only; remove it from the list instead.", 'ERROR')
     userMsg(f"Entry '{name}': value set to None; written as the "
             f"keyword-only entry '{name};'.", 'WARNING')
-    entry._value = None
+    object.__setattr__(entry, attr, None)
 
 
 def _noneToKeywordOnly(entry, v) -> bool:
@@ -1545,7 +1550,7 @@ def _isValueEntry(v) -> bool:
 def _isKeywordOnly(v) -> bool:
     """True for a named value entry whose value is `None`, written `name;`."""
     return (_isValueEntry(v) and getattr(v, '_name', None) is not None
-            and v._value is None)
+            and vars(v).get(_valueAttr(v), 0) is None)
 
 
 def _keywordOnlyText(v, ofRep) -> str:
@@ -1712,28 +1717,14 @@ class ofStr(_ofNamedTypeBase):
     def __init__(self, *args, **kwargs):
         super(ofStr, self).__init__(*args, **kwargs)
 
-    #- the value is stored under the plain name `value` (in `__dict__`, behind
-    #  the properties) so the `.params` cache key and the layout fingerprints
-    #  of entries saved earlier stay valid; `_value` is an alias for the
-    #  helpers shared with the other value types
-    @property  # type: ignore[misc]
-    def value(self):
-        return self.__dict__['value']
-
-    @value.setter
-    def value(self, v):
-        if v is None:
+    #- `value` stays a plain attribute (not a property), so the `.params`
+    #  cache key and the layout fingerprints of entries saved earlier (also
+    #  of lists holding strings) stay valid; only `value = None` is caught
+    def __setattr__(self, name, v):
+        if name == 'value' and v is None:
             _setKeywordOnly(self)
         else:
-            self.__dict__['value'] = v
-
-    @property
-    def _value(self):
-        return self.__dict__['value']
-
-    @_value.setter
-    def _value(self, v):
-        self.__dict__['value'] = v
+            object.__setattr__(self, name, v)
 
 TYPE_REGISTRY.append(ofStr)
 
