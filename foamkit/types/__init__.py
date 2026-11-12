@@ -7809,12 +7809,15 @@ class DictFileParser:
 
         dimension      [0 2 -1 0 0 0 0];
 
+        Typed only for exactly one `[7 integers]`; any other shape returns
+        None and stays text.
+
         """
 
         line = self.lines[self.i]
 
         lineList = self._getLinesList(line)
-        
+
         try:
             ofWord(lineList[0])
         except:
