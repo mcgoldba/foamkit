@@ -166,14 +166,13 @@
   - Result fields load as token lists, not numbers (T-068). `ofStudy` writes to the working directory and its `sort` fails (T-069).
 
 ## Next (ranked)
-**In progress:** T-081 dimension sets keep every token (#108).
+**In progress:** T-088 dimension assignment is written or raises (#116).
 
-1. **T-081** dimension sets keep every token (S, #108): words, non-integer or missing exponents, and values that are not numbers are **silently dropped or shifted**; depends on T-014, which lands first (moved up when T-020a merged, 2026-11-09).
-2. **T-088** dimension assignment is written or raises (S, #116): `d.nu.dimensions = [...]` is **silently ignored** on write and `.dimension = [...]` writes Python list text; follows T-014 and T-081 (moved up when T-014 merged, 2026-11-09).
-3. **T-079** top-level keyword-only entries load (S, #106): a bare `print;` or `box ;` at the top level crashes the load with an `AttributeError` (stock Foundation 14 `filter` `createZonesDict`); T-087 needs it, so it leads the rest (moved up when T-086 merged, 2026-11-10).
-4. **T-087** `.value = None` writes `count;` (S, #115): today it writes `count None;`, which OpenFOAM cannot read, and turns a vector into `(0.0 0.0 0.0)`; the maintainer chose `count;` with a warning; needs T-079 (ranked just above), so it leads the rest (moved up when T-059 merged, 2026-11-10).
-5. **T-083** edits inside a sub-dictionary change only that entry (M, #111, T-020b): the usual `solvers`, `boundaryField` or `functions` edit rewrites the whole dict; approved (moved up when T-084 merged, 2026-11-11).
-6. **T-092** unnamed keys by marker (M, #127): a user key `unnamed_1` next to a bare list or `{…}` block **silently overwrites** one entry, even in an unedited write; a user key `unnamed_3` loses its name on write (moved up when T-085 merged, 2026-11-11).
+1. **T-088** dimension assignment is written or raises (S, #116): `d.nu.dimensions = [...]` is **silently ignored** on write and `.dimension = [...]` writes Python list text; follows T-014 and T-081 (moved up when T-014 merged, 2026-11-09).
+2. **T-079** top-level keyword-only entries load (S, #106): a bare `print;` or `box ;` at the top level crashes the load with an `AttributeError` (stock Foundation 14 `filter` `createZonesDict`); T-087 needs it, so it leads the rest (moved up when T-086 merged, 2026-11-10).
+3. **T-087** `.value = None` writes `count;` (S, #115): today it writes `count None;`, which OpenFOAM cannot read, and turns a vector into `(0.0 0.0 0.0)`; the maintainer chose `count;` with a warning; needs T-079 (ranked just above), so it leads the rest (moved up when T-059 merged, 2026-11-10).
+4. **T-083** edits inside a sub-dictionary change only that entry (M, #111, T-020b): the usual `solvers`, `boundaryField` or `functions` edit rewrites the whole dict; approved (moved up when T-084 merged, 2026-11-11).
+5. **T-092** unnamed keys by marker (M, #127): a user key `unnamed_1` next to a bare list or `{…}` block **silently overwrites** one entry, even in an unedited write; a user key `unnamed_3` loses its name on write (moved up when T-085 merged, 2026-11-11).
 
 **Interleaving:** after the layout work, runtime and parser tickets alternate so neither track stalls. Runtime fixes that give silently wrong answers go first (T-059, T-063). Then come starting and stopping runs (T-060 → T-061 → T-062), then the readers for logs, `postProcessing` and fields. The readers need real run output (see Questions); a blocked ticket (marked *) is skipped when reached. Parser tickets keep their earlier relative order.
 
