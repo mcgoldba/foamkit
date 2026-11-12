@@ -2107,6 +2107,19 @@ def _readDimensionSet(tokens, pos, needValue=True):
     return dims, end + 1
 
 
+def _dimensionSetOnly(tokens):
+    """
+    The seven integer exponents if `tokens` (a whitespace split) hold exactly
+    one `[ ... ]` dimension set and nothing else, else None (nothing raised).
+    """
+    if not tokens or not tokens[0].startswith('['):
+        return None
+    read = _readDimensionSet(tokens, 0, needValue=False)
+    if read is None or read[1] != len(tokens):
+        return None
+    return read[0]
+
+
 def _numberReprs(group):
     """
     The `repr` of each item of a group (an `ofList` or a plain list) if all
@@ -2973,29 +2986,56 @@ class ofDictFile(ofDict, _ofFolderItemBase):
 
 
 
+def _dimensionSet(entry, v):
+    """
+    The dimension set `v` as a list of 7 `int`s, for `entry` (named in the
+    error).  `v` is a list or tuple of 7 integers (`2.0` is read as `2`), a
+    string `[e1 ... e7]` or an `ofDimension`.  Anything else (wrong length,
+    fractional or non-numeric exponents, a `bool`, a named set, `None`)
+    reports a `FoamKitError` (via `userMsg` ERROR) and changes nothing.
+    """
+    if isinstance(v, ofDimension):
+        v = v.dimensions
+    dims = None
+    if isinstance(v, str):
+        dims = _dimensionSetOnly(v.split())
+    elif isinstance(v, (list, tuple)) and len(v) == 7:
+        dims = []
+        for i in v:
+            if isinstance(i, bool):
+                break
+            if isinstance(i, numbers.Integral):
+                dims.append(int(i))
+            elif isinstance(i, float) and i.is_integer():
+                dims.append(int(i))
+            else:
+                break
+        if len(dims) != 7:
+            dims = None
+    if dims is None:
+        name = getattr(entry, '_name', None)
+        label = 'Dimension set' if name is None else f"Entry '{name}'"
+        userMsg(f"{label}: dimensions must be 7 integer exponents, e.g. "
+                f"[0 2 -1 0 0 0 0]; got {v!r}.", 'ERROR')
+    return dims
+
+
 @dataclass
 class ofDimension(_ofTypeBase):
     dimensions: List = field(default_factory=lambda:[])
 
-    #- Ensure dimensions are a list of length 7 per OpenFOAM convention
+    def __init__(self, dimensions=None):
+        #- no set given: all zeros; an explicit set is validated
+        self.dimensions = [0] * 7 if dimensions is None else dimensions
+
+    #- The set is stored as a list of 7 integers (see `_dimensionSet`)
     @property
     def dimensions(self):
         return self._dimensions
 
     @dimensions.setter
     def dimensions(self, d):
-        if not isinstance(d, list):
-            d = [0, 0, 0, 0, 0, 0, 0]
-        if (len(d) != 7 or any(isinstance(i, int) for i in d) is False):
-            raise ValueError('Dimensions must be a list of 7 integer values, where each entry corresponds to a base unit type: \
-    \n\t1:  Mass - kilogram (kg) \
-    \n\t2:  Length - meter (m) \
-    \n\t3:  Time - second (s) \
-    \n\t4:  Temperature - Kelvin (K) \
-    \n\t5:  Quantity - mole (mol) \
-    \n\t6:  Current - ampere (A) \
-    \n\t7:  Luminous intensity - candela (cd)')
-        self._dimensions = d
+        self._dimensions = _dimensionSet(self, d)
 
     def toString(self) -> str:
         #- format the dimensions list properly
@@ -3038,6 +3078,27 @@ class ofNamedDimension(ofDimension):
         else:
             self._name = n
 
+    def _noSuchAttribute(self, attr):
+        """Report (`userMsg` ERROR) that a dimension set has no `attr`."""
+        userMsg(f"Entry '{self._name}': a dimension set has no `.{attr}`; "
+                "assign `.dimensions` instead.", 'ERROR')
+
+    @property
+    def value(self):
+        self._noSuchAttribute('value')
+
+    @value.setter
+    def value(self, v):
+        self._noSuchAttribute('value')
+
+    @property
+    def dimension(self):
+        self._noSuchAttribute('dimension')
+
+    @dimension.setter
+    def dimension(self, v):
+        self._noSuchAttribute('dimension')
+
     def toString(self, ofRep=False) -> str:
         #- format the dimensions list properly
         if self.name is not None:
@@ -3058,11 +3119,33 @@ class ofDimensionedScalar(ofFloat):
         #     value=value, dimensions=dimensions, _comment=_comment )
         ofFloat.__init__(self, arg1=arg1, arg2=arg2, name=name, value=value,
             _comment=None)
-        self.dimension = ofDimension(dimensions)
+        #- stored under the plain name `dimension` (in `__dict__`, behind the
+        #  validating property below) so the `.params` cache key and the
+        #  layout fingerprints of entries saved earlier stay valid
+        self.__dict__['dimension'] = ofDimension(
+            None if dimensions is None else _dimensionSet(self, dimensions))
         #- the name repeated before the dimension set in the legacy form
         #  `nu nu [0 2 -1 0 0 0 0] 1e-05;` (None for `nu [0 2 -1 0 0 0 0] 1e-05;`)
         self._dimName = dimName
 
+
+    @property
+    def dimensions(self):
+        """The dimension set as a list of 7 integers; assign any valid set."""
+        return self.__dict__['dimension'].dimensions
+
+    @dimensions.setter
+    def dimensions(self, d):
+        self.__dict__['dimension'] = ofDimension(_dimensionSet(self, d))
+
+    @property
+    def dimension(self):
+        """The dimension set as an `ofDimension`; assigning is as `.dimensions`."""
+        return self.__dict__['dimension']
+
+    @dimension.setter
+    def dimension(self, d):
+        self.dimensions = d
 
     def toString(self, ofRep=False) -> str:
         # #- format the dimensions list properly
@@ -7825,12 +7908,9 @@ class DictFileParser:
         #- exactly one `[ ... ]` of seven integers and nothing else; any other
         #  shape is not typed here and stays text
         tokens = " ".join(lineList[1:]).rstrip().rstrip(';').split()
-        if not tokens or not tokens[0].startswith('['):
-            return None
-        read = _readDimensionSet(tokens, 0, needValue=False)
-        if read is None or read[1] != len(tokens):
+        dimList = _dimensionSetOnly(tokens)
+        if dimList is None:
             return None  # not exactly one dimension set
-        dimList = read[0]
         try:
             dimValue = ofNamedDimension(name=lineList[0], 
                                         dimensions=dimList)

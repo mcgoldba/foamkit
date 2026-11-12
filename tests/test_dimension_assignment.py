@@ -9,8 +9,7 @@ Every bold row of the ticket's three "Today" tables is tested at the top level, 
 sub-dictionary and in a file of the pitzDaily fixture (`0/U` `dimensions`,
 `constant/transportProperties` `nu`).  A bare exception (`ValueError`, `AttributeError`,
 `TypeError`) and "no exception" are both reported as an `AssertionError` by the helpers, so
-every failing test fails with `AssertionError`.  Combinations that already behave as the
-ticket wants today are listed in PASSES_TODAY and run unmarked (pinned).
+every failing test fails with `AssertionError`.
 
 Differences to the ticket's table (reproduced there on 839663c; checked on main cc03aa1):
 `nu nu [0 2 -1 0 0 0 0] 1e-05;` now loads as `ofDimensionedScalar` (T-014, with `_dimName`),
@@ -95,47 +94,7 @@ INVALID = {
     "none": None,
 }
 
-#: id of a (test, parameter) combination that already behaves as wanted today.
-#: Everything else in the parametrised tests below is a strict xfail.
-PASSES_TODAY = {
-    # an assigned list on a named dimension set is stored and written (already correct)
-    "test_assigned_dimensions_are_stored": {
-        "named-top-dimensions-list",
-        "named-sub-dimensions-list",
-        "named-pitzDaily-0-U-dimensions-list",
-    },
-    # `.dimension = '[...]'` and `= ofDimension` are written correctly (ticket table, row 22)
-    "test_assigned_dimensions_are_written": {
-        "named-top-dimensions-list",
-        "named-sub-dimensions-list",
-        "named-pitzDaily-0-U-dimensions-list",
-        *(
-            f"{t}-dimension-{v}"
-            for t in (
-                "scalar-top",
-                "scalar-sub",
-                "scalar-legacy-nu-nu",
-                "scalar-transportProperties",
-            )
-            for v in ("string", "ofDimension")
-        ),
-    },
-    "test_written_text_reloads_with_the_assigned_set": {
-        "named-top-dimensions-list",
-        "named-sub-dimensions-list",
-        "named-pitzDaily-0-U-dimensions-list",
-    },
-    # a stray unused attribute leaves the old set and the written text as they were
-    "test_invalid_assignment_keeps_the_old_set": set(),
-    "test_invalid_assignment_leaves_the_written_text_unchanged": set(),
-}
-
-
 # --- helpers ------------------------------------------------------------------------------
-
-
-def _fails(test, pid):
-    return pid not in PASSES_TODAY.get(test, ())
 
 
 def _attr_axis(target):
@@ -147,25 +106,13 @@ def _attr_axis(target):
 
 
 def _targets_with_attr(test, values):
-    """(target, attr, value id) combinations; xfail unless listed in PASSES_TODAY."""
-    out = []
-    for t in TARGETS:
-        for a in _attr_axis(t):
-            for v in values:
-                pid = f"{t}-{a}-{v}"
-                marks = ()
-                if _fails(test, pid):
-                    marks = pytest.mark.xfail(
-                        strict=True,
-                        raises=AssertionError,
-                        reason="T-088: dimension assignment is ignored, zeroed, or written as text",
-                    )
-                out.append(pytest.param(t, a, v, id=pid, marks=marks))
-    return out
-
-
-def _xfail(reason="T-088: dimension assignment is ignored, zeroed, or written as text"):
-    return pytest.mark.xfail(strict=True, raises=AssertionError, reason=reason)
+    """(target, attr, value id) combinations."""
+    return [
+        pytest.param(t, a, v, id=f"{t}-{a}-{v}")
+        for t in TARGETS
+        for a in _attr_axis(t)
+        for v in values
+    ]
 
 
 def _call(fn):
@@ -278,11 +225,6 @@ def test_written_text_reloads_with_the_assigned_set(tmp_path, target, attr, valu
 
 
 @pytest.mark.parametrize("target", [t for t in TARGETS if TARGETS[t][0] == "scalar"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: `.dimension = list` is stored raw",
-)
 def test_dimension_attribute_holds_an_ofDimension(tmp_path, target):
     _, _, entry = _setup(tmp_path, target)
     _assign(entry, "dimension", VALID["list"])
@@ -290,9 +232,6 @@ def test_dimension_attribute_holds_an_ofDimension(tmp_path, target):
 
 
 @pytest.mark.parametrize("target", ["scalar-top", "named-top"])
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="T-088: an ofDimension is not read"
-)
 def test_assigning_an_ofDimension_copies_its_list(tmp_path, target):
     _, _, entry = _setup(tmp_path, target)
     source = fkt.ofDimension([0, 1, -1, 0, 0, 0, 0])
@@ -358,11 +297,6 @@ def test_invalid_assignment_leaves_the_written_text_unchanged(
 
 @pytest.mark.parametrize("target", [t for t in TARGETS if TARGETS[t][0] == "scalar"])
 @pytest.mark.parametrize("value", ["short", "word"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: `.dimensions` is a new unused attribute",
-)
 def test_invalid_dimensions_on_a_scalar_leave_no_stray_attribute(
     tmp_path, target, value
 ):
@@ -379,31 +313,18 @@ CTOR_INVALID = [
 ]  # ofDimension(None) is the default (pinned)
 
 
-def _list_passes_rest_fail():
-    """`list` is read today (pinned); every other accepted input gives zeros."""
-    return [
-        pytest.param(v, id=v, marks=() if v == "list" else _xfail("T-088: gives zeros"))
-        for v in VALID
-    ]
+def _accepted_inputs():
+    """Every accepted input."""
+    return [pytest.param(v, id=v) for v in VALID]
 
 
 @pytest.mark.parametrize("value", CTOR_INVALID)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: ofDimension('...') gives zeros or a bare ValueError",
-)
 def test_ofDimension_constructor_rejects_invalid_input(value):
     err = _expect_error(lambda: fkt.ofDimension(INVALID[value]))
     assert "7" in str(err) and "integer" in str(err), str(err)
 
 
 @pytest.mark.parametrize("value", _ids(INVALID))
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: the setter zeroes or accepts the value",
-)
 def test_ofDimension_setter_rejects_invalid_input_and_keeps_the_old_set(value):
     od = fkt.ofDimension(NEW)
     err = _expect_error(lambda: setattr(od, "dimensions", INVALID[value]))
@@ -411,7 +332,7 @@ def test_ofDimension_setter_rejects_invalid_input_and_keeps_the_old_set(value):
     assert od.dimensions == NEW
 
 
-@pytest.mark.parametrize("value", _list_passes_rest_fail())
+@pytest.mark.parametrize("value", _accepted_inputs())
 def test_ofDimension_constructor_reads_every_accepted_input(value):
     od = _call(lambda: fkt.ofDimension(VALID[value]()))
     assert od.dimensions == NEW
@@ -419,7 +340,7 @@ def test_ofDimension_constructor_reads_every_accepted_input(value):
     assert str(od) == "[0 1 -1 0 0 0 0]"
 
 
-@pytest.mark.parametrize("value", _list_passes_rest_fail())
+@pytest.mark.parametrize("value", _accepted_inputs())
 def test_ofDimension_setter_reads_every_accepted_input(value):
     od = fkt.ofDimension(OLD)
     _call(lambda: setattr(od, "dimensions", VALID[value]()))
@@ -457,11 +378,6 @@ def test_dimensioned_tensors_share_the_ofDimension_setter(cls):
 
 
 @pytest.mark.parametrize("cls", ["ofDimensionedScalar", "ofDimensionedVector"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: ofDimensionedScalar has no `dimensions` property",
-)
 def test_dimensioned_scalar_and_vector_have_a_dimensions_property(cls):
     prop = getattr(getattr(fkt, cls), "dimensions", None)
     assert isinstance(prop, property)
@@ -476,11 +392,6 @@ NAMED = [t for t in TARGETS if TARGETS[t][0] == "named"]
 @pytest.mark.parametrize("target", NAMED)
 @pytest.mark.parametrize("attr", ["value", "dimension"])
 @pytest.mark.parametrize("what", ["valid-list", "number"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: `.value =` / `.dimension =` create an unused attribute",
-)
 def test_named_dimension_value_and_dimension_assignment_point_to_dimensions(
     tmp_path, target, attr, what
 ):
@@ -495,11 +406,6 @@ def test_named_dimension_value_and_dimension_assignment_point_to_dimensions(
 
 @pytest.mark.parametrize("target", NAMED)
 @pytest.mark.parametrize("attr", ["value", "dimension"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: `.value =` / `.dimension =` create an unused attribute",
-)
 def test_named_dimension_guard_leaves_no_attribute_and_the_text_unchanged(
     tmp_path, target, attr
 ):
@@ -521,9 +427,6 @@ def _saved_case(case, attr, make):
 
 
 @pytest.mark.parametrize("attr", ["dimensions", "dimension"])
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="T-088: the assigned set is not written"
-)
 def test_assigned_set_survives_save_and_load(case, attr):
     loaded = _saved_case(case, attr, VALID["list"])
     nu = loaded.constant.transportProperties.nu
@@ -533,9 +436,6 @@ def test_assigned_set_survives_save_and_load(case, attr):
 
 
 @pytest.mark.parametrize("attr", ["dimensions", "dimension"])
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="T-088: the assigned set is not written"
-)
 def test_assigned_set_is_written_to_disk_after_save_and_load(case, attr):
     loaded = _saved_case(case, attr, VALID["list"])
     loaded.write()
@@ -560,11 +460,6 @@ def _cache_with_stray(case, stray):
     cache.write_text(json.dumps(data))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: the stray key is a plain attribute that nothing writes",
-)
 def test_old_cache_with_a_valid_stray_dimensions_key_applies_it(case):
     _cache_with_stray(case, NEW)
     nu = pf.load(path=case).constant.transportProperties.nu
@@ -575,11 +470,6 @@ def test_old_cache_with_a_valid_stray_dimensions_key_applies_it(case):
 
 @pytest.mark.parametrize(
     "stray", [[0, 1, -1], [0, "a", -1, 0, 0, 0, 0]], ids=["short", "word"]
-)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-088: the invalid stray key loads without an error",
 )
 def test_old_cache_with_an_invalid_stray_dimensions_key_raises_on_load(case, stray):
     _cache_with_stray(case, stray)
@@ -669,3 +559,16 @@ def test_pitzDaily_regenerated_write_keeps_the_dimension_sets(name):
     }
     assert expected[name] in out
     assert "[0 0 0 0 0 0 0]" not in out
+
+
+def test_scalar_keeps_the_dimension_cache_key():
+    """The set is stored as `dimension`, so `.params` caches and layout
+    fingerprints saved before T-088 stay valid (no `_dimension` key)."""
+    d = fkt.ofDimensionedScalar(
+        name="nu", value=1e-05, dimensions=[0, 2, -1, 0, 0, 0, 0]
+    )
+    assert "dimension" in vars(d)
+    assert "_dimension" not in vars(d)
+    d.dimensions = [0, 1, -1, 0, 0, 0, 0]
+    assert list(vars(d)).count("dimension") == 1
+    assert d.dimension.dimensions == [0, 1, -1, 0, 0, 0, 0]
