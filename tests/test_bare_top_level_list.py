@@ -420,12 +420,6 @@ def test_one_line_bare_list_either_loads_every_entry_or_raises(tmp_path, text):
     assert "b" in d.__dict__, "entry `b` was silently dropped"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-079 (#106, not T-084): a top-level keyword-only entry raises a bare AttributeError "
-    "('ofWord' object has no attribute '_name') instead of loading or FoamKitError",
-)
 def test_top_level_keyword_only_entry_never_raises_a_bare_exception(tmp_path):
     path = tmp_path / "kwTop"
     path.write_text(HEADER + "a 1;\nprint;\nb 2;\n")

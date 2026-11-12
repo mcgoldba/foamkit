@@ -610,6 +610,15 @@ REAL_OUTCOMES = {
         "x3",
     ],
     "foundation-14.trayedPipe.createZonesDict": FoamKitError,
+    # - Added with T-079: the top-level `print;` loads as `unnamed_1`.
+    "foundation-14.filter.createZonesDict": [
+        "filter",
+        "leftFluid",
+        "rightFluid",
+        "cycLeft",
+        "cycRight",
+        "unnamed_1",
+    ],
     # - Added with T-041: the multi-entry-line files load (rotatingCube stops earlier on
     # - value-position `#calc`, T-027).
     "foundation-14.rotatingCube.blockMeshDict": TypeError,

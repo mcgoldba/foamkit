@@ -33,7 +33,6 @@ from test_directives import HEADER
 from test_several_lists_value import _load
 
 REAL = TESTS / "releases" / "foundation-14.filter.createZonesDict"
-BUG = "T-079: a top-level keyword-only entry crashes loading with a bare AttributeError"
 
 # id -> (body after the header, expected entries as (key, type name, value) in order)
 W = "ofWord"
@@ -115,13 +114,7 @@ def _words(row):
 
 
 def _cases(rows=ROWS):
-    """Top-level cases fail today (strict xfail); sub-dictionary cases pass."""
-    xfail = pytest.mark.xfail(strict=True, raises=AssertionError, reason=BUG)
-    return [
-        pytest.param(w, r, id=f"{w}-{r}", marks=xfail if w == "top" else ())
-        for w in WHERE
-        for r in rows
-    ]
+    return [pytest.param(w, r, id=f"{w}-{r}") for w in WHERE for r in rows]
 
 
 # --- the model: same type and key scheme as in a sub-dictionary ----------------------------
@@ -164,7 +157,6 @@ def test_every_keyword_is_written_with_its_semicolon(tmp_path, where, row):
         assert found == expected
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=BUG)
 def test_top_level_crlf_file_loads_and_keeps_its_line_endings(tmp_path):
     text = (HEADER + ROWS["between"][0]).replace("\n", "\r\n")
     path = _write(tmp_path, text)
@@ -251,7 +243,6 @@ def test_real_file_copy_is_the_upstream_bytes():
     assert b"\r" not in data and b"\nprint;\n" in data and len(data) == 1142
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=BUG)
 def test_real_file_loads_with_print_as_the_last_entry():
     d = _read(REAL)
     assert _keys(d) == [
@@ -265,6 +256,5 @@ def test_real_file_loads_with_print_as_the_last_entry():
     assert d.unnamed_1.value == "print"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=BUG)
 def test_real_file_unedited_write_is_byte_identical():
     assert _read(REAL).toString().encode() == REAL.read_bytes()
