@@ -158,9 +158,16 @@ def load(path=None, _backup=False):
                 or obj['_type'] == 'ofBoundBox'
                 or obj['_type'] == 'ofMultilineStatement'):
                     type_ = locate('foamkit.types.'+obj['_type'])
-                    obj_ = type_(
-                        value = [_parseCaseDict(v, case) for v in obj['_value']]
-                        )
+                    if obj['_value'] is None:
+                        #- keyword-only entry (T-087); set directly: the
+                        #  constructor would give the default value
+                        obj_ = type_()
+                        obj_._value = None
+                    else:
+                        obj_ = type_(
+                            value = [_parseCaseDict(v, case)
+                                     for v in obj['_value']]
+                            )
                     parseValue = False
                 elif (obj['_type'] == 'ofTable'):
                     type_ = locate('foamkit.types.'+obj['_type'])

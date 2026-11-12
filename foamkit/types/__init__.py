@@ -1496,6 +1496,66 @@ def _entryLabel(entry, kind):
     return f"{kind} entry '{name}'"
 
 
+def _holdsValue(entry) -> bool:
+    """True once the entry has a value slot (`ofStr` keeps it as `value`)."""
+    attrs = vars(entry)
+    return '_value' in attrs or ('value' in attrs and isinstance(entry, ofStr))
+
+
+def _setKeywordOnly(entry, default=None) -> None:
+    """
+    Set the value of the named entry `entry` to `None` (T-087): the entry is
+    then written as the keyword-only entry `name;`.  Prints one warning when
+    a value is replaced; an entry that is being built (it has no `_value`
+    yet) gets `default` silently, and one that is already `None` stays so.
+    A list or group item (no name) cannot be keyword-only: `FoamKitError`.
+    """
+    if not _holdsValue(entry):
+        entry._value = default
+        return
+    if entry._value is None:
+        return
+    name = getattr(entry, '_name', None)
+    if name is None:
+        userMsg("Cannot set a list item to None: an item cannot be "
+                "keyword-only; remove it from the list instead.", 'ERROR')
+    userMsg(f"Entry '{name}': value set to None; written as the "
+            f"keyword-only entry '{name};'.", 'WARNING')
+    entry._value = None
+
+
+def _noneToKeywordOnly(entry, v) -> bool:
+    """
+    True if `v` is `None` assigned to an entry that already holds a value:
+    the entry is then set keyword-only (T-087) and the caller returns.
+    """
+    if v is None and _holdsValue(entry):
+        _setKeywordOnly(entry)
+        return True
+    return False
+
+
+def _isValueEntry(v) -> bool:
+    """True for a named entry of a value type, which can be keyword-only."""
+    return (isinstance(v, (ofInt, ofFloat, ofStr, ofBool, ofVar, ofVector,
+                           ofList, ofUniformField))
+            and not isinstance(v, ofTable))
+
+
+def _isKeywordOnly(v) -> bool:
+    """True for a named value entry whose value is `None`, written `name;`."""
+    return (_isValueEntry(v) and getattr(v, '_name', None) is not None
+            and v._value is None)
+
+
+def _keywordOnlyText(v, ofRep) -> str:
+    """The text `name;` (with its comment) of the keyword-only entry `v`."""
+    text = v._name + (';' if ofRep else '')
+    if v._comment is not None:
+        text += " //" + str(v._comment)
+    return text + "\n"
+
+
 def _notANumber(entry, v, kind, boolHint=False):
     """Report (`userMsg` ERROR, raising `FoamKitError`) that `v` cannot be
     stored in the numeric `entry`."""
@@ -1549,7 +1609,7 @@ class ofInt(_ofNamedTypeBase):
         values are judged exactly, not through a float.
         """
         if v is None:
-            self._value = None
+            _setKeywordOnly(self)
             return
         what = _entryLabel(self, 'Integer')
         if isinstance(v, bool):
@@ -1637,7 +1697,7 @@ class ofFloat(_ofNamedTypeBase):
     @value.setter
     def value(self, v):
         if v is None:
-            self._value = None
+            _setKeywordOnly(self)
             return
         if isinstance(v, bool):
             _notANumber(self, v, "Float", boolHint=True)
@@ -1651,6 +1711,29 @@ class ofStr(_ofNamedTypeBase):
     #TODO:  Why do I need to call 'super' here?
     def __init__(self, *args, **kwargs):
         super(ofStr, self).__init__(*args, **kwargs)
+
+    #- the value is stored under the plain name `value` (in `__dict__`, behind
+    #  the properties) so the `.params` cache key and the layout fingerprints
+    #  of entries saved earlier stay valid; `_value` is an alias for the
+    #  helpers shared with the other value types
+    @property  # type: ignore[misc]
+    def value(self):
+        return self.__dict__['value']
+
+    @value.setter
+    def value(self, v):
+        if v is None:
+            _setKeywordOnly(self)
+        else:
+            self.__dict__['value'] = v
+
+    @property
+    def _value(self):
+        return self.__dict__['value']
+
+    @_value.setter
+    def _value(self, v):
+        self.__dict__['value'] = v
 
 TYPE_REGISTRY.append(ofStr)
 
@@ -1690,8 +1773,8 @@ class ofBool(_ofNamedTypeBase):
             self._valueStr = v
             self._value = value
         else:
+            _setKeywordOnly(self)
             self._valueStr = ""
-            self._value = None
 
 
     def toString(self, ofRep=False) -> str:
@@ -1720,6 +1803,8 @@ class ofVar(_ofNamedTypeBase):
 
     @value.setter
     def value(self, v):
+        if _noneToKeywordOnly(self, v):
+            return
         v = str(v)
         if v is not None:
             if len(v.split()) != 1:
@@ -1793,7 +1878,7 @@ class ofList(_ofNamedTypeBase):
             else:
                 raise ValueError("ofList value must be a list.")
         else:
-            self._value = []
+            _setKeywordOnly(self, default=[])
     
     def toString(self, ofRep=False, indent=True) -> str:
         if self.name:
@@ -2281,6 +2366,8 @@ class ofBoundBox(ofListGroups):
         Use `.groups`.
         """
         warnings.warn(_BOX_VALUE_DEPRECATED, DeprecationWarning, stacklevel=2)
+        if self._value is None:
+            return None
         try:
             return _ReadOnlyFloatList(
                 _ReadOnlyFloatList(float(x.value if isinstance(x, (ofInt, ofFloat))
@@ -2298,6 +2385,9 @@ class ofBoundBox(ofListGroups):
         is stored.
         """
         warnings.warn(_BOX_VALUE_DEPRECATED, DeprecationWarning, stacklevel=2)
+        if v is None:
+            _setKeywordOnly(self)
+            return
         groups = _boxGroups(v)
         if groups is None:
             self._badValue(v)
@@ -2362,7 +2452,6 @@ class ofMultilineStatement(_ofNamedTypeBase):
 @dataclass
 class ofDict(dict, _ofTypeBase):
 
-    #TODO: Add method or way to delete the entries (i.e. with `None``)
     #TODO: Allow initializtion with a "name" arg.  
 
    #- ref: https://stackoverflow.com/a/27472354/10592330
@@ -2475,6 +2564,17 @@ class ofDict(dict, _ofTypeBase):
             elif value is not None and not isinstance(value, _ofTypeBase):
                 type_, value_ = DictFileParser._parseValue(value)
                 ofType = type_(name=key_, value=value_)
+            elif value is None:
+                #- `d.key = None` is `d.key.value = None` (T-087)
+                existing = self.__dict__.get(key)
+                if not _isValueEntry(existing):
+                    userMsg(f"Cannot set '{key}' to None: only the value of "
+                            f"an existing value entry can be None. Use `del "
+                            f"d.{key}` to remove an entry, or `d.{key} = "
+                            f"fkt.ofWord('{key}')` to add a keyword-only one.",
+                            'ERROR')
+                existing.value = None
+                return
             else:
                 ofType = value
                 if hasattr(ofType, '_name'):
@@ -2615,7 +2715,9 @@ class ofDict(dict, _ofTypeBase):
             if k is None or _isGeneratedKey(k):
                 k=''
             if k not in self._CLASS_VARS:
-                if isinstance(v, ofDict):
+                if _isKeywordOnly(v):
+                    dStr += TAB_STR + _keywordOnlyText(v, ofRep)
+                elif isinstance(v, ofDict):
                     # logger.debug("Found ofDict.")
                     dStr2 = v.toString(ofRep=ofRep).split("\n")
                     for i in range(len(dStr2)):
@@ -2865,6 +2967,8 @@ class ofDictFile(ofDict, _ofFolderItemBase):
     @staticmethod
     def _entryText(k, v, ofRep) -> str:
         """The text of the entry `k`: `v` in the standard style."""
+        if _isKeywordOnly(v):
+            return _keywordOnlyText(v, ofRep) + '\n'
         if hasattr(v, 'toString') and callable(getattr(v, 'toString')):
             text = v.toString(ofRep=ofRep)
             if isinstance(v, ofVerbatimDirective):
@@ -3199,7 +3303,7 @@ class ofVector(_ofNamedTypeBase):
                 raise Exception("'ofVector' values must be a numeric list of length 3.")
             self._value = v
         else:
-            self._value = [0.0, 0.0, 0.0]
+            _setKeywordOnly(self, default=[0.0, 0.0, 0.0])
 
     def toString(self, ofRep=False) -> str:
         
@@ -3230,6 +3334,8 @@ class ofSphericalTensor(ofVector):
 
     @value.setter
     def value(self, v):
+        if _noneToKeywordOnly(self, v):
+            return
         if isinstance(v, list) is False:
             raise TypeError("Value for 'ofVector' must be a list of length 3.  Got '"+str(v)+"'")
         if (len(v) != 1 or any(isinstance(i, (int, float)) for i in v)
@@ -3250,6 +3356,8 @@ class ofSymmTensor(ofVector):
 
     @value.setter
     def value(self, v):
+        if _noneToKeywordOnly(self, v):
+            return
         if isinstance(v, list) is False:
             raise TypeError("Value for 'ofVector' must be a list of length 3.  Got '"+str(v)+"'")
         if (len(v) != 6 or any(isinstance(i, (int, float)) for i in v)
@@ -3270,6 +3378,8 @@ class ofTensor(ofVector):
 
     @value.setter
     def value(self, v):
+        if _noneToKeywordOnly(self, v):
+            return
         if isinstance(v, list) is False:
             raise TypeError("Value for 'ofVector' must be a list of length 3.  Got '"+str(v)+"'")
         if (len(v) != 9 or any(isinstance(i, (int, float)) for i in v)
@@ -3325,7 +3435,7 @@ class ofUniformField(_ofNamedTypeBase):
                     f"type. Got {type(v)}, need one of:\n{fieldList_}")
             self._value = v
         else:
-            self._value = None
+            _setKeywordOnly(self)
 
     def toString(self, ofRep=False) -> str:
 
