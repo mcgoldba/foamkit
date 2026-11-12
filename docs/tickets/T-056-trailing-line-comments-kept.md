@@ -5,6 +5,7 @@
 - **Size:** M. If the design shows more than M, split: T-056a entries and the include family, T-056b block openers and closers (`{ // c`, `} // c`, `); // c`).
 - **Depends on:** T-036 (#48). Its quote-aware `//` detection is needed so that a `//` inside a string is never taken as the start of a comment.
 - **Related:** T-055 (#74, comment after a block keyword), T-057 (#76, comment after a list item), T-031 (#42, `/* */` comments), T-020 (#27, spacing of unedited entries), T-050 (#67, `fk format` must keep comments).
+- **Split (planner, 2026-11-12):** the scalar rows (`x 1; // c`, `x 1;//c`, `x "a"; // c`, `c (1 2) (3 4); // c`) and "editing a value keeps its comment" for scalar entries moved to **T-095** (#136): since T-020a unedited entries keep their comment from source, and the parser already passes it, but `_ofNamedTypeBase` and the other scalar constructors drop it, so regenerated scalars lose it. This ticket keeps the include family, lists (`l (1 2); // c`: on ddcc8da the comment is stored on `ofSplitList` but not written when regenerated), block braces and entries after a multi-line list.
 - **Found by:** the T-046 reviewer (PR #73, note 5: `#include "f"; // c` and `#include "f" // c` lose the comment). The planner's reproduction shows every entry kind loses a trailing `//` comment; T-037 recorded "A trailing `// c` is still dropped, as before" without a ticket. Pre-existing on main.
 
 ## Goal
