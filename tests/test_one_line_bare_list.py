@@ -145,25 +145,7 @@ def test_unedited_write_keeps_crlf_line_endings(tmp_path):
 
 @pytest.mark.parametrize(
     "where, row",
-    [
-        pytest.param(
-            w,
-            r,
-            id=f"{w}-{r}",
-            marks=(
-                pytest.mark.xfail(
-                    strict=True,
-                    raises=AssertionError,
-                    reason="T-083: regenerating a sub-dict drops a comment after a list "
-                    "(also for a named list, on main)",
-                )
-                if (w, r) == ("sub", "trailing-comment")
-                else ()
-            ),
-        )
-        for w in WHERE
-        for r in EDITABLE
-    ],
+    [pytest.param(w, r, id=f"{w}-{r}") for w in WHERE for r in EDITABLE],
 )
 def test_edit_of_b_gives_one_b_and_the_list_as_read(tmp_path, where, row):
     text, _ = _case(where, row)

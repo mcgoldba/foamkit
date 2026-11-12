@@ -15,9 +15,6 @@ Layout of this module:
   source, and a one-number edit of a nested entry changes one line.
 - write 1 == write 2, `_preserve=False`, and the `.params` cache (also an old cache that has
   no nested records).
-
-Tests marked `xfail(strict=True)` fail on main today with `AssertionError`: the whole
-top-level block that holds the edit is regenerated.  The implementation removes the marks.
 """
 
 import difflib
@@ -34,12 +31,6 @@ from test_preserve_layout import CORPUS, _id
 RELEASES = TESTS / "releases"
 PITZ = FIXTURES / "pitzDaily"
 SNAPPY = RELEASES / "foundation-11.heatedDuct.snappyHexMeshDict"
-
-_NOT_YET = pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="T-083: an edit inside a sub-dict regenerates the whole top-level block",
-)
 
 _HEAD = (
     "FoamFile\n{\n    version     2.0;\n    format      ascii;\n"
@@ -122,7 +113,6 @@ REAL_EDITS = {
 
 
 @pytest.mark.parametrize("key", sorted(REAL_EDITS))
-@_NOT_YET
 def test_editing_one_nested_entry_changes_one_line(key):
     path, edit, old_key, words, indent = REAL_EDITS[key]
     src = _source(path)
@@ -149,7 +139,6 @@ def test_a_nested_edit_is_written_with_the_new_value(key, tmp_path):
     assert " ".join(words) in " ".join(out.split())
 
 
-@_NOT_YET
 def test_editing_a_function_object_setting_keeps_the_include_lines_as_read():
     path = PITZ / "system" / "controlDict"
     d = _load(path)
@@ -160,7 +149,6 @@ def test_editing_a_function_object_setting_keeps_the_include_lines_as_read():
     )
 
 
-@_NOT_YET
 def test_a_sibling_dict_of_the_edited_one_keeps_its_source_text():
     # - the regex-named solver block after `p` is untouched: padding and blank line stay
     path = PITZ / "system" / "fvSolution"
@@ -180,7 +168,6 @@ def _snappy_edit(d):
     d.geometry.heatedDuct.regions.metalInlet.name = "metalInletX"
 
 
-@_NOT_YET
 def test_editing_a_one_line_block_changes_only_that_source_line():
     src = _source(SNAPPY)
     d = _load(SNAPPY)
@@ -274,7 +261,6 @@ def _nested_params():
 
 
 @pytest.mark.parametrize("key", _nested_params())
-@_NOT_YET
 def test_a_nested_edit_changes_only_its_line_at_any_depth(nested, key):
     edit, old, words, indent = NESTED_EDITS[key]
     edit(nested)
@@ -312,11 +298,7 @@ _FRAGMENTS = {
 }
 
 
-# - the keyword comment and the line after `{` are kept today; the rest is lost with the block
-_FRAGMENT_PARAMS = [
-    pytest.param(k, id=k, marks=[] if k.startswith("keyword") else [_NOT_YET])
-    for k in sorted(_FRAGMENTS)
-]
+_FRAGMENT_PARAMS = [pytest.param(k, id=k) for k in sorted(_FRAGMENTS)]
 
 
 @pytest.mark.parametrize("name", _FRAGMENT_PARAMS)
@@ -325,7 +307,6 @@ def test_comments_blank_lines_and_braces_around_an_edit_keep_their_text(nested, 
     assert _FRAGMENTS[name] in nested.toString()
 
 
-@_NOT_YET
 def test_a_comment_on_an_unedited_sibling_survives_an_edit_next_to_it(nested):
     nested.sub.inner.deep.r = 20
     out = nested.toString()
@@ -349,7 +330,6 @@ def test_the_edit_reverted_writes_the_source_again(nested, key):
 # --- an added key and a deleted key ---------------------------------------------------
 
 
-@_NOT_YET
 def test_an_added_key_is_inserted_before_the_closing_brace_of_its_dict(nested):
     nested.sub.inner.added = 7
     out = nested.toString()
@@ -363,7 +343,6 @@ def test_an_added_key_is_inserted_before_the_closing_brace_of_its_dict(nested):
     assert after[0] == "    }"
 
 
-@_NOT_YET
 def test_an_added_key_in_a_real_sub_dict_only_adds_lines():
     path = PITZ / "system" / "fvSolution"
     src = _source(path)
@@ -384,19 +363,18 @@ def test_an_added_key_in_a_sub_dict_reads_back(nested, tmp_path):
     assert back.sub.inner.y.value == 2
 
 
-@_NOT_YET
 def test_deleting_a_key_removes_only_its_lines_and_its_leading_blank_lines(nested):
-    # - `c` follows a comment and a blank line; `inner`'s blank gap belongs to `inner`
+    # - `c` follows a comment and a blank line (its gap, removed with it); the blank line
+    # - after `c` is `inner`'s gap and stays
     del nested.sub.c
     out = nested.toString()
-    assert out == NESTED.replace("\n    c   3;\n", "\n", 1)
+    assert out == NESTED.replace("\n    c   3;\n", "", 1)
     a, b, ops = _ops(NESTED, out)
     assert all(op[0] == "delete" for op in ops), ops
     removed = [ln for i1, i2 in [(o[1], o[2]) for o in ops] for ln in a[i1:i2]]
-    assert [ln for ln in removed if ln.strip()] == ["    after   5;"]
+    assert [ln for ln in removed if ln.strip()] == ["    c   3;"]
 
 
-@_NOT_YET
 def test_deleting_a_key_in_a_real_sub_dict_removes_one_line():
     path = PITZ / "system" / "fvSolution"
     src = _source(path)
@@ -417,7 +395,6 @@ def test_a_deleted_key_is_gone_after_reading_back(nested, tmp_path):
 # --- rename and `_comment_keyword` ----------------------------------------------------
 
 
-@_NOT_YET
 def test_renaming_a_sub_dict_changes_only_its_keyword_line(nested):
     nested.sub.inner._name = "renamed"
     a, b, ops = _ops(NESTED, nested.toString())
@@ -428,7 +405,6 @@ def test_renaming_a_sub_dict_changes_only_its_keyword_line(nested):
     assert b[j1].split()[0] == "renamed"
 
 
-@_NOT_YET
 def test_renaming_a_real_sub_dict_changes_only_its_keyword_line():
     path = PITZ / "0" / "U"
     src = _source(path)
@@ -439,7 +415,6 @@ def test_renaming_a_real_sub_dict_changes_only_its_keyword_line():
     assert b[ops[0][3]].split() == ["outletRenamed"]
 
 
-@_NOT_YET
 def test_changing_the_keyword_comment_changes_only_the_keyword_line(nested):
     nested.sub.inner._comment_keyword = " renamed note"
     a, b, ops = _ops(NESTED, nested.toString())
@@ -475,7 +450,6 @@ def one_line(tmp_path):
     return d
 
 
-@_NOT_YET
 def test_editing_a_one_line_block_leaves_the_other_lines_of_its_parent_alone(one_line):
     one_line.outer.p.type = "wall"
     out = one_line.toString()
@@ -498,7 +472,6 @@ def test_the_edited_one_line_block_is_written_as_a_multi_line_block(one_line, tm
     assert _reload(out, tmp_path, "back").outer.p.type.value == "wall"
 
 
-@_NOT_YET
 def test_a_one_line_block_next_to_an_edited_entry_keeps_its_text(one_line):
     # - the edit is in `multi`; the one-line blocks before it stay as read
     one_line.outer.multi.b = 20
@@ -507,7 +480,6 @@ def test_a_one_line_block_next_to_an_edited_entry_keeps_its_text(one_line):
     assert "        a    1;\n" in out
 
 
-@_NOT_YET
 def test_a_one_line_block_with_a_comment_after_the_brace_is_regenerated(tmp_path):
     src = _HEAD + "outer\n{\n    p { d 1; // note\n    }\n    keep    1;\n}\n"
     d = _reload(src, tmp_path)
@@ -733,7 +705,6 @@ def test_an_unedited_write_is_the_source_with_nested_records_in_place(path):
 
 
 @pytest.mark.parametrize("path,trail,raw", CORPUS_EDITS)
-@_NOT_YET
 def test_a_nested_number_edit_changes_one_line_in_the_corpus(path, trail, raw):
     src = _source(path)
     d = _load(path)
@@ -794,7 +765,6 @@ def test_cache_round_trip_writes_the_source_before_any_edit(key, case):
 
 
 @pytest.mark.parametrize("key", sorted(REAL_EDITS))
-@_NOT_YET
 def test_cache_round_trip_gives_the_same_nested_edit_diff(key, case):
     path, edit, old_key, words, indent = REAL_EDITS[key]
     rel = path.relative_to(PITZ)
@@ -866,3 +836,24 @@ def test_an_old_cache_nested_edit_keeps_the_top_level_entries_as_read(case):
     out = d.toString()
     # - the entries after `solvers` are written from the top-level record
     assert out.endswith(src[src.index("SIMPLE\n{") :])
+
+
+# --------------------------------------------------------------------------------------
+# fingerprints of top-level dictionaries stay as T-020a wrote them (old caches)
+# --------------------------------------------------------------------------------------
+
+# - recorded in a `.params` cache written by T-020a (origin/main before T-083)
+OLD_PRINTS = [
+    ("system/fvSolution", "solvers", "b17d677301d10be54ae925b46b3bdb0b"),
+    ("system/fvSolution", "SIMPLE", "4df9c08f4510b6c804100d6b11227241"),
+    ("system/fvSolution", "relaxationFactors", "a1c6380d6800b7865d7d3fd439044d04"),
+    ("0/U", "boundaryField", "6b9d138f9c0fac8bbf095cbdcea7c332"),
+]
+
+
+@pytest.mark.parametrize("rel,key,print_", OLD_PRINTS)
+def test_the_fingerprint_of_a_top_level_dict_is_the_one_an_old_cache_holds(
+    rel, key, print_
+):
+    d = _load(PITZ / rel)
+    assert pt._fingerprint(key, d.__dict__[key]) == print_

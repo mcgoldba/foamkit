@@ -771,6 +771,8 @@ def _toDictObj(obj):
 
 
 _FP_MISSING = object()
+#- in a layout plan: write this changed dictionary from its own layout (T-083)
+_KEEP_NESTED = object()
 _FP_NAMES: dict = {}      #- type -> names of the value attributes of its instances
 
 
@@ -821,12 +823,19 @@ def _fpFeed(h, x, deep=True):
         if isinstance(x, ofDict):
             attrs = vars(x)
             classVars = attrs.get('_CLASS_VARS') or []
-            for k in sorted(k for k in attrs if k in classVars):
+            #- (`_srcLayout` holds fingerprints: never part of one)
+            for k in sorted(k for k in attrs
+                            if k in classVars and k != '_srcLayout'):
                 h.update(repr(k).encode('utf-8') + b'=')
-                _fpFeed(h, attrs[k], True)
+                v = attrs[k]
+                if k == '_CLASS_VARS':
+                    #- (as before T-083, which added `_srcLayout`: keeps the
+                    #  fingerprints in an older cache valid)
+                    v = [c for c in v if c != '_srcLayout']
+                _fpFeed(h, v, True)
             h.update(b'|')
             for k, v in attrs.items():     #- (entries in their order)
-                if k not in classVars:
+                if k not in classVars and k != '_srcLayout':
                     h.update(repr(k).encode('utf-8') + b'=')
                     _fpFeed(h, v, True)
         else:
@@ -851,7 +860,7 @@ def _fpFeed(h, x, deep=True):
         raise TypeError(f"cannot fingerprint {type(x).__name__}")
 
 
-def _fingerprint(key, obj) -> Optional[str]:
+def _fingerprint(key, obj, memo=None, nested=False) -> Optional[str]:
     """
     Fingerprint of the entry `key` = `obj` (T-020): blake2b-16 (hex) of the
     text the writer produces for it in the standard style, followed by a
@@ -859,20 +868,67 @@ def _fingerprint(key, obj) -> Optional[str]:
     miss an edit to a part the writer drops (`.value` of `DT DT [0 2 -1 0 0 0
     0] 4e-05;`); the value alone would miss nothing the writer writes.  Equal
     fingerprints mean the same value and the same standard-style text.
+    A dictionary inside a dictionary (`nested`, T-083) is the exception: its
+    fingerprint is built bottom-up from its own attributes and the
+    fingerprints of its entries, so that every node of a file is fingerprinted
+    once, whatever the depth.  A top-level entry keeps the formula above, whole
+    subtree included, so that the fingerprints in a `.params` cache written
+    before T-083 stay valid.  `memo` (`{(id, key, nested): fingerprint}`,
+    valid while the objects are not changed) keeps the ones already taken.
     None if the entry cannot be serialised: it is then never taken as
     unchanged.
     """
+    if memo is not None and (id(obj), key, nested) in memo:
+        return memo[(id(obj), key, nested)]
     try:
-        if isinstance(obj, ofFoamFile):
-            text = obj.toString(ofRep=True)
+        if (nested and isinstance(obj, ofDict)
+                and not isinstance(obj, ofFoamFile)):
+            fp = _dictFingerprint(obj, memo)
         else:
-            text = ofDictFile._entryText(key, obj, True)
-        h = hashlib.blake2b(digest_size=16)
-        h.update(text.encode('utf-8') + b'|')
-        _fpFeed(h, obj, True)
-        return h.hexdigest()
+            if isinstance(obj, ofFoamFile):
+                text = obj.toString(ofRep=True)
+            else:
+                text = ofDictFile._entryText(key, obj, True)
+            h = hashlib.blake2b(digest_size=16)
+            h.update(text.encode('utf-8') + b'|')
+            _fpFeed(h, obj, True)
+            fp = h.hexdigest()
     except Exception:
         return None
+    if memo is not None:
+        memo[(id(obj), key, nested)] = fp
+    return fp
+
+
+def _dictFingerprint(obj, memo) -> Optional[str]:
+    """
+    Bottom-up fingerprint of the dictionary `obj` (see `_fingerprint`): its
+    own attributes (name, keyword comment, ...) and, for each entry, the key
+    and the entry's fingerprint.  None if an entry has none.
+    """
+    attrs = vars(obj)
+    classVars = attrs.get('_CLASS_VARS') or []
+    h = hashlib.blake2b(digest_size=16)
+    h.update(b'D{')
+    for k in sorted(k for k in attrs if k in classVars and k != '_srcLayout'):
+        h.update(repr(k).encode('utf-8') + b'=')
+        _fpFeed(h, attrs[k], True)
+    h.update(b'|')
+    for k, v in attrs.items():
+        if k in classVars or k == '_srcLayout':
+            continue
+        child = _fingerprint(k, v, memo, True)
+        if child is None:
+            return None
+        h.update(repr(k).encode('utf-8') + b'=' + child.encode('ascii') + b',')
+    return h.hexdigest()
+
+
+def _dictHead(obj) -> str:
+    """Fingerprint of what the keyword line of the dictionary `obj` says."""
+    h = hashlib.blake2b(digest_size=8)
+    _fpFeed(h, [obj._name, obj.__dict__.get('_comment_keyword')])
+    return h.hexdigest()
 
 
 @dataclass
@@ -2453,7 +2509,7 @@ class ofDict(dict, _ofTypeBase):
         #- Keep a list of class variables to filter printed dict items:
         self._CLASS_VARS = ['_CLASS_VARS', '_name', 
                             '_entryTypes', '_nUnnamed', '_comment_keyword',
-                            '_blank_lines_after']
+                            '_blank_lines_after', '_srcLayout']
 
 
         if (len(args) == 1 and isinstance(args[0], list)
@@ -2701,44 +2757,192 @@ class ofDict(dict, _ofTypeBase):
             dStr = "{\n"
         # for k, v in zip(self.keys(), self.values()):
         for k, v in zip(self.__dict__.keys(), self.__dict__.values()):
-            k = k.rstrip('_') # remove possible "_" added in _checkReserved
-            # logger.debug(f"dict entry: {k}: {v}")
-            if k is None or _isGeneratedKey(k):
-                k=''
             if k not in self._CLASS_VARS:
-                if _isKeywordOnly(v):
-                    dStr += TAB_STR + _keywordOnlyText(v, ofRep)
-                elif isinstance(v, ofDict):
-                    # logger.debug("Found ofDict.")
-                    dStr2 = v.toString(ofRep=ofRep).split("\n")
-                    for i in range(len(dStr2)):
-                        #- no indent on blank lines (no trailing whitespace)
-                        dStr2[i] = (TAB_STR+dStr2[i] if dStr2[i] else '')+"\n"
-                        dStr += dStr2[i]
-                elif isinstance(v, ofList):
-                    vList = v.toString(ofRep=ofRep).split('\n')
-                    for v_ in vList:
-                        dStr+= (TAB_STR+v_ if v_ else '')+'\n'
-                    # dStr = dStr.rstrip()
-                    # dStr+=';'
-                    dStr += '\n'
-                elif isinstance(v, (_ofVerbatimCode, ofVerbatimDirective)):
-                    #- Multi-line: indent every line, not only the first
-                    for v_ in v.toString(ofRep=ofRep).rstrip('\n').split('\n'):
-                        dStr+= (TAB_STR+v_ if v_ else '')+'\n'
-                elif hasattr(v, 'toString') and callable(getattr(v, 'toString')):
-                    # dStr += printNameStr(TAB_STR+k)+v.toString()
-                    dStr += TAB_STR+v.toString(ofRep=ofRep)
-                    # logger.debug("Found 'toString()' method.")
-                else:
-                    # logger.debug("Could not find 'toString()' method.")
-                    dStr += printNameStr(TAB_STR+k)+str(v)+';\n'
+                dStr += self._childText(k, v, ofRep)
 
             # logger.debug(f"dict string: {dStr}")
         dStr+= "}\n\n"
         # if not ofRep:
         #     dStr = dStr.replace(';', '')
         return dStr
+
+    def _childText(self, k, v, ofRep) -> str:
+        """The standard-style text of the entry `k` = `v`, one level in."""
+        k = k.rstrip('_') # remove possible "_" added in _checkReserved
+        # logger.debug(f"dict entry: {k}: {v}")
+        if k is None or _isGeneratedKey(k):
+            k=''
+        dStr = ''
+        if _isKeywordOnly(v):
+            dStr += TAB_STR + _keywordOnlyText(v, ofRep)
+        elif isinstance(v, ofDict):
+            # logger.debug("Found ofDict.")
+            dStr2 = v.toString(ofRep=ofRep).split("\n")
+            for i in range(len(dStr2)):
+                #- no indent on blank lines (no trailing whitespace)
+                dStr2[i] = (TAB_STR+dStr2[i] if dStr2[i] else '')+"\n"
+                dStr += dStr2[i]
+        elif isinstance(v, ofList):
+            vList = v.toString(ofRep=ofRep).split('\n')
+            for v_ in vList:
+                dStr+= (TAB_STR+v_ if v_ else '')+'\n'
+            # dStr = dStr.rstrip()
+            # dStr+=';'
+            dStr += '\n'
+        elif isinstance(v, (_ofVerbatimCode, ofVerbatimDirective)):
+            #- Multi-line: indent every line, not only the first
+            for v_ in v.toString(ofRep=ofRep).rstrip('\n').split('\n'):
+                dStr+= (TAB_STR+v_ if v_ else '')+'\n'
+        elif hasattr(v, 'toString') and callable(getattr(v, 'toString')):
+            # dStr += printNameStr(TAB_STR+k)+v.toString()
+            dStr += TAB_STR+v.toString(ofRep=ofRep)
+            # logger.debug("Found 'toString()' method.")
+        else:
+            # logger.debug("Could not find 'toString()' method.")
+            dStr += printNameStr(TAB_STR+k)+str(v)+';\n'
+        return dStr
+
+    def _layoutUsable(self, depth) -> bool:
+        """
+        True if this dictionary has a source layout (T-083, see
+        `DictFileParser._buildNested`) that can be written at `depth` (the
+        number of dictionaries around it): it was read there, and has the
+        shape of a record.  Otherwise it is written as a whole in the
+        standard style.
+        """
+        rec = self.__dict__.get('_srcLayout')
+        return (isinstance(rec, dict) and rec.get('depth') == depth
+                and isinstance(rec.get('head'), str)
+                and isinstance(rec.get('open'), str)
+                and isinstance(rec.get('close'), str)
+                and isinstance(rec.get('entries'), list))
+
+    def _keptBlock(self, depth, ofRep, memo) -> str:
+        """
+        The text of this dictionary written from its source layout (T-083):
+        the `open` lines (the keyword line regenerated if the name or keyword
+        comment changed), every entry by the same rule as in a file (source
+        text if unchanged, the standard style if not), then the `close`
+        lines.  Only for a dictionary that `_layoutUsable` at `depth`.
+        """
+        rec = self.__dict__['_srcLayout']
+        plan = self._layoutPlan(rec, depth + 1, memo)
+        text = rec['open']
+        if rec['head'] != _dictHead(self):
+            named = bool(self._name) and not _isGeneratedKey(self._name)
+            lines = text.splitlines(keepends=True)
+            indent = TAB_STR * depth
+            if named and len(lines) > 1:
+                #- (the keyword has its own line: only that line changes)
+                text = (indent + self._name + _keywordComment(self) + '\n'
+                        + ''.join(lines[1:]))
+            else:
+                text = (indent + self._name + _keywordComment(self) + '\n'
+                        if named else '') + indent + '{\n'
+        for k, v in self.__dict__.items():
+            if k in self._CLASS_VARS:
+                continue
+            kept = self._layoutText(plan, k)
+            if kept is not None and kept[1] is _KEEP_NESTED:
+                text += kept[0] + v._keptBlock(depth + 1, ofRep, memo)
+            elif kept is not None and kept[1] is not None:
+                text += kept[0] + kept[1]
+            else:
+                #- changed entry: keeps its gap.  New entry: a dictionary
+                #  after a blank line (as the standard style ends one), a
+                #  value right after the previous entry.
+                gap = kept[0] if kept is not None else (
+                    '\n' if isinstance(v, ofDict) else '')
+                piece = self._childText(k, v, ofRep)
+                if depth:
+                    piece = ''.join(
+                        TAB_STR * depth + ln if ln.strip() else ln
+                        for ln in piece.splitlines(keepends=True))
+                text += gap + piece.rstrip('\n') + '\n'
+        return text + rec['close']
+
+    def _layoutPlan(self, layout, depth=0, memo=None) -> dict:
+        """
+        Decide, for every key of the source record that is still in the
+        dictionary, what is written (T-020): `{key: (gap, text)}`.  `text` is
+        the source text to keep, '' for a member of a shared-line group whose
+        text is written with the first member, `_KEEP_NESTED` for a changed
+        dictionary that is written from its own layout (T-083: it is the
+        first of its group, the rest of the group is on its closing line and
+        unchanged, and it was read at `depth`), or None to write the entry in
+        the standard style (it changed, or a member of its group did, was
+        deleted or moved).  A key that is not in the plan is new.  `memo`
+        keeps fingerprints (see `_fingerprint`).
+        """
+        keys = [k for k in self.__dict__ if k not in self._CLASS_VARS]
+        pos = {k: n for n, k in enumerate(keys)}
+        plan = {}
+        entries = layout.get('entries', ())
+        #- A key deleted and added again moved: it is new, whatever its old
+        #  place was.  The entries that kept their relative order are the
+        #  longest increasing run of positions.
+        anchors = [min((pos[k] for k in rec[0] if k in pos), default=None)
+                   for rec in entries]
+        stay = self._longestRun(anchors)
+        for ri, rec in enumerate(entries):
+            if anchors[ri] is not None and ri not in stay:
+                continue
+            names, gap, text, prints = rec
+            first = pos.get(names[0])
+            same = [first is not None and pos.get(k) == first + n
+                    and prints[n] is not None
+                    and prints[n] == _fingerprint(
+                        k, self.__dict__[k], memo, depth > 0)
+                    for n, k in enumerate(names)]
+            intact = all(same)
+            lead = self.__dict__.get(names[0])
+            nested = (not intact and all(same[1:])
+                      and isinstance(lead, ofDict)
+                      and lead._layoutUsable(depth))
+            for n, k in enumerate(names):
+                if k not in pos:
+                    continue
+                if intact:
+                    plan[k] = (gap, text) if n == 0 else ('', '')
+                elif nested:
+                    plan[k] = (gap, _KEEP_NESTED) if n == 0 else ('', '')
+                else:
+                    plan[k] = (gap if n == 0 else '', None)
+        return plan
+
+    @staticmethod
+    def _longestRun(values) -> set:
+        """Indices of a longest strictly increasing run of `values` (None skipped)."""
+        tails: list = []
+        ends: list = []
+        prev: dict = {}
+        for i, v in enumerate(values):
+            if v is None:
+                continue
+            j = bisect_left(tails, v)
+            if j == len(tails):
+                tails.append(v)
+                ends.append(i)
+            else:
+                tails[j] = v
+                ends[j] = i
+            prev[i] = ends[j - 1] if j else None
+        out: set = set()
+        k = ends[-1] if ends else None
+        while k is not None:
+            out.add(k)
+            k = prev[k]
+        return out
+
+    @staticmethod
+    def _layoutText(plan, key):
+        """
+        The single hook of the writer (T-020, for T-050): `(gap, text)` of
+        `key` from the layout plan, `text` None to write the entry anew
+        (`_KEEP_NESTED`: from its own layout); None if the key has no source
+        record.
+        """
+        return plan.get(key)
 
     #TODO:  can this class be replaced with a dict() conversion?
     def toDict(self):
@@ -2844,8 +3048,8 @@ class ofDictFile(ofDict, _ofFolderItemBase):
         self._CLASS_VARS.append('_foamFile')
         #- `_srcLayout`, the source layout of the entries read from a file
         #  (see `DictFileParser._buildLayout`), is set by the parser only;
-        #  without it every entry is written anew
-        self._CLASS_VARS.append('_srcLayout')
+        #  without it every entry is written anew.  (Listed in `_CLASS_VARS`
+        #  by `ofDict`, as sub-dictionaries have one too.)
         #- Line ending the file is written with (T-085): the one it was read
         #  with; `\n` for a new file and for a cache without it.
         #  `_mixedLine` is the first line (1-based) whose ending differs
@@ -2897,6 +3101,9 @@ class ofDictFile(ofDict, _ofFolderItemBase):
         standard style and of its value (every attribute, read without
         keeping anything), so no way of editing can be missed;
         an entry that cannot be fingerprinted is always rewritten.
+        A changed sub-dictionary is written from its own layout (T-083, see
+        `ofDict._keptBlock`): only the changed entries inside it are
+        rewritten, at any depth.
         The layout goes with the dictionary into the `.params` cache.
 
         `_preserve=False` (private, for `fk format`) writes every entry in the
@@ -2924,14 +3131,18 @@ class ofDictFile(ofDict, _ofFolderItemBase):
                 #  lines
                 fStr = self._foamFile.toString(ofRep=True).rstrip('\n')
                 str_ += fStr + '\n' + '\n' * nBlank
-        plan = self._layoutPlan(layout) if layout is not None else {}
+        memo: dict = {}     #- fingerprints taken while writing this file
+        plan = self._layoutPlan(layout, 0, memo) if layout is not None else {}
         for k, v in zip(self.__dict__.keys(), self.__dict__.values()):
             # logger.debug(f"dict entry: {k}: {v}")
             if k is None:
                 k=''
             if k not in self._CLASS_VARS:
                 kept = self._layoutText(plan, k) if layout is not None else None
-                if kept is not None and kept[1] is not None:
+                if kept is not None and kept[1] is _KEEP_NESTED:
+                    #- changed dictionary: its own layout (T-083)
+                    piece = kept[0] + v._keptBlock(0, ofRep, memo)
+                elif kept is not None and kept[1] is not None:
                     piece = kept[0] + kept[1]
                 else:
                     piece = self._entryText(k, v, ofRep)
@@ -2975,76 +3186,6 @@ class ofDictFile(ofDict, _ofFolderItemBase):
                 or rec[1] != _fingerprint('FoamFile', self._foamFile)):
             return None
         return rec[0]
-
-    def _layoutPlan(self, layout) -> dict:
-        """
-        Decide, for every key of the source record that is still in the
-        dictionary, what is written (T-020): `{key: (gap, text)}`.  `text` is
-        the source text to keep, '' for a member of a shared-line group whose
-        text is written with the first member, or None to write the entry in
-        the standard style (it changed, or a member of its group did, was
-        deleted or moved).  A key that is not in the plan is new.
-        """
-        keys = [k for k in self.__dict__ if k not in self._CLASS_VARS]
-        pos = {k: n for n, k in enumerate(keys)}
-        plan = {}
-        entries = layout.get('entries', ())
-        #- A key deleted and added again moved: it is new, whatever its old
-        #  place was.  The entries that kept their relative order are the
-        #  longest increasing run of positions.
-        anchors = [min((pos[k] for k in rec[0] if k in pos), default=None)
-                   for rec in entries]
-        stay = self._longestRun(anchors)
-        for ri, rec in enumerate(entries):
-            if anchors[ri] is not None and ri not in stay:
-                continue
-            names, gap, text, prints = rec
-            first = pos.get(names[0])
-            intact = first is not None and all(
-                pos.get(k) == first + n and prints[n] is not None
-                and prints[n] == _fingerprint(k, self.__dict__[k])
-                for n, k in enumerate(names))
-            for n, k in enumerate(names):
-                if k not in pos:
-                    continue
-                if intact:
-                    plan[k] = (gap, text) if n == 0 else ('', '')
-                else:
-                    plan[k] = (gap if n == 0 else '', None)
-        return plan
-
-    @staticmethod
-    def _longestRun(values) -> set:
-        """Indices of a longest strictly increasing run of `values` (None skipped)."""
-        tails: list = []
-        ends: list = []
-        prev: dict = {}
-        for i, v in enumerate(values):
-            if v is None:
-                continue
-            j = bisect_left(tails, v)
-            if j == len(tails):
-                tails.append(v)
-                ends.append(i)
-            else:
-                tails[j] = v
-                ends[j] = i
-            prev[i] = ends[j - 1] if j else None
-        out: set = set()
-        k = ends[-1] if ends else None
-        while k is not None:
-            out.add(k)
-            k = prev[k]
-        return out
-
-    @staticmethod
-    def _layoutText(plan, key):
-        """
-        The single hook of the writer (T-020, for T-050): `(gap, text)` of
-        `key` from the layout plan, `text` None to write the entry anew; None
-        if the key has no source record.
-        """
-        return plan.get(key)
 
     # def __delattr__(self, name):
     #     # super(ofDictFile, self).__delitem__(self, name)
@@ -4884,6 +5025,12 @@ class DictFileParser:
         #  top-level entry in them (T-020; None: not recordable)
         self._srcLines = None
         self._spans = []
+        #- Sub-dictionaries read so far (T-083): the one `_parseDict` just
+        #  finished, and `(dict, depth, first line, `{` line, `}` line, spans
+        #  of its entries)` of those that are entries of a dictionary
+        self._pendingDict = None
+        self._dicts = []
+        self._depth = 0     #- number of dictionaries around the current line
         #- Line index the last queued extra line came from
         self._extraLineAt = None
         #- True while the items of a multi-line list are read line by line:
@@ -5649,7 +5796,9 @@ class DictFileParser:
                             value.feType, 0)+1
                 else:
                     userMsg(f"Invalid value type: {type(value)}.", "ERROR")
-                self._noteEntry(nKeys, wasExtra, start)
+                span = self._noteEntry(nKeys, wasExtra, start)
+                if span is not None:
+                    self._noteDict(value, span[1])
 
             # [status, lineStatus] = _readDictEntry(status, ofType, lines, i)
 
@@ -5670,33 +5819,112 @@ class DictFileParser:
                 self.nComments += 1
                 self._noteEntry(nKeys, True, self.i)
         self.extraLine = []
-        self.dictFile._srcLayout = self._buildLayout(ffSpan)
+        memo: dict = {}     #- fingerprints: every node is taken once
+        self.dictFile._srcLayout = self._buildLayout(ffSpan, memo)
+        self._buildNested(memo)
 
         return self.dictFile
 
-    def _noteEntry(self, nKeys, fromExtra, start):
+    def _entrySpan(self, d, nKeys, fromExtra, start):
         """
-        Note the original lines of the entry just added to the dictionary
-        file (T-020): from the line where its `_parseLine` call started to the
-        last line it consumed, or the line the queued text came from.
-        `nKeys` is the number of attributes before the call.
+        `(key, first line, last line)` in the source of the entry just added
+        to the attributes `d` of a dictionary (T-020): from the line where
+        its `_parseLine` call started to the last line it consumed, or the
+        line the queued text came from.  `nKeys` is the number of attributes
+        before the call.  None if an entry replaced another one (no layout
+        to keep).
         """
-        d = self.dictFile.__dict__
-        if self._spans is None:
-            return
         if len(d) != nKeys + 1:
-            #- (an entry replaced another one: no layout to keep)
-            self._spans = None
-            return
+            return None
         if fromExtra:
             first = last = (start if self._extraLineAt is None
                             else self._extraLineAt)
         else:
             first, last = start, max(start, self.i - 1)
-        self._spans.append((next(reversed(d)), self._ln(first) - 1,
-                            self._lnEnd(last) - 1))
+        return (next(reversed(d)), self._ln(first) - 1,
+                self._lnEnd(last) - 1)
 
-    def _buildLayout(self, ffSpan):
+    def _noteEntry(self, nKeys, fromExtra, start):
+        """
+        Note the original lines of the entry just added to the dictionary
+        file (see `_entrySpan`).  Returns them, None if not recordable.
+        """
+        if self._spans is None:
+            return None
+        span = self._entrySpan(self.dictFile.__dict__, nKeys, fromExtra,
+                               start)
+        if span is None:
+            self._spans = None
+        else:
+            self._spans.append(span)
+        return span
+
+    def _noteDict(self, value, first):
+        """
+        `value`, an entry just added to a dictionary whose first line is
+        `first`, is a sub-dictionary `_parseDict` has just finished: keep what
+        `_buildNested` needs to give it a layout record (T-083).
+        """
+        pending = self._pendingDict
+        if pending is not None and pending[0] is value:
+            self._pendingDict = None
+            self._dicts.append((value, self._depth, first) + pending[1:])
+
+    def _groupEntries(self, d, spans, pos, memo, nested):
+        """
+        Group the `spans` of the entries of the dictionary with attributes
+        `d` into the `[[key, ...], gap, text, [fingerprint, ...]]` records of
+        a layout (see `_buildLayout`), the first line being `pos`.  Returns
+        `(records, line after the last entry)`, or None if the lines of the
+        entries cannot be told apart.
+        """
+        lines = self._srcLines
+        groups = []     #- [first line, last line, [keys]]
+        for key, first, last in spans:
+            if groups and first <= groups[-1][1]:
+                groups[-1][1] = max(groups[-1][1], last)
+                groups[-1][2].append(key)
+            elif first < pos or (groups and first < groups[-1][0]):
+                return None
+            else:
+                groups.append([first, last, [key]])
+        entries = []
+        for first, last, keys in groups:
+            gap = ''.join(lines[pos:first])
+            entries.append([keys, gap, ''.join(lines[first:last + 1]),
+                            [_fingerprint(k, d[k], memo, nested) for k in keys]])
+            pos = last + 1
+        return entries, pos
+
+    def _buildNested(self, memo):
+        """
+        Give the sub-dictionaries read as entries of a dictionary their
+        layout record (T-083), stored as `ofDict._srcLayout` (plain lists,
+        strings and numbers):
+        `{"depth": number of dictionaries around it,
+          "head": fingerprint of its keyword and keyword comment,
+          "open": the lines from its keyword to its `{`,
+          "entries": as in `_buildLayout`,
+          "close": the lines from the last entry to its `}` (and the text
+                   after it)}`.
+        A dictionary gets none if its `{`, an entry or its `}` share a line
+        (`p { type patch; }`), or the lines of its entries cannot be told
+        apart: it is then written as a whole in the standard style.
+        """
+        if self._srcLines is None:
+            return
+        lines = self._srcLines
+        for d, depth, first, brace, close, spans in self._dicts:
+            got = self._groupEntries(d.__dict__, spans, brace + 1, memo, True)
+            if got is None or first > brace or got[1] > close:
+                continue
+            entries, pos = got
+            d.__dict__['_srcLayout'] = {
+                "depth": depth, "head": _dictHead(d),
+                "open": ''.join(lines[first:brace + 1]), "entries": entries,
+                "close": ''.join(lines[pos:close + 1])}
+
+    def _buildLayout(self, ffSpan, memo=None):
         """
         The source layout of the top level of the file (T-020), stored as
         `ofDictFile._srcLayout`:
@@ -5721,22 +5949,11 @@ class DictFileParser:
             ffRec = [''.join(lines[ffStart:ffEnd + 1]),
                      _fingerprint('FoamFile', self.dictFile._foamFile)]
             pos = ffEnd + 1 + nBlank
-        groups = []     #- [first line, last line, [keys]]
-        for key, first, last in spans:
-            if groups and first <= groups[-1][1]:
-                groups[-1][1] = max(groups[-1][1], last)
-                groups[-1][2].append(key)
-            elif first < pos or (groups and first < groups[-1][0]):
-                return None
-            else:
-                groups.append([first, last, [key]])
-        entries = []
-        for first, last, keys in groups:
-            gap = ''.join(lines[pos:first])
-            entries.append([keys, gap, ''.join(lines[first:last + 1]),
-                            [_fingerprint(k, self.dictFile.__dict__[k])
-                             for k in keys]])
-            pos = last + 1
+        got = self._groupEntries(self.dictFile.__dict__, spans, pos, memo,
+                                 False)
+        if got is None:
+            return None
+        entries, pos = got
         return {"foamFile": ffRec, "entries": entries,
                 "tail": ''.join(lines[pos:])}
 
@@ -6689,24 +6906,29 @@ class DictFileParser:
                     #  _parseLine
 
         #- skip the opening '{'
+        brace = self._lnEnd(self.i) - 1     #- (source line of the '{')
         if '{' in self.lines[self.i]:
             line_ = self.lines[self.i].strip()
             extraLine = '{'.join(line_.split('{')[1:])
             if extraLine != "":
-                self._addExtraLine(extraLine) 
+                self._addExtraLine(extraLine)
         self.i += 1
 
         #- a bare list inside this dict is a statement, even when the dict
         #  is an item of a multi-line list
         outer, self._inListItems = self._inListItems, False
+        spans = []      #- source lines of the entries (T-083); None: unusable
+        self._depth += 1
         try:
             while self.i <= i_end:
+                start, wasExtra = self.i, bool(self.extraLine)
+                nKeys = len(dict_.__dict__)
                 value_ = self._parseLine()
                 if value_ is not None:
                     if isinstance(value_, ofDict):
                         dict_.update({value_._name: value_})
                     elif hasattr(value_, 'name'):
-                        dict_.update({value_.__getattribute__('name'): value_})    
+                        dict_.update({value_.__getattribute__('name'): value_})
                     else:
                         # logger.debug(f"{type(value_)} attributes: {vars(value_).keys()}")
                         # logger.error("Invalid type returned to dictionary")
@@ -6714,12 +6936,23 @@ class DictFileParser:
                         dict_.update({None: value_})
                     # logger.debug(f"{type(value_)} attributes: {vars(value_).keys()}")
                     # dict_.update({value_.__getattribute__(name_): value_})
+                    if spans is not None:
+                        span = self._entrySpan(dict_.__dict__, nKeys,
+                                               wasExtra, start)
+                        if span is None:
+                            spans = None
+                        else:
+                            spans.append(span)
+                            self._noteDict(value_, span[1])
         finally:
             self._inListItems = outer
+            self._depth -= 1
 
         # logger.debug(f"dict_:\n{dict_}")
 
         self.i-=1 # Reset line index since it will increment in _parseLine
+        if spans is not None:
+            self._pendingDict = (dict_, brace, self._lnEnd(self.i) - 1, spans)
 
         # logger.debug(f"Finished parsing dict {name} on line {self.i+1}")
 
