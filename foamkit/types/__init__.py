@@ -2074,7 +2074,7 @@ def _fileFloat(token):
     return float(token)
 
 
-def _readDimensionSet(tokens, pos):
+def _readDimensionSet(tokens, pos, needValue=True):
     """
     Read the dimension set `[d0 d1 d2 d3 d4 d5 d6]` whose `[` starts
     `tokens[pos]` (a whitespace split of the entry), with or without spaces
@@ -2082,7 +2082,7 @@ def _readDimensionSet(tokens, pos):
     seven integer exponents and the index of the first token after the `]`.
     Returns None, reading nothing, for any shape it does not read exactly
     (a non-integer token, a count other than seven, text glued to the `]`, no
-    `]`, or nothing after it).
+    `]`, or, when `needValue`, nothing after it).
     """
     parts = []
     for end in range(pos, len(tokens)):
@@ -2102,7 +2102,7 @@ def _readDimensionSet(tokens, pos):
         dims = [_fileInt(p) for p in parts]
     except ValueError:
         return None
-    if len(dims) != 7 or end + 1 >= len(tokens):
+    if len(dims) != 7 or (needValue and end + 1 >= len(tokens)):
         return None
     return dims, end + 1
 
@@ -7630,8 +7630,6 @@ class DictFileParser:
         returnType = None
         if type_ is ofInt or type_ is ofFloat:
             returnType = ofDimensionedScalar
-        elif type_ is ofSphericalTensor:
-            returnType = ofDimensionedSphericalTensor
         if type_ == ofList:
             try:
                 [_fileFloat(v) for v in value]
@@ -7639,8 +7637,6 @@ class DictFileParser:
                 return None # not all values in list are numeric
             if len(value) == 3:
                 returnType = ofDimensionedVector
-            elif len(value) == 5:
-                returnType = ofDimensionedSymmTensor
             elif len(value) == 9:
                 returnType = ofDimensionedTensor
 
@@ -7823,19 +7819,15 @@ class DictFileParser:
             ofWord(lineList[0])
         except:
             return None  # first item is not valid key
-        if not any(v.startswith('[') for v in lineList[1:]):
-            return None  # not a dimension set (`[...]`), e.g. `t (1 2 3 ...)`
-        #- try to convert list to dimension, return None if error
-        dimList = []
-        for value in lineList[1:]:
-            if '_' in value:
-                return None  # a word with `_` is never a dimension
-            try:
-                v = int(value.strip('[];'))
-                dimList.append(v)
-            except ValueError:
-                pass
-        # logger.debug(f"dimList: {dimList}")
+        #- exactly one `[ ... ]` of seven integers and nothing else; any other
+        #  shape is not typed here and stays text
+        tokens = " ".join(lineList[1:]).rstrip().rstrip(';').split()
+        if not tokens or not tokens[0].startswith('['):
+            return None
+        read = _readDimensionSet(tokens, 0, needValue=False)
+        if read is None or read[1] != len(tokens):
+            return None  # not exactly one dimension set
+        dimList = read[0]
         try:
             dimValue = ofNamedDimension(name=lineList[0], 
                                         dimensions=dimList)

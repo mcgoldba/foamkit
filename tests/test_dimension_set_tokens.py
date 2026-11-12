@@ -35,21 +35,21 @@ FAIL = "fails today"
 # id -> (body, type after the change, loses data today)
 ROWS = {
     # --- bold rows of the "Today" table ---
-    "letter-in-3rd-exponent": ("nu [0 2 a 0 0 0 0] 1;", "ofStr", True),
-    "letter-in-1st-exponent": ("nu [a 2 -1 0 0 0 0] 1;", "ofStr", True),
-    "letter-in-7th-exponent": ("nu [0 2 -1 0 0 0 a] 1;", "ofStr", True),
-    "fractional-exponent": ("nu [0 2 -1.5 0 0 0 0] 1;", "ofStr", True),
-    "six-exponents": ("nu [0 2 -1 0 0 0] 1;", "ofStr", True),
-    "six-exponents-vector": ("U [0 1 -1 0 0 0] (1 0 0);", "ofStr", True),
-    "six-exponents-uniform": ("v [0 1 -1 0 0 0] uniform 1;", "ofStr", True),
-    "gravity-vector-non-integer": ("g [0 1 -2 0 0 0 0] (0 -9.81 0);", "ofStr", True),
-    "value-is-a-word": ("nu [0 2 -1 0 0 0 0] abc;", "ofStr", True),
-    "value-is-a-variable": ("nu [0 2 -1 0 0 0 0] $x;", "ofStr", True),
-    "value-is-a-switch": ("nu [0 2 -1 0 0 0 0] on;", "ofStr", True),
-    "value-before-the-brackets": ("nu 1e-05 [0 2 -1 0 0 0 0];", "ofStr", True),
-    "numbers-around-brackets": ("x 1 2 [3] 4 5 6 7;", "ofStr", True),
-    "symm-tensor-five-numbers": ("s [0 2 -2 0 0 0 0] (1 0 0 0 0);", "ofStr", True),
-    "spherical-tensor-one-number": ("s [0 2 -2 0 0 0 0] (1);", "ofStr", True),
+    "letter-in-3rd-exponent": ("nu [0 2 a 0 0 0 0] 1;", "ofStr", False),
+    "letter-in-1st-exponent": ("nu [a 2 -1 0 0 0 0] 1;", "ofStr", False),
+    "letter-in-7th-exponent": ("nu [0 2 -1 0 0 0 a] 1;", "ofStr", False),
+    "fractional-exponent": ("nu [0 2 -1.5 0 0 0 0] 1;", "ofStr", False),
+    "six-exponents": ("nu [0 2 -1 0 0 0] 1;", "ofStr", False),
+    "six-exponents-vector": ("U [0 1 -1 0 0 0] (1 0 0);", "ofStr", False),
+    "six-exponents-uniform": ("v [0 1 -1 0 0 0] uniform 1;", "ofStr", False),
+    "gravity-vector-non-integer": ("g [0 1 -2 0 0 0 0] (0 -9.81 0);", "ofStr", False),
+    "value-is-a-word": ("nu [0 2 -1 0 0 0 0] abc;", "ofStr", False),
+    "value-is-a-variable": ("nu [0 2 -1 0 0 0 0] $x;", "ofStr", False),
+    "value-is-a-switch": ("nu [0 2 -1 0 0 0 0] on;", "ofStr", False),
+    "value-before-the-brackets": ("nu 1e-05 [0 2 -1 0 0 0 0];", "ofStr", False),
+    "numbers-around-brackets": ("x 1 2 [3] 4 5 6 7;", "ofStr", False),
+    "symm-tensor-five-numbers": ("s [0 2 -2 0 0 0 0] (1 0 0 0 0);", "ofStr", False),
+    "spherical-tensor-one-number": ("s [0 2 -2 0 0 0 0] (1);", "ofStr", False),
     # --- bold rows that already pass (fixed by T-014 or earlier): pinned ---
     "spaced-brackets": (
         "nu [ 0 2 -1 0 0 0 0 ] 1e-05;",
@@ -275,9 +275,7 @@ def test_spaced_brackets_load_as_dimensioned_scalar_with_value(tmp_path, where):
 
 # --- pinned: already lossless -----------------------------------------------------------
 
-LOSSLESS_PARAMS = [
-    pytest.param(w, k, id=f"{w}-{k}") for w in WHERE for k in LOSSLESS
-]
+LOSSLESS_PARAMS = [pytest.param(w, k, id=f"{w}-{k}") for w in WHERE for k in LOSSLESS]
 
 
 @pytest.mark.parametrize("where, row", LOSSLESS_PARAMS)
@@ -384,6 +382,4 @@ def test_throttle_editing_one_entry_keeps_the_five_exponent_entries(tmp_path):
     d = _load(path)
     d.barotropicCompressibilityModel.value = "perfectFluid"
     out = d.toString()
-    assert _tokens(out) == _tokens(
-        THROTTLE_THERMO.replace("linear", "perfectFluid")
-    )
+    assert _tokens(out) == _tokens(THROTTLE_THERMO.replace("linear", "perfectFluid"))
